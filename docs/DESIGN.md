@@ -7,8 +7,10 @@
 ### 1.1 Conference Management
 - The application stores data per conference. Conferences can be created and deleted. Deleting a conference removes all associated data.
 
-### 1.2 Excel Import
-- The user can upload an Excel file exported from MyMUN. The application parses the file and fully overwrites the delegate and preference data for the current conference. No merging or conflict resolution is performed — the import is a clean replace. Email is stored as a field and used as the resolution key when matching delegates during conference import (see 1.9).
+### 1.2 MyMUN Update
+- The user can update the current conference by dropping an Excel file exported from MyMUN into the application. The application parses the file and atomically updates the delegate, question, preference, position, and MyMUN-confirmed assignment data for the current conference. If validation finds blocking issues, the update is aborted and the database is unchanged.
+- This action is called an **update**, not an import. The term import is reserved for `.munassign` conference import/export.
+- Delegate matching uses normalized first and last name first, with email as an additional discriminator when names collide. If name and email still collide, zip code and date of birth are used as further discriminators. Email is stored but is not guaranteed to be unique.
 
 ### 1.3 Main View
 - The main view shows all committees as vertical columns. Each column contains a list of positions. Each position shows its slots, how many delegates are interested in it, and — if no delegate is assigned — lists those interested delegates inline.
@@ -16,9 +18,11 @@
 
 ### 1.4 Slot Assignment
 - A slot can be in one of three states: **Empty**, **Pending**, or **Assigned**.
-- Delegates can be set as pending via right-click context menu, and later confirmed as assigned the same way.
+- Delegates can be set as pending via right-click context menu. Final assigned state comes from MyMUN after a later update shows the assignment in the `Countries` sheet.
+- The app does not provide a right-click action to confirm a pending assignment as final.
 - It must also be possible to manually add a delegate to a slot even if they did not express interest in it.
 - A delegate who is assigned (confirmed) is visually greyed out wherever else they appear in the UI.
+- Slot count is configured per committee. Every position in a committee has the same number of slots. Changing the committee slot count requires confirmation.
 
 ### 1.5 Delegate Side Panel
 - Clicking a delegate anywhere in the UI opens a side panel showing all stored information about them.
@@ -39,7 +43,7 @@
 
 ### 1.9 Conference Export / Import
 - A conference — including all committees, positions, slots, delegates, preferences, assignments, and comments — can be exported to a `.munassign` file to be shared with another organiser.
-- Importing a `.munassign` file fully overwrites the current conference with the contents of the file.
+- Importing a `.munassign` file can replace the selected conference or create a new conference. Replacing the selected conference is the default.
 - Export and import are always scoped to a single conference.
 
 ---
@@ -132,22 +136,26 @@ MunAssign/
 
 ## 4. Domain Model
 
-The exact fields of each model are determined once the actual MyMUN export format is known. The following describes the structure and responsibilities of each model, not its concrete fields.
+The detailed data model is maintained in `docs/DATA_MODEL.md`. The following describes the main responsibilities of each model.
 
 - **Conference** — top-level container; all other data belongs to a conference.
-- **Committee** — a committee within a conference (e.g. Security Council). Has a name and abbreviation.
-- **Position** — a seat within a committee (e.g. a country or named role). A position has one or more slots to support double or larger delegations. Derived data such as interest counts are computed from preferences at query time, not stored on the model.
-- **Slot** — one assignable seat within a position. Carries status (Empty / Pending / Assigned) and an optional reference to the assigned delegate.
+- **Committee** — a committee within a conference (e.g. Security Council). Has a name, optional abbreviation, sort order, and the committee-level slot count used by all positions in that committee.
+- **Position** — a seat within a committee (e.g. a country or named role). Each row in the MyMUN `Countries` sheet corresponds to one position. Derived data such as interest counts are computed from preferences at query time, not stored on the model.
+- **Slot** — one assignable seat within a position. Carries status (Empty / Pending / Assigned), optional reference to the assigned delegate, and assignment source. `Assigned` means confirmed by MyMUN.
 - **Delegate** — a person registered for the conference. Carries personal information from the MyMUN export, a free-text comments field managed by the organiser, an active/inactive flag, a paid/unpaid flag, and a numerical difficulty score recomputed whenever preferences change.
 - **Preference** — a ranked expression of interest from a delegate toward a position. The rank ordering comes from the MyMUN export.
+- **Delegate Question** — a dynamic MyMUN question column plus application configuration for display order, visibility, and special handling.
+- **Delegate Question Answer** — one delegate's answer to one MyMUN question.
 
 ---
 
-## 5. Excel Import
+## 5. MyMUN Update
 
-The exact column structure of the MyMUN export is not assumed here — it must be inspected against a real export before implementation. The parser should map columns flexibly using a configurable alias table rather than hardcoded column indices.
+The MyMUN workbook layout is documented in `docs/MYMUN.md`. The initial app uses the `Delegates` and `Countries` sheets, with `Delegations` deferred as optional context. `Countries` is the complete source of positions, including unassigned positions. `Chairs`, `Faculty Advisors`, and `Observers` are ignored.
 
-The import is a **full overwrite**: all delegates and preferences for the current conference are replaced by the contents of the file. No merging or conflict resolution is performed.
+The update is atomic. The parser first builds a staging model and validates it. If a blocking issue is found, such as an unmatched preference or a committee slot-count mismatch, the update is cancelled with a user-facing message and no database changes are written.
+
+The `Countries.Delegates` column contains comma-separated delegate names already assigned in MyMUN, with inconsistent whitespace that must be parsed leniently. Those become confirmed assignments in MunAssign. App-created assignments remain pending until MyMUN confirms them in a later update.
 
 ---
 
@@ -161,9 +169,9 @@ Each delegate carries a single integer difficulty score. A lower score means the
 
 Export produces a `.munassign` file, which is a self-contained SQLite database holding a complete snapshot of a single conference — committees, positions, slots, delegates, preferences, assignments, and comments.
 
-This format is chosen because it is identical in structure to the application's own database. Export is a filtered copy of the relevant conference rows; import is a bulk insert that overwrites the current conference. There is no translation layer and no separate serialization format to maintain.
+This format is chosen because it is identical in structure to the application's own database. Export is a filtered copy of the relevant conference rows; import is a bulk insert that can replace the selected conference or create a new conference. There is no translation layer and no separate serialization format to maintain.
 
-Import fully overwrites the target conference. The operation is scoped to one conference on both sides: one conference is exported, and it replaces exactly one conference on the receiving end.
+Import can replace the selected conference or create a new conference from the file. The default behavior is to replace the selected conference. The operation is scoped to one conference on both sides.
 
 ---
 
@@ -189,16 +197,18 @@ Available actions depend on current slot state:
 | Slot state | Available actions |
 |---|---|
 | Empty | Set Pending (pick from interested), Add Manually |
-| Pending | Confirm Assignment, Clear Slot, Add Manually |
-| Assigned | Unassign, Set Back to Pending |
+| Pending | Clear Slot, Replace Manually |
+| Assigned | No local assignment changes; final assignments are controlled by MyMUN update data |
 
 ### 8.4 Delegate Side Panel
 Opens when any delegate name is clicked. Shows:
-1. Personal information from the import
-2. Current assignments (confirmed and pending), each clickable to scroll the main view to that slot
-3. Preferences in rank order, each clickable to scroll the main view to that position
-4. Free-text comments field (auto-saved)
-5. Deactivate button
+1. Personal information from the MyMUN update
+2. Age and relative application submission timing, such as `Application submitted 5 days ago`
+3. Current assignments (confirmed and pending), each clickable to scroll the main view to that slot
+4. Preferences in rank order, each clickable to scroll the main view to that position
+5. Configured question answers, including warnings for special question handling
+6. Free-text comments field (auto-saved)
+7. Deactivate button
 
 ### 8.5 Delegate List Panel
 A drawer opened from the top bar. Shows all active, paid delegates.
@@ -233,11 +243,11 @@ Each delegate displayed in the main view carries its assignment state inline in 
 
 | Phase | Scope |
 |---|---|
-| **1 — Foundation** | Gradle multi-module setup, DB schema, `DatabaseFactory`, Conference CRUD |
-| **2 — Import** | Inspect real MyMUN export, implement Apache POI parser, full-overwrite import, difficulty score computation |
-| **3 — Main UI** | Committee columns, position cards, slot rows, status colours, greyed-out delegates |
-| **4 — Assignment** | Right-click context menu, slot state transitions, stats bar |
-| **5 — Delegate Panel** | Side panel, scroll-to-slot navigation, comments, deactivate, paid/unpaid flag |
-| **6 — List Panel** | Filterable/sortable delegate list |
-| **7 — Export/Import** | `.munassign` SQLite export/import, file picker dialogs |
+| **1 — Workbook/Data Decisions** | MyMUN format, data model, open FAQ decisions |
+| **2 — Data Foundation** | DB schema, `DatabaseFactory`, Conference CRUD, visibility/update rules |
+| **3 — MyMUN Update** | Apache POI parser, staging validation, atomic update, difficulty score computation |
+| **4 — Read-Only Main UI** | Committee columns, position cards, slot rows, status colours, greyed-out delegates |
+| **5 — Assignment Workflows** | Pending/manual assignment, right-click context actions, MyMUN-confirmed assignment sync |
+| **6 — Delegate Panel/List** | Side panel, configured question display, scroll-to-slot navigation, filterable delegate list |
+| **7 — Conference Import/Export** | `.munassign` SQLite export/import, replace-or-create flow, file picker dialogs |
 | **8 — Polish** | Keyboard navigation, error states, empty states, native packaging |
