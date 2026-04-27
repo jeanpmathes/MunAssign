@@ -2,6 +2,9 @@ package org.munika.assignment.domain.model
 
 import java.time.LocalDate
 
+/**
+ * MyMUN-managed profile fields for a delegate.
+ */
 data class DelegateProfile(
     val country: String?,
     val city: String?,

@@ -1,5 +1,8 @@
 package org.munika.assignment.domain.model
 
+/**
+ * Delegate name as provided by MyMUN.
+ */
 data class PersonName(
     val firstName: String,
     val lastName: String,

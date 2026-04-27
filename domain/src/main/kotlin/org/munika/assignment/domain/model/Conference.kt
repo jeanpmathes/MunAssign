@@ -2,6 +2,13 @@ package org.munika.assignment.domain.model
 
 import java.time.Instant
 
+/**
+ * Top-level aggregate for one organizer's assignment work.
+ *
+ * A conference scopes MyMUN updates, organizer-managed state, assignments, and `.munassign`
+ * transfer. Derived collections intentionally read through child objects instead of storing
+ * duplicate counters.
+ */
 class Conference(
     override val id: ConferenceId,
     val name: String,

@@ -1,5 +1,11 @@
 package org.munika.assignment.domain.model
 
+/**
+ * Committee imported from MyMUN and displayed as one board column.
+ *
+ * [mymunName] remains the update-matching key. [alias] is organizer-managed display text only.
+ * [slotsPerPosition] applies uniformly to every position in the committee.
+ */
 class Committee(
     override val id: CommitteeId,
     val conference: Conference,

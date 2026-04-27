@@ -1,5 +1,8 @@
 package org.munika.assignment.data.excel
 
+/**
+ * Potential confirmed assignment parsed from `Countries.Delegates`.
+ */
 data class MymunConfirmedAssignmentCandidate(
     val countryRowNumber: Int,
     val committeeName: String,

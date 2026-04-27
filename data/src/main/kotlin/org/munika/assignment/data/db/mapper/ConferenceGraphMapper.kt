@@ -44,6 +44,11 @@ import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
 import org.munika.assignment.domain.model.TypedAnswerMappings
 
+/**
+ * Rehydrates table-shaped rows into a connected domain object graph.
+ *
+ * Missing references indicate corrupt persisted data and fail fast with row-specific messages.
+ */
 object ConferenceGraphMapper {
     fun toDomain(rows: ConferenceGraphRows): Conference {
         val conference = Conference(

@@ -1,5 +1,11 @@
 package org.munika.assignment.data.excel
 
+/**
+ * Parsed workbook staging data.
+ *
+ * Parsing is intentionally separate from persistence so validation can abort a MyMUN update before
+ * any conference data is written.
+ */
 data class MymunWorkbookSnapshot(
     val workbookName: String?,
     val delegates: List<MymunDelegateRow>,

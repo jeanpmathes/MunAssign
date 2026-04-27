@@ -2,6 +2,9 @@ package org.munika.assignment.data.excel
 
 import java.time.LocalDate
 
+/**
+ * Parsed delegation context row from the optional MyMUN `Delegations` sheet.
+ */
 data class MymunDelegationRow(
     val rowNumber: Int,
     val name: String,

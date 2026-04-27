@@ -1,5 +1,8 @@
 package org.munika.assignment.data.excel
 
+/**
+ * Parsed position row from the MyMUN `Countries` sheet.
+ */
 data class MymunCountryPositionRow(
     val rowNumber: Int,
     val committeeName: String,

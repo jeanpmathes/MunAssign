@@ -1,5 +1,11 @@
 package org.munika.assignment.domain.model
 
+/**
+ * Imported MyMUN question text plus organizer-managed handling configuration.
+ *
+ * The question identity is stable; roles, handling, rules, visibility, labels, and mappings are
+ * local configuration that can change without recreating imported answers.
+ */
 class Question(
     override val id: QuestionId,
     val questionText: String,

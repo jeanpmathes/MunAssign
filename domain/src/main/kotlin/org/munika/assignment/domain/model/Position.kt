@@ -1,5 +1,11 @@
 package org.munika.assignment.domain.model
 
+/**
+ * Assignable country or role inside a committee.
+ *
+ * Positions come from the MyMUN `Countries` sheet, including rows with no confirmed delegate.
+ * Interest is derived from delegate preferences instead of stored on the position.
+ */
 class Position(
     override val id: PositionId,
     val committee: Committee,

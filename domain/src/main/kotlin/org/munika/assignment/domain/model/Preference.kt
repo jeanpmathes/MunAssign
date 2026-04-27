@@ -1,5 +1,10 @@
 package org.munika.assignment.domain.model
 
+/**
+ * Ranked expression of interest from a delegate toward a resolved position.
+ *
+ * [rawPreferenceText] preserves the workbook value for diagnostics and validation messages.
+ */
 class Preference(
     override val id: PreferenceId,
     val delegate: Delegate,

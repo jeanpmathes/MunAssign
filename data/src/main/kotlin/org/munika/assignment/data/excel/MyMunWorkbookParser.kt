@@ -14,6 +14,9 @@ import java.time.LocalDate
 import java.time.format.DateTimeParseException
 import java.util.Locale
 
+/**
+ * Parses MyMUN Excel workbooks into staging data without writing to the database.
+ */
 class MyMunWorkbookParser {
     private val formatter = DataFormatter(Locale.ROOT)
 

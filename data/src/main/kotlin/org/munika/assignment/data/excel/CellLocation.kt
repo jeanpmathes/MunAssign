@@ -1,5 +1,8 @@
 package org.munika.assignment.data.excel
 
+/**
+ * Workbook cell coordinates for diagnostics and user-facing update errors.
+ */
 data class CellLocation(
     val sheetName: String,
     val rowNumber: Int,

@@ -1,5 +1,10 @@
 package org.munika.assignment.domain.model
 
+/**
+ * Delegation context imported from MyMUN.
+ *
+ * Delegations help organizers interpret delegate groups but do not own assignment state.
+ */
 class Delegation(
     override val id: DelegationId,
     val conference: Conference,

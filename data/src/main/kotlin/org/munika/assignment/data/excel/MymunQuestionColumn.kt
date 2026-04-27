@@ -1,5 +1,8 @@
 package org.munika.assignment.data.excel
 
+/**
+ * Dynamic MyMUN question column discovered in the `Delegates` sheet.
+ */
 data class MymunQuestionColumn(
     val sheetName: String,
     val columnNumber: Int,

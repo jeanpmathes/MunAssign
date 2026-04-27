@@ -2,6 +2,12 @@ package org.munika.assignment.domain.model
 
 import java.time.Instant
 
+/**
+ * One assignable seat inside a position.
+ *
+ * App-created assignments use [AssignmentSource.Application] and remain pending until a later
+ * MyMUN update confirms them with [AssignmentSource.Mymun].
+ */
 class Slot(
     override val id: SlotId,
     val position: Position,

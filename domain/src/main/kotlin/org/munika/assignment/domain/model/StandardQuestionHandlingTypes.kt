@@ -1,5 +1,8 @@
 package org.munika.assignment.domain.model
 
+/**
+ * Built-in question handling types seeded for each conference.
+ */
 object StandardQuestionHandlingTypes {
     val Default = QuestionHandlingType("default", "Default")
     val ExpectedTypedAnswer = QuestionHandlingType("expected_typed_answer", "Expected typed answer")

@@ -1,5 +1,8 @@
 package org.munika.assignment.data.excel
 
+/**
+ * Structured validation issue found while parsing or preparing a MyMUN update.
+ */
 data class MymunValidationIssue(
     val severity: MymunValidationSeverity,
     val code: String,

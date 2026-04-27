@@ -5,6 +5,9 @@ import java.nio.file.Path
 import kotlin.io.path.Path
 import org.jetbrains.exposed.v1.jdbc.Database
 
+/**
+ * Creates SQLite connections for the local MunAssign database.
+ */
 object DatabaseFactory {
     fun defaultDatabasePath(home: Path = Path(System.getProperty("user.home"))): Path =
         home.resolve(".munassign").resolve("data.db")

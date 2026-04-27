@@ -1,5 +1,8 @@
 package org.munika.assignment.domain.model
 
+/**
+ * Built-in raw-answer mappings used before a conference customizes question handling.
+ */
 object DefaultTypedAnswerMappings {
     val munExperience: List<MunExperienceAnswerMapping> = listOf(
         MunExperienceAnswerMapping("First Time", MunExperienceLevel.FirstTime),

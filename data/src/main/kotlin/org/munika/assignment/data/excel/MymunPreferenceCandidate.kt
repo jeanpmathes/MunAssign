@@ -1,5 +1,8 @@
 package org.munika.assignment.data.excel
 
+/**
+ * Parsed preference value before it is validated and persisted.
+ */
 data class MymunPreferenceCandidate(
     val delegateRowNumber: Int,
     val rank: Int,

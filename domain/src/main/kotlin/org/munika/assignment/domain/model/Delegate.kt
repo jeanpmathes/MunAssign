@@ -6,6 +6,12 @@ import java.time.Period
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 
+/**
+ * Assignable participant from the MyMUN Delegates sheet.
+ *
+ * Profile and payment fields are MyMUN-managed during updates. Comments, active state, and pending
+ * assignments are organizer-managed state preserved when possible.
+ */
 class Delegate(
     override val id: DelegateId,
     val conference: Conference,
