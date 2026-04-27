@@ -1,0 +1,25 @@
+package org.munika.assignment.data.db.model
+
+data class DelegateRow(
+    val id: String,
+    val conferenceId: String,
+    val delegationId: String?,
+    val firstName: String,
+    val lastName: String,
+    val email: String?,
+    val country: String?,
+    val city: String?,
+    val streetAddress: String?,
+    val zipCode: String?,
+    val diet: String?,
+    val phone: String?,
+    val nationality: String?,
+    val dateOfBirth: String?,
+    val delegationNameFromMymun: String?,
+    val applicationStatus: String?,
+    val paymentStatus: String,
+    val active: Boolean,
+    val isHeadDelegate: Boolean,
+    val createdAtFromMymunEpochMillis: Long?,
+    val submittedAtEpochMillis: Long?,
+)

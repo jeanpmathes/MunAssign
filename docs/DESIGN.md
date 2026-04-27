@@ -139,13 +139,13 @@ MunAssign/
 The detailed data model is maintained in `docs/DATA_MODEL.md`. The following describes the main responsibilities of each model.
 
 - **Conference** — top-level container; all other data belongs to a conference.
-- **Committee** — a committee within a conference (e.g. Security Council). Has a name, optional abbreviation, sort order, and the committee-level slot count used by all positions in that committee.
+- **Committee** — a committee within a conference (e.g. Security Council). Has the canonical MyMUN name, an optional organizer-managed alias for display inside MunAssign, and the committee-level slot count used by all positions in that committee.
 - **Position** — a seat within a committee (e.g. a country or named role). Each row in the MyMUN `Countries` sheet corresponds to one position. Derived data such as interest counts are computed from preferences at query time, not stored on the model.
-- **Slot** — one assignable seat within a position. Carries status (Empty / Pending / Assigned), optional reference to the assigned delegate, and assignment source. `Assigned` means confirmed by MyMUN.
-- **Delegate** — a person registered for the conference. Carries personal information from the MyMUN export, a free-text comments field managed by the organiser, an active/inactive flag, a paid/unpaid flag, and a numerical difficulty score recomputed whenever preferences change.
+- **Slot** — one assignable seat within a position. Carries an optional assigned delegate and assignment source. Status is derived: no delegate is empty, application source is pending, and MyMUN source is assigned. One delegate can occupy at most one slot in a conference.
+- **Delegate** — a person registered for the conference. Carries personal information from the MyMUN export, organiser-managed comment history, an active/inactive flag, and a paid/unpaid flag. Assignment difficulty is computed from current data when needed for sorting/filtering.
 - **Preference** — a ranked expression of interest from a delegate toward a position. The rank ordering comes from the MyMUN export.
-- **Delegate Question** — a dynamic MyMUN question column plus application configuration for display order, visibility, and special handling.
-- **Delegate Question Answer** — one delegate's answer to one MyMUN question.
+- **Question** — a dynamic MyMUN question column plus editable application configuration for visibility, expected question role, special handling, answer rules, and raw-answer value mappings.
+- **Question Answer** — one delegate's answer to one MyMUN question.
 
 ---
 
@@ -161,7 +161,7 @@ The `Countries.Delegates` column contains comma-separated delegate names already
 
 ## 6. Difficulty Score
 
-Each delegate carries a single integer difficulty score. A lower score means the delegate is easier to place. The score is recomputed and persisted whenever preferences change. It is one of several sort and filter options in the delegate list panel and is not displayed directly to the user.
+Assignment difficulty is computed from current preferences and assignment state when the delegate list or picker needs difficulty sorting/filtering. It is not stored on `Delegate`, and it is not displayed directly to the user.
 
 ---
 
@@ -206,8 +206,8 @@ Opens when any delegate name is clicked. Shows:
 2. Age and relative application submission timing, such as `Application submitted 5 days ago`
 3. Current assignments (confirmed and pending), each clickable to scroll the main view to that slot
 4. Preferences in rank order, each clickable to scroll the main view to that position
-5. Configured question answers, including warnings for special question handling
-6. Free-text comments field (auto-saved)
+5. Configured question answers, including notices and warnings for special question handling
+6. Comment history (auto-saved)
 7. Deactivate button
 
 ### 8.5 Delegate List Panel
@@ -245,7 +245,7 @@ Each delegate displayed in the main view carries its assignment state inline in 
 |---|---|
 | **1 — Workbook/Data Decisions** | MyMUN format, data model, open FAQ decisions |
 | **2 — Data Foundation** | DB schema, `DatabaseFactory`, Conference CRUD, visibility/update rules |
-| **3 — MyMUN Update** | Apache POI parser, staging validation, atomic update, difficulty score computation |
+| **3 — MyMUN Update** | Apache POI parser, staging validation, atomic update |
 | **4 — Read-Only Main UI** | Committee columns, position cards, slot rows, status colours, greyed-out delegates |
 | **5 — Assignment Workflows** | Pending/manual assignment, right-click context actions, MyMUN-confirmed assignment sync |
 | **6 — Delegate Panel/List** | Side panel, configured question display, scroll-to-slot navigation, filterable delegate list |

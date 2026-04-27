@@ -1,51 +1,46 @@
 # TODO
 
-## Phase 1 - Data Model and Visibility Rules
+## Done - Domain and Schema Draft
 
-- Establish domain models for conferences, committees, positions, slots, delegates, preferences, comments, and assignment status.
-- Establish delegate question and delegate question answer models.
-- Establish per-conference question handling configuration.
-- Include delegate age and relative application submission timing in delegate overview data.
-- Define the core visibility rules:
-  - active and paid delegates appear in assignment views.
-  - unpaid delegates are hidden from assignment views but counted in the top bar.
-  - inactive delegates are hidden from assignment views and the delegate list.
-  - assigned delegates remain visible in their own slot and greyed out elsewhere.
-- Define update behavior for MyMUN data versus organizer-managed data.
-- Preserve comments, inactive state, question handling configuration, and pending assignments where not contradicted by MyMUN-confirmed assignments.
-- Remove delegates and related data when they disappear from a MyMUN update.
-- Add domain-level tests for visibility rules and update preservation rules.
+- Drafted the conference-scoped domain model in `docs/DOMAIN_MODEL_DRAFT.md`.
+- Implemented pure `:domain` model classes/value objects for conferences, committees, positions, slots, delegates, delegations, preferences, comments, questions, answers, and typed answer mappings.
+- Implemented invariant-preserving domain operations for assigning and clearing slots.
+- Added focused domain and graph-mapper tests for current model invariants.
+- Split domain classes, database row DTOs, and database table definitions into separate files.
+- Drafted the initial SQLite table definitions and database row graph mapper.
 
-## Phase 2 - SQLite Foundation
+## Next - SQLite Foundation
 
-- Build the SQLite schema for conferences, committees, positions, slots, delegates, preferences, comments, assignment state, delegate questions, question answers, and MyMUN update metadata.
 - Implement `DatabaseFactory`, database location, migrations, and connection lifecycle.
 - Implement conference create, rename, list, select, and delete.
 - Add cascade deletes for all conference-owned data.
-- Add repository tests for conference CRUD, cascade delete behavior, and visibility queries.
+- Add repository tests for conference CRUD and cascade delete behavior.
+- Seed question role, question handling type, and answer rule type lookup rows with the standard application defaults.
+- Add tests that verify default question role/handling/rule seed data is present.
 
-## Phase 3 - MyMUN Update Validation and Persistence
+## Next - MyMUN Update Validation and Persistence
 
 - Convert `MymunWorkbookSnapshot` staging rows into validated update candidates before writing to the database.
 - Show validation errors for missing columns, duplicate delegates, invalid payment values, and unresolved preferences.
 - Validate confirmed assignment candidates against delegate matching and configured committee slot counts.
+- Use question heuristics during update to suggest expected roles, handling types, default typed mappings, and rule defaults for newly detected questions.
 - Abort the update on committee slot-count mismatches and explain which committee needs adjustment.
 - Implement full-overwrite delegate and preference update for the current conference.
 - Sync MyMUN-confirmed assignments from staged `Countries.Delegates` candidates.
-- Preserve organizer-managed fields according to the Phase 1 rules.
-- Recompute delegate difficulty scores after preferences are updated.
+- Preserve organizer-managed fields according to the preservation rules in `docs/DATA_MODEL.md`.
+- Ensure updated preferences provide the data needed for later on-demand difficulty scoring.
 - Persist MyMUN update run metadata and blocking validation issues.
 - Add focused parser validation tests for missing sheets/columns, duplicate delegates, invalid payment values, unresolved preferences, and malformed dates.
 - Add integration tests using the anonymized workbook fixture.
 
-## Phase 4 - App-Level MyMUN Update Flow
+## Later - App-Level MyMUN Update Flow
 
 - Support drag-and-drop of a MyMUN workbook anywhere in the app.
 - Surface staging and validation failures as user-facing update errors.
 - Ensure the UI uses **update** terminology for MyMUN Excel files and reserves import/export for `.munassign` transfer.
 - Add loading and atomic-failure states for the update flow.
 
-## Phase 5 - Read-Only Assignment Board
+## Later - Read-Only Assignment Board
 
 - Build the main screen shell with top bar, horizontally scrollable committee columns, and position cards.
 - Render one slot row per slot, including empty, pending, and assigned states.
@@ -56,7 +51,7 @@
 - Show top bar counts for active paid delegates, unpaid delegates, open slots, pending slots, and assigned slots.
 - Add empty states for no conference, no update data, no committees, and no visible delegates.
 
-## Phase 6 - Slot Context Actions
+## Later - Slot Context Actions
 
 - Add right-click detection on slot rows.
 - Show state-specific context menu options:
@@ -67,19 +62,19 @@
 - Refresh board state after each action.
 - Add tests for each context action using realistic board data.
 
-## Phase 7 - Delegate Side Panel
+## Later - Delegate Side Panel
 
 - Make every visible delegate name clickable.
 - Open a side panel with imported personal information, payment status, active status, comments, assignments, and preferences.
 - Show current pending and confirmed assignments first.
 - Make assignments and preferences clickable navigation targets back to the board.
-- Add autosaved organizer comments.
+- Add autosaved organizer comment history.
 - Add delegate deactivate/reactivate behavior and immediately apply visibility rules.
 - Show a crown marker for head delegates.
 - Show configured question answers in the chosen display order, including hidden/special-handled questions.
 - Ensure unpaid and inactive status changes update top bar counts and board/list visibility.
 
-## Phase 8 - Manual Assignment and Delegate Picking
+## Later - Manual Assignment and Delegate Picking
 
 - Build the delegate picker used by pending and manual assignment actions.
 - In interested-delegate mode, show only visible delegates interested in the position.
@@ -89,7 +84,7 @@
 - Support double delegation by assigning one delegate per slot while keeping position-level context visible.
 - Add search and sorting to the picker if the delegate list is long enough to need it.
 
-## Phase 9 - Delegate List Panel
+## Later - Delegate List Panel
 
 - Build the delegate list drawer from the top bar.
 - Show all active, paid delegates by default.
@@ -98,7 +93,7 @@
 - Clicking a delegate opens the delegate side panel.
 - Keep unpaid and inactive delegates out of the default list while preserving unpaid counts in the top bar.
 
-## Phase 10 - Board Navigation and Workflow Polish
+## Later - Board Navigation and Workflow Polish
 
 - Implement scroll-to-position and scroll-to-slot navigation from side panel links.
 - Preserve scroll position when context actions update the board.
@@ -106,7 +101,7 @@
 - Add undo-like clear/revert affordances where the workflow needs them.
 - Add keyboard and focus handling for menus, dialogs, drawers, and side panel navigation.
 
-## Phase 11 - Conference Import and Export
+## Later - Conference Import and Export
 
 - Implement `.munassign` SQLite export for a single conference.
 - Implement `.munassign` SQLite import that can replace the selected conference or create a new conference.
@@ -115,7 +110,7 @@
 - Add file picker dialogs for `.munassign` import/export.
 - Add user-facing error states for incompatible files, write failures, and overwrite confirmation.
 
-## Phase 12 - Packaging and Final Polish
+## Later - Packaging and Final Polish
 
 - Add loading, saving, validation, and destructive-action confirmation states.
 - Add broader workflow tests for update, assignment, comments, deactivate, and export/import.

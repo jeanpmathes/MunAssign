@@ -5,7 +5,7 @@ This document describes the application data model derived from `docs/MYMUN.md`,
 The model has two concerns:
 
 - Use only the MyMUN workbook data needed for assignment work.
-- Keep MyMUN-managed data separate from organizer-managed data so workbook updates do not destroy comments, pending assignments, or UI configuration.
+- Keep MyMUN-managed data separate from organizer-managed data so later workbook updates do not destroy comments, pending assignments, or UI configuration.
 
 ## Workbook Scope
 
@@ -15,7 +15,7 @@ The MyMUN export contains more sheets than MunAssign needs. The app should not m
 |---|---|
 | `Delegates` | Primary source for assignable delegates, payment status, profile fields, questions, preferences, current MyMUN committee, and current MyMUN assigned position. |
 | `Countries` | Complete source for committees, positions, and MyMUN-confirmed assignments. Each row is one position, including unassigned positions. |
-| `Delegations` | Nice-to-have contextual data for delegate details. Not needed for the first assignment workflow. |
+| `Delegations` | Source for delegation context shown in the application. |
 | `Chairs` | Ignore. Chairs are not relevant for assignment. |
 | `Faculty Advisors` | Ignore for assignment. Faculty advisors are not relevant except that head delegate/faculty advisor flags on delegates may affect delegate display. |
 | `Observers` | Ignore. Observers are not relevant for assignment. |
@@ -46,11 +46,9 @@ A committee groups positions and owns the slot count for those positions.
 |---|---|---|
 | `id` | App | Stable internal ID. |
 | `conferenceId` | App | Parent conference. |
-| `name` | MyMUN `Countries.Committee Name` | Canonical committee name. |
-| `abbreviation` | App/derived | Nullable. Can be derived or entered later. |
+| `mymunName` | MyMUN `Countries.Committee Name` | Canonical committee name used for matching update data. |
+| `alias` | App/user | Nullable display name used inside MunAssign. Does not replace `mymunName`. |
 | `slotsPerPosition` | App | Uniform slot count for every position in the committee. Defaults to 1. |
-| `sortOrder` | App | Preserves display order from workbook where possible. |
-
 Slot count changes are committee-level operations. The organizer can raise or lower `slotsPerPosition`, with confirmation both ways because changing slot counts can alter assignment data or board structure.
 
 ### Position
@@ -63,9 +61,6 @@ A position is one assignable country/role inside a committee. Each row in the My
 | `conferenceId` | App | Parent conference for scoped queries. |
 | `committeeId` | App | Parent committee. |
 | `name` | MyMUN `Countries.Member Name` | Board-facing position name. |
-| `delegationName` | MyMUN `Countries.Delegation Name` | Nullable. Context only. |
-| `sortOrder` | App | Preserves workbook row order within committee. |
-
 The pair `committeeId + name` is expected to be unique.
 
 ### Slot
@@ -77,12 +72,17 @@ A slot is one assignable place within a position. The number of slots is derived
 | `id` | App | Stable internal ID. |
 | `positionId` | App | Parent position. |
 | `slotIndex` | App | 1-based display order inside the position. |
-| `status` | App/MyMUN | `Empty`, `Pending`, or `Assigned`. |
 | `assignedDelegateId` | App/MyMUN | Nullable. Set for pending or assigned slots. |
-| `assignmentSource` | App/MyMUN | `Mymun`, `Preference`, or `Manual`. |
+| `assignmentSource` | App/MyMUN | Nullable. `Application` or `Mymun`. |
 | `updatedAt` | App | Timestamp. |
 
-`Assigned` means confirmed in MyMUN. The app does not confirm assignments through a right-click action. App-created assignments are pending until a later MyMUN update confirms them by showing the assignment in the `Countries.Delegates` column.
+Slot status is derived, not stored:
+
+- `assignedDelegateId == null` means `Empty`, regardless of `assignmentSource`.
+- `assignedDelegateId != null && assignmentSource == Application` means `Pending`.
+- `assignedDelegateId != null && assignmentSource == Mymun` means `Assigned`.
+
+The app does not confirm assignments through a right-click action. App-created assignments are pending until a later MyMUN update confirms them by showing the assignment in the `Countries.Delegates` column.
 
 The `Countries.Delegates` column is a comma-separated list of delegates assigned to the position in MyMUN. During a MyMUN update:
 
@@ -111,8 +111,7 @@ A delegate is an assignable participant from the `Delegates` sheet.
 | `createdAt` | MyMUN | Nullable date. |
 | `feePaid` | MyMUN `Fee Paid` | Authoritative. Unpaid delegates are never shown in assignment views. |
 | `active` | App | Organizer-managed deactivate flag. Defaults to true. |
-| `difficultyScore` | App | Recomputed after preferences update. |
-| `comments` | App | Organizer-managed free text. |
+| `comments` | App | Organizer-managed comment history. |
 | `isHeadDelegate` | MyMUN/App-derived | Head delegates display a crown marker in the delegate overview. |
 
 Delegate matching during updates should use normalized first name + last name first. If names collide, use email as an additional discriminator. If first name, last name, and email still collide, use zip code and date of birth as further discriminators. There is no stable MyMUN ID available.
@@ -138,12 +137,11 @@ Profile fields from MyMUN:
 | `nationality` | MyMUN | Nullable. |
 | `dateOfBirth` | MyMUN | Nullable date. |
 | `delegationName` | MyMUN `Delegation` | Nullable. Used later for contextual display. |
-| `mymunAssignedPositionName` | MyMUN `Model Country assigned` | Nullable raw text. |
-| `mymunAssignedCommitteeName` | MyMUN `Committee` | Nullable raw text. |
+| `delegationId` | App/resolved | Nullable reference to a modeled delegation. |
 
 If a delegate disappears from a later MyMUN update, remove the delegate from the application. Their preferences, comments, pending assignments, and confirmed assignments are removed as well.
 
-### Delegate Question
+### Question
 
 Questions are dynamic MyMUN columns. They need both stored answers and organizer-configurable display/handling rules.
 
@@ -152,20 +150,58 @@ Questions are dynamic MyMUN columns. They need both stored answers and organizer
 | `id` | App | Stable internal ID. |
 | `conferenceId` | App | Parent conference. |
 | `questionText` | MyMUN header beginning with `Question:` | Full question text. |
-| `handlingType` | App | `Default`, `ExperienceLevel`, `HighSchooler`, `CommitteeChoiceExplanation`, or future types. |
-| `displayOrder` | App | Controls order in delegate overview. |
+| `expectedRole` | App/heuristic/user | Nullable expected role: `ExperienceLevel`, `HighSchoolerStatus`, or `LanguageLevel`. Each role can be attached to at most one question per conference. Changing this does not recreate the question. |
+| `handlingType` | App | `Default`, `ExpectedTypedAnswer`, `CommitteeChoiceExplanation`, `VisaSupport`, `DelegationMembership`, or future types. Changing this does not recreate the question. |
 | `visibleInDelegateOverview` | App | Allows hiding less useful questions. |
-| `minimumTextLength` | App | Used by long-answer warning handling, especially committee/country explanation. |
+| `organizerLabel` | App | Nullable label override. |
 
 Known recurring special questions:
 
-- Experience level: values such as first-timer, beginner, intermediate, advanced.
-- High schooler: boolean-like yes/no answer.
-- Committee/country choice explanation: long-answer field; show a warning in the UI if the answer is shorter than three sentences.
+- Experience level: `First Time`, `Beginner`, `Intermediate`, `Advanced`.
+- High schooler: `Yes`, `No`.
+- Language level: `A1/A2 (Beginner)`, `B1/B2 (Independent User)`, `C1/C2 (Proficient User)`.
+- Committee/country choice explanation: long-answer field; show a warning issue in the UI if the answer is shorter than three sentences.
+- Visa support: show a notice issue when the answer is present. This is not grounds for rejecting a delegate; it is a visible operational reminder.
 
-The app should eventually include a per-conference question editor. The editor does not edit the MyMUN question text or answers; it configures how questions are handled, ordered, highlighted, and hidden in delegate detail views. Special recurring questions should be selected manually in this editor rather than hardcoded by exact text. Later, configurable aliases can make repeated conference setup faster.
+The app should eventually include a per-conference question editor. The editor does not edit the MyMUN question text or answers; it configures how questions are handled, ordered, mapped, and hidden in delegate detail views. There are no global aliases or reusable presets across conferences. Instead, the app should ship with good heuristics that suggest which imported questions satisfy the expected roles and how raw answer values map to the typed domain enums. If an observed answer value cannot be mapped, a later update/configuration flow should ask the UI to resolve it.
 
-### Delegate Question Answer
+New conferences and newly detected questions should start from useful application defaults. The default typed mappings are:
+
+- Experience level: `First Time`, `Beginner`, `Intermediate`, `Advanced`.
+- High schooler: `Yes`, `No`.
+- Language level: `A1/A2 (Beginner)`, `B1/B2 (Independent User)`, `C1/C2 (Proficient User)`.
+
+Question configuration is composable. A question is not a separate domain class just because it is currently configured as the visa support question or language-level question. The question remains the same object while its expected role, handling type, rules, and mappings change.
+
+### Question Handling Lookup Tables
+
+Question handling should be database-backed because roles, handling types, and rules may change over time.
+
+| Table | Purpose |
+|---|---|
+| `question_roles` | Known expected roles, initially `experience_level`, `high_schooler_status`, and `language_level`. |
+| `question_handling_types` | Known handling behaviors, such as `default`, `committee_choice_explanation`, and `visa_support`. |
+| `answer_rule_types` | Known rule classes, such as `minimum_sentence_count`, `minimum_text_length`, `notice_when_non_blank`, and `required_answer`. |
+| `delegate_question_rules` | Join/config table from question to rule type, including rule parameters. |
+
+Answer rules produce answer issues. Issues have severity:
+
+- `Warning`: a problem that may justify not assigning the delegate or contacting them for clarification, such as a missing required answer or an insufficient committee-choice explanation.
+- `Notice`: a visible operational reminder, such as a visa support answer being present.
+
+### Typed Answer Mapping
+
+Expected questions map raw MyMUN answer values to typed domain values.
+
+Use role-specific mapping tables instead of one untyped mapping table:
+
+| Table | Maps |
+|---|---|
+| `mun_experience_answer_mappings` | Raw values to `FirstTime`, `Beginner`, `Intermediate`, or `Advanced`. |
+| `high_schooler_answer_mappings` | Raw values to `Yes` or `No`. |
+| `language_level_answer_mappings` | Raw values to `BeginnerA1A2`, `IndependentUserB1B2`, or `ProficientUserC1C2`. |
+
+### Question Answer
 
 | Field | Source | Notes |
 |---|---|---|
@@ -192,7 +228,7 @@ Because unassigned positions are present in the `Countries` sheet, preferences s
 
 ### Delegation
 
-Delegation data is a later nice-to-have, not part of the initial assignment workflow. It can provide context in the delegate overview.
+Delegation data is part of the application model and should be shown wherever it helps assignment decisions, especially delegate details.
 
 | Field | Source | Notes |
 |---|---|---|
@@ -200,10 +236,13 @@ Delegation data is a later nice-to-have, not part of the initial assignment work
 | `conferenceId` | App | Parent conference. |
 | `name` | MyMUN `Delegation` / `Delegations.Delegation Name` | Used to group delegates. |
 | `country` | MyMUN | Nullable. |
+| `expectedDelegateCount` | MyMUN `Delegations.Expected Delegates` | Nullable. |
+| `currentDelegateCountFromMymun` | MyMUN `Delegations.Current Delegates` | Nullable. |
+| `headDelegateId` | App/resolved | Nullable reference to the delegation head delegate. |
 
 Delegation payment fields should be ignored. If delegation details are implemented later, clicking a delegate's delegation in the overview can show the other delegates in that delegation.
 
-## Update Staging Model
+## Later Phase: Update Staging Model
 
 The MyMUN update should parse into staging objects before database writes:
 
@@ -224,7 +263,7 @@ A MyMUN update must be atomic: if validation finds blocking issues, the update i
 
 The application should support drag-and-drop of a MyMUN workbook anywhere in the app as the primary update interaction.
 
-## Visibility Rules
+## Later Phase: Visibility Rules
 
 Assignment board:
 
@@ -246,7 +285,7 @@ Top bar:
 - Count unpaid delegates separately.
 - Count open, pending, and assigned slots.
 
-## Update Preservation Rules
+## Later Phase: Update Preservation Rules
 
 MyMUN update replaces MyMUN-managed data:
 
@@ -256,14 +295,13 @@ MyMUN update replaces MyMUN-managed data:
 - Preferences.
 - Question answers.
 - Confirmed assignments from `Countries.Delegates`.
-- Difficulty scores, after recomputation.
 
 MyMUN update preserves organizer-managed data where the delegate and position still exist:
 
 - Delegate comments.
 - Delegate active/inactive flag.
 - Pending app assignments not contradicted by MyMUN-confirmed assignments.
-- Manual pending assignment source markers.
+- Committee aliases.
 - Question handling configuration.
 
 MyMUN update removes:
@@ -283,14 +321,24 @@ MyMUN update removes:
 | `delegates` | Assignable delegate profile and organizer state. |
 | `delegate_questions` | Dynamic MyMUN question definitions plus handling/display configuration. |
 | `delegate_question_answers` | Delegate answers for configured/imported question columns. |
+| `question_roles` | Lookup/configuration table for expected roles. |
+| `question_handling_types` | Lookup/configuration table for question handling behavior. |
+| `answer_rule_types` | Lookup/configuration table for answer rule classes. |
+| `delegate_question_rules` | Rules attached to questions, with parameters. |
+| `mun_experience_answer_mappings` | Raw-to-typed mappings for experience level. |
+| `high_schooler_answer_mappings` | Raw-to-typed mappings for high-schooler status. |
+| `language_level_answer_mappings` | Raw-to-typed mappings for language level. |
 | `preferences` | Ranked delegate preferences resolved to positions. |
+| `delegate_comments` | Organizer-managed delegate comment history. |
 | `delegations` | Optional delegation context. |
 | `mymun_update_runs` | Metadata about workbook updates. |
 | `mymun_update_issues` | Validation warnings/errors from update runs. |
 
 No `delegation_contacts` table is planned. Faculty advisors are not relevant for MunAssign, and head delegates are represented on delegates themselves.
 
-## Conference Import and Export
+## Later Phase: Conference Import and Export
+
+Import/export uses the same SQLite-backed model, but it is not part of the current domain-model draft work.
 
 The `.munassign` format should let an organizer continue work on another computer without losing state. Export should therefore include the complete current conference working state:
 
@@ -314,6 +362,9 @@ Import should support two flows:
 - `preferences(delegate_id, rank)` should be unique.
 - `preferences(delegate_id, position_id)` should be unique.
 - `delegate_questions(conference_id, question_text)` should be unique.
+- `delegate_questions(conference_id, expected_role)` should be unique when `expected_role` is not null.
+- role-specific answer mapping tables should have unique `(question_id, normalized_raw_value)` pairs.
+- current slot assignments should enforce at most one assigned/pending slot per delegate per conference.
 - Foreign keys should cascade on conference deletion.
 
 ## Initial Implementation Boundary
@@ -325,14 +376,14 @@ Build first:
 - Positions.
 - Slots.
 - Delegates.
-- Delegate questions and answers.
+- Questions and answers.
+- Question role, handling type, rule, and typed answer mapping tables.
 - Preferences.
 - MyMUN update run metadata and blocking validation issues.
 - MyMUN-confirmed assignment sync from `Countries.Delegates`.
 
 Defer unless needed immediately:
 
-- Delegation context display.
 - Question editor UI.
 - Manual payment overrides, likely never needed.
 - Full chair/faculty/observer persistence, likely never needed.
