@@ -1,15 +1,6 @@
 # TODO
 
-## Phase 1 - MyMUN Workbook Discovery
-
-- Use `docs/MYMUN.md` as the workbook structure reference.
-- Treat `Delegates` and `Countries` as required first-pass sheets.
-- Treat `Countries` as the complete position source, including unassigned positions.
-- Ignore `Chairs`, `Faculty Advisors`, and `Observers`.
-- Defer `Delegations` to later context display.
-- Create small anonymized workbook fixtures for development and tests.
-
-## Phase 2 - Data Model and Visibility Rules
+## Phase 1 - Data Model and Visibility Rules
 
 - Establish domain models for conferences, committees, positions, slots, delegates, preferences, comments, and assignment status.
 - Establish delegate question and delegate question answer models.
@@ -25,27 +16,34 @@
 - Remove delegates and related data when they disappear from a MyMUN update.
 - Add domain-level tests for visibility rules and update preservation rules.
 
-## Phase 3 - SQLite Foundation
+## Phase 2 - SQLite Foundation
 
-- Build the SQLite schema for conferences, committees, positions, slots, delegates, preferences, comments, and assignment state.
+- Build the SQLite schema for conferences, committees, positions, slots, delegates, preferences, comments, assignment state, delegate questions, question answers, and MyMUN update metadata.
 - Implement `DatabaseFactory`, database location, migrations, and connection lifecycle.
 - Implement conference create, rename, list, select, and delete.
 - Add cascade deletes for all conference-owned data.
 - Add repository tests for conference CRUD, cascade delete behavior, and visibility queries.
 
-## Phase 4 - MyMUN Update Pipeline
+## Phase 3 - MyMUN Update Validation and Persistence
 
-- Build the Apache POI workbook inspector using the header alias table.
-- Convert workbook rows into validated update candidates before writing to the database.
+- Convert `MymunWorkbookSnapshot` staging rows into validated update candidates before writing to the database.
 - Show validation errors for missing columns, duplicate delegates, invalid payment values, and unresolved preferences.
-- Implement full-overwrite delegate and preference update for the current conference.
-- Sync MyMUN-confirmed assignments from comma-separated `Countries.Delegates` values.
-- Parse `Countries.Delegates` leniently despite inconsistent whitespace or trailing commas.
+- Validate confirmed assignment candidates against delegate matching and configured committee slot counts.
 - Abort the update on committee slot-count mismatches and explain which committee needs adjustment.
-- Preserve organizer-managed fields according to the Phase 2 rules.
+- Implement full-overwrite delegate and preference update for the current conference.
+- Sync MyMUN-confirmed assignments from staged `Countries.Delegates` candidates.
+- Preserve organizer-managed fields according to the Phase 1 rules.
 - Recompute delegate difficulty scores after preferences are updated.
+- Persist MyMUN update run metadata and blocking validation issues.
+- Add focused parser validation tests for missing sheets/columns, duplicate delegates, invalid payment values, unresolved preferences, and malformed dates.
+- Add integration tests using the anonymized workbook fixture.
+
+## Phase 4 - App-Level MyMUN Update Flow
+
 - Support drag-and-drop of a MyMUN workbook anywhere in the app.
-- Add tests using anonymized workbook fixtures.
+- Surface staging and validation failures as user-facing update errors.
+- Ensure the UI uses **update** terminology for MyMUN Excel files and reserves import/export for `.munassign` transfer.
+- Add loading and atomic-failure states for the update flow.
 
 ## Phase 5 - Read-Only Assignment Board
 

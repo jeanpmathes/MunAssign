@@ -218,6 +218,7 @@ The MyMUN update should parse into staging objects before database writes:
 - `MymunValidationIssue`
 
 The staging model should preserve raw text and row/column locations so validation errors can point back to the workbook.
+Staging object string representations are for debugger overviews only. They should be concise, intentionally lossy summaries that help identify the object quickly; they are not a stable log, UI, or test contract.
 
 A MyMUN update must be atomic: if validation finds blocking issues, the update is aborted and the database is unchanged.
 
