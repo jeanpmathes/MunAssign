@@ -1,13 +1,5 @@
 # TODO
 
-## Done
-
-- Implemented the pure `:domain` model for conferences, committees, positions, slots, delegates, delegations, preferences, comments, questions, answers, and typed answer mappings.
-- Implemented domain assignment invariants and focused domain tests.
-- Split domain classes, database row DTOs, and database table definitions into separate files.
-- Implemented the initial SQLite table definitions and conference graph mapper.
-- Implemented initial MyMUN workbook parsing into staging objects for delegates, countries/positions, delegations, questions, answers, preferences, confirmed assignment candidates, and validation issues.
-
 ## Next - SQLite Foundation
 
 - Implement `DatabaseFactory`, database location, migrations, and connection lifecycle.
