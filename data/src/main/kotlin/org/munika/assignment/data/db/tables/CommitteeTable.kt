@@ -12,4 +12,8 @@ object CommitteeTable : Table("committees") {
     val slotsPerPosition = integer("slots_per_position")
 
     override val primaryKey = PrimaryKey(id)
+
+    init {
+        uniqueIndex("ux_committees_conference_normalized_name", conferenceId, normalizedMymunName)
+    }
 }

@@ -1,45 +1,41 @@
 # TODO
 
-## Next - SQLite Foundation
+## Next - Update Hardening
 
-- Implement `DatabaseFactory`, database location, migrations, and connection lifecycle.
-- Implement conference create, rename, list, select, and delete.
-- Add cascade deletes for all conference-owned data.
-- Add repository tests for conference CRUD and cascade delete behavior.
-- Seed question role, question handling type, and answer rule type lookup rows with standard defaults.
-- Add tests that verify default lookup seed data is present.
+- Replace `SchemaUtils.create` bootstrapping with an explicit migration/versioning strategy before real user data exists.
+- Persist full structured MyMUN validation issue metadata, including sheet, row, column, code, and severity.
+- Tighten malformed date handling so invalid date-like cells become validation issues instead of silent nulls.
+- Add focused tests for slot-count mismatch aborts, unmatched confirmed delegates, first-name-only assignment warnings, and preservation of pending app assignments.
+- Add tests for organizer-managed question rules and typed-answer mappings surviving repeated MyMUN updates.
+- Add update result summaries that distinguish blocking errors, warnings, and successful writes for the UI.
 
-## Next - MyMUN Update Validation And Persistence
+## Next - Conference Management UI
 
-- Convert `MymunWorkbookSnapshot` staging rows into validated update candidates before writing to the database.
-- Show validation errors for missing columns, duplicate delegates, invalid payment values, unresolved preferences, and malformed dates.
-- Validate confirmed assignment candidates against delegate matching and configured committee slot counts.
-- Apply question heuristics for expected roles, handling types, default mappings, and default rules for newly detected questions.
-- Abort the update on committee slot-count mismatches and explain which committee needs adjustment.
-- Implement full-overwrite delegate and preference updates for the current conference.
-- Sync MyMUN-confirmed assignments from staged `Countries.Delegates` candidates.
-- Preserve organizer-managed fields according to `docs/DATA_MODEL.md`.
-- Persist MyMUN update run metadata and blocking validation issues.
-- Add focused parser/update tests, including an anonymized workbook fixture.
-
-## Later - Assignment UI
-
-- Support drag-and-drop of a MyMUN workbook anywhere in the app.
-- Surface staging and validation failures as user-facing update errors.
-- Build the main assignment board with top stats, committee columns, position cards, and slot rows.
-- Render empty, pending, and assigned slot states.
-- Show interested delegate counts and inline interested delegates when no delegate is assigned.
-- Apply unpaid/inactive visibility rules and grey out confirmed-assigned delegates elsewhere.
+- Move the temporary conference/workbook screen toward the planned app shell instead of growing it further.
+- Add rename flow for conferences.
+- Add delete confirmation for conferences.
+- Show update progress, blocking errors, and warnings in a dedicated update result surface.
 - Add empty states for no conference, no update data, no committees, and no visible delegates.
+- Keep MyMUN workbook actions consistently labeled as **updates**, never import/export.
 
-## Later - Assignment Actions
+## Next - Assignment Board
 
-- Add right-click slot context menus.
+- Build the main horizontally scrollable board with top stats, committee columns, position cards, and slot rows.
+- Render empty, pending, and assigned slot states with clear visual distinction.
+- Show interested delegate counts and inline interested delegates when no delegate is assigned.
+- Apply unpaid/inactive visibility rules and grey out confirmed-assigned delegates where they appear as interested elsewhere.
+- Preserve board scroll position after updates and assignment actions.
+- Drive scroll-to-position/slot navigation through ViewModel events, with each committee column owning its list state.
+
+## Next - Assignment Actions
+
+- Add right-click slot context menus using Compose pointer input for secondary-button release.
 - Support pending assignment from interested delegates.
 - Support manual assignment of active paid delegates even without expressed interest.
 - Support clearing and replacing pending assignments.
 - Keep confirmed assignments controlled by MyMUN updates only.
-- Persist actions through repository/use case calls and refresh board state.
+- Persist assignment actions through repository/use-case calls and refresh board state.
+- Add tests for slot mutation invariants and persistence behavior.
 
 ## Later - Delegate Detail And List
 
@@ -47,14 +43,20 @@
 - Add side panel with imported profile data, assignment state, preferences, configured question answers, comments, delegation context, and deactivate/reactivate controls.
 - Make assignments and preferences navigate back to the board.
 - Add autosaved organizer comment history.
-- Add delegate list drawer with unassigned, difficulty, and committee-interest filters plus sorting by difficulty, name, and assignment status.
+- Add delegate list drawer with active paid delegates by default.
+- Add delegate filters for unassigned delegates, difficulty, and committee interest.
+- Add delegate sorting by difficulty, name, and assignment status.
+
+## Later - Question Configuration
+
+- Build UI for question roles, handling types, visibility, organizer labels, answer rules, and typed-answer mappings.
+- Surface answer warnings/notices in delegate detail and assignment workflows.
+- Add safe defaults for newly detected questions while preserving organizer configuration across updates.
 
 ## Later - Transfer And Polish
 
 - Implement `.munassign` SQLite export for a single conference.
 - Implement `.munassign` SQLite import that can replace the selected conference or create a new conference.
-- Add file picker dialogs and user-facing error states for incompatible files, write failures, and overwrite confirmation.
-- Implement scroll-to-position/slot navigation from side panel links.
-- Preserve scroll position after board updates.
+- Add file picker dialogs and user-facing error states for incompatible transfer files, write failures, and overwrite confirmation.
 - Add keyboard/focus handling for menus, dialogs, drawers, and side panel navigation.
 - Configure native packaging metadata for MSI, DMG, and deb outputs.

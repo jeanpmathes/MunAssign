@@ -11,4 +11,9 @@ object PreferenceTable : Table("preferences") {
     val rawPreferenceText = text("raw_preference_text")
 
     override val primaryKey = PrimaryKey(id)
+
+    init {
+        uniqueIndex("ux_preferences_delegate_rank", delegateId, rank)
+        uniqueIndex("ux_preferences_delegate_position", delegateId, positionId)
+    }
 }

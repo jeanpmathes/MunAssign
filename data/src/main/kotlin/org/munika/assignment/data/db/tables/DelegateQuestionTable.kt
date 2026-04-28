@@ -14,4 +14,8 @@ object DelegateQuestionTable : Table("delegate_questions") {
     val organizerLabel = varchar("organizer_label", 255).nullable()
 
     override val primaryKey = PrimaryKey(id)
+
+    init {
+        uniqueIndex("ux_delegate_questions_conf_normalized_text", conferenceId, normalizedQuestionText)
+    }
 }

@@ -11,4 +11,8 @@ object PositionTable : Table("positions") {
     val normalizedName = varchar("normalized_name", 255)
 
     override val primaryKey = PrimaryKey(id)
+
+    init {
+        uniqueIndex("ux_positions_committee_normalized_name", committeeId, normalizedName)
+    }
 }
