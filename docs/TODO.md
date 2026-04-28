@@ -1,14 +1,5 @@
 # TODO
 
-## Next - Conference Management UI
-
-- Move the temporary conference/workbook screen toward the planned app shell instead of growing it further.
-- Add rename flow for conferences.
-- Add delete confirmation for conferences.
-- Show update progress, blocking errors, and warnings in a dedicated update result surface.
-- Add empty states for no conference, no update data, no committees, and no visible delegates.
-- Keep MyMUN workbook actions consistently labeled as **updates**, never import/export.
-
 ## Next - Assignment Board
 
 - Build the main horizontally scrollable board with top stats, committee columns, position cards, and slot rows.
@@ -17,6 +8,7 @@
 - Apply unpaid/inactive visibility rules and grey out confirmed-assigned delegates where they appear as interested elsewhere.
 - Preserve board scroll position after updates and assignment actions.
 - Drive scroll-to-position/slot navigation through ViewModel events, with each committee column owning its list state.
+- Replace the current assignment-board placeholder in the main workspace.
 
 ## Next - Assignment Actions
 

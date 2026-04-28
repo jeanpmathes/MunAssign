@@ -50,10 +50,14 @@ class MainViewModel(
         loadConference(conferenceId)
     }
 
-    fun createConference(name: String) {
-        if (name.isBlank()) return
+    fun createConference(name: String): Boolean {
+        val validationError = validateConferenceName(name)
+        if (validationError != null) {
+            _state.update { it.copy(conferenceActionError = validationError) }
+            return false
+        }
         scope.launch {
-            val created = repository.createConference(name)
+            val created = repository.createConference(name.trim())
             val conferences = repository.listConferences()
             _state.update {
                 it.copy(
@@ -61,26 +65,77 @@ class MainViewModel(
                     selectedConferenceId = created.id.value,
                     selectedConference = created,
                     updateIssues = emptyList(),
+                    conferenceActionError = null,
                 )
             }
         }
+        return true
     }
 
-    fun deleteSelectedConference() {
-        val selectedId = selectedIdOrNull() ?: return
+    fun renameConference(conferenceId: String, newName: String): Boolean {
+        val existing = _state.value.conferences.firstOrNull { it.id.value == conferenceId }
+        val validationError = validateConferenceName(newName, currentConferenceId = conferenceId, requireChangedFrom = existing?.name)
+        if (validationError != null) {
+            _state.update { it.copy(conferenceActionError = validationError) }
+            return false
+        }
         scope.launch {
-            repository.deleteConference(selectedId)
+            val renamed = repository.renameConference(conferenceId, newName.trim())
             val conferences = repository.listConferences()
-            val nextId = conferences.firstOrNull()?.id?.value
+            val selectedConference = if (_state.value.selectedConferenceId == conferenceId) renamed else _state.value.selectedConference
+            _state.update {
+                it.copy(
+                    conferences = conferences,
+                    selectedConference = selectedConference,
+                    conferenceActionError = null,
+                )
+            }
+        }
+        return true
+    }
+
+    fun deleteConference(conferenceId: String) {
+        if (_state.value.loading) return
+        scope.launch {
+            repository.deleteConference(conferenceId)
+            val conferences = repository.listConferences()
+            val previousSelectedId = _state.value.selectedConferenceId
+            val nextId = when {
+                previousSelectedId != conferenceId -> previousSelectedId?.takeIf { selected -> conferences.any { it.id.value == selected } }
+                else -> conferences.firstOrNull()?.id?.value
+            }
             val nextConference = nextId?.let { repository.getConference(it) }
             _state.update {
                 it.copy(
                     conferences = conferences,
                     selectedConferenceId = nextId,
                     selectedConference = nextConference,
+                    conferenceActionError = null,
                 )
             }
         }
+    }
+
+    fun deleteSelectedConference() {
+        selectedIdOrNull()?.let(::deleteConference)
+    }
+
+    fun reorderConferences(conferenceIdsInOrder: List<String>): Boolean {
+        val knownIds = _state.value.conferences.map { it.id.value }
+        if (conferenceIdsInOrder.toSet() != knownIds.toSet() || conferenceIdsInOrder.size != knownIds.size) {
+            _state.update { it.copy(conferenceActionError = "Conference order is out of date. Reopen management and try again.") }
+            return false
+        }
+        scope.launch {
+            repository.reorderConferences(conferenceIdsInOrder)
+            val conferences = repository.listConferences()
+            _state.update { it.copy(conferences = conferences, conferenceActionError = null) }
+        }
+        return true
+    }
+
+    fun clearConferenceActionError() {
+        _state.update { it.copy(conferenceActionError = null) }
     }
 
     fun updateFromWorkbook(path: Path) {
@@ -125,6 +180,27 @@ class MainViewModel(
 
     private fun selectedIdOrNull(): String? = _state.value.selectedConferenceId
 
+    private fun validateConferenceName(
+        name: String,
+        currentConferenceId: String? = null,
+        requireChangedFrom: String? = null,
+    ): String? {
+        val trimmed = name.trim()
+        if (trimmed.isBlank()) {
+            return "Conference name must not be blank."
+        }
+        if (requireChangedFrom != null && trimmed == requireChangedFrom.trim()) {
+            return "Enter a different conference name."
+        }
+        val duplicate = _state.value.conferences.any { conference ->
+            conference.id.value != currentConferenceId && conference.name.trim().equals(trimmed, ignoreCase = true)
+        }
+        if (duplicate) {
+            return "A conference with this name already exists."
+        }
+        return null
+    }
+
     override fun close() {
         scope.cancel()
     }
@@ -137,4 +213,5 @@ data class MainUiState(
     val selectedConference: Conference? = null,
     val updateIssues: List<UpdateIssue> = emptyList(),
     val updateSummary: UpdateSummary? = null,
+    val conferenceActionError: String? = null,
 )

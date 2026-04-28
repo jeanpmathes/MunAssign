@@ -49,6 +49,7 @@ class ConferenceGraphMapperTest {
             conference = ConferenceRow(
                 id = "conference",
                 name = "KAMUN",
+                displayOrder = 0,
                 createdAtEpochMillis = 0,
                 updatedAtEpochMillis = 0,
                 lastMymunUpdateAtEpochMillis = null,

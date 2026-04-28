@@ -99,6 +99,19 @@ object DatabaseFactory {
             addColumnIfMissing("mymun_update_issues", "code", "VARCHAR(128) NULL")
             addColumnIfMissing("mymun_update_issues", "column_number", "INT NULL")
         },
+        SchemaMigration(version = 3, name = "add_conference_display_order") {
+            addColumnIfMissing("conferences", "display_order", "INT NOT NULL DEFAULT 0")
+            val conferenceIds = TransactionManager.current().exec(
+                "SELECT id FROM conferences ORDER BY updated_at_epoch_millis, created_at_epoch_millis, id",
+            ) { resultSet ->
+                generateSequence {
+                    if (resultSet.next()) resultSet.getString("id") else null
+                }.toList()
+            }.orEmpty()
+            conferenceIds.forEachIndexed { index, id ->
+                TransactionManager.current().exec("UPDATE conferences SET display_order = $index WHERE id = '$id'")
+            }
+        },
     )
 
     private fun addColumnIfMissing(tableName: String, columnName: String, definition: String) {

@@ -54,6 +54,7 @@ object ConferenceGraphMapper {
         val conference = Conference(
             id = ConferenceId(rows.conference.id),
             name = rows.conference.name,
+            displayOrder = rows.conference.displayOrder,
             createdAt = rows.conference.createdAtEpochMillis.toInstant(),
             updatedAt = rows.conference.updatedAtEpochMillis.toInstant(),
             lastMymunUpdateAt = rows.conference.lastMymunUpdateAtEpochMillis?.toInstant(),

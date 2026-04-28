@@ -12,6 +12,7 @@ import java.time.Instant
 class Conference(
     override val id: ConferenceId,
     val name: String,
+    val displayOrder: Int = 0,
     val committees: MutableList<Committee> = mutableListOf(),
     val delegations: MutableList<Delegation> = mutableListOf(),
     val delegates: MutableList<Delegate> = mutableListOf(),

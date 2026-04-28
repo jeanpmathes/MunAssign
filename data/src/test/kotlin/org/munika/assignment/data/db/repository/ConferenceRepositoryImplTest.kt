@@ -15,6 +15,7 @@ import org.jetbrains.exposed.v1.jdbc.update
 import org.munika.assignment.data.db.DatabaseFactory
 import org.munika.assignment.data.db.tables.AnswerRuleTypeTable
 import org.munika.assignment.data.db.tables.CommitteeTable
+import org.munika.assignment.data.db.tables.ConferenceTable
 import org.munika.assignment.data.db.tables.DelegateCommentTable
 import org.munika.assignment.data.db.tables.DelegateQuestionRuleTable
 import org.munika.assignment.data.db.tables.DelegateQuestionTable
@@ -81,6 +82,69 @@ class ConferenceRepositoryImplTest {
                 setOf("minimum_sentence_count", "minimum_text_length", "notice_when_non_blank", "required_answer")
                     .all { it in answerRuleIds },
             )
+        }
+    }
+
+    @Test
+    fun `conference order is persisted and create appends`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-order").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+
+        val first = repository.createConference("First")
+        val second = repository.createConference("Second")
+        val third = repository.createConference("Third")
+
+        assertEquals(listOf("First", "Second", "Third"), repository.listConferences().map { it.name })
+
+        repository.reorderConferences(listOf(third.id.value, first.id.value, second.id.value))
+
+        assertEquals(listOf("Third", "First", "Second"), repository.listConferences().map { it.name })
+        assertEquals(listOf(0, 1, 2), repository.listConferences().map { it.displayOrder })
+
+        val fourth = repository.createConference("Fourth")
+
+        assertEquals(listOf("Third", "First", "Second", "Fourth"), repository.listConferences().map { it.name })
+        assertEquals(3, fourth.displayOrder)
+    }
+
+    @Test
+    fun `conference reorder rejects missing duplicate or unknown ids`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-order-invalid").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+
+        val first = repository.createConference("First")
+        val second = repository.createConference("Second")
+
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            repository.reorderConferences(listOf(first.id.value))
+        }
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            repository.reorderConferences(listOf(first.id.value, first.id.value))
+        }
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            repository.reorderConferences(listOf(first.id.value, "missing"))
+        }
+
+        assertEquals(listOf(first.id, second.id), repository.listConferences().map { it.id })
+    }
+
+    @Test
+    fun `conference display order column exists after migration`() {
+        val dbPath = Files.createTempDirectory("munassign-order-column").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+
+        transaction(database) {
+            ConferenceTable.insert {
+                it[id] = "conference"
+                it[name] = "Conference"
+                it[displayOrder] = 7
+                it[createdAtEpochMillis] = 1L
+                it[updatedAtEpochMillis] = 1L
+                it[lastMymunUpdateAtEpochMillis] = null
+            }
+            assertEquals(7, ConferenceTable.selectAll().single()[ConferenceTable.displayOrder])
         }
     }
 

@@ -75,4 +75,5 @@ If sandboxing blocks access to that JDK or the Gradle cache, request escalation 
 - Do not rewrite unrelated files for formatting churn.
 - Do not revert user changes unless explicitly asked.
 - Prefer focused tests near the invariant or parser/mapper behavior being changed.
+- Update `docs/TODO.md` whenever a change completes, removes, or materially reshapes listed work.
 - Run `git diff --check` before finishing.

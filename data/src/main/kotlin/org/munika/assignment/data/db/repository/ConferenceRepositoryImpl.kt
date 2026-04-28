@@ -11,6 +11,7 @@ import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.neq
 import org.jetbrains.exposed.v1.core.or
 import org.jetbrains.exposed.v1.core.ResultRow
+import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
@@ -78,7 +79,11 @@ class ConferenceRepositoryImpl(
 
     override suspend fun listConferences(): List<Conference> = db {
         ConferenceTable.selectAll()
-            .orderBy(ConferenceTable.updatedAtEpochMillis)
+            .orderBy(
+                ConferenceTable.displayOrder to SortOrder.ASC,
+                ConferenceTable.createdAtEpochMillis to SortOrder.ASC,
+                ConferenceTable.updatedAtEpochMillis to SortOrder.ASC,
+            )
             .map { row ->
                 ConferenceGraphMapper.toDomain(
                     ConferenceGraphRows(
@@ -104,9 +109,11 @@ class ConferenceRepositoryImpl(
     override suspend fun createConference(name: String): Conference = db {
         val now = Instant.now().toEpochMilli()
         val id = UUID.randomUUID().toString()
+        val displayOrder = nextConferenceDisplayOrder()
         ConferenceTable.insert {
             it[ConferenceTable.id] = id
             it[ConferenceTable.name] = name.trim()
+            it[ConferenceTable.displayOrder] = displayOrder
             it[ConferenceTable.createdAtEpochMillis] = now
             it[ConferenceTable.updatedAtEpochMillis] = now
             it[ConferenceTable.lastMymunUpdateAtEpochMillis] = null
@@ -123,7 +130,27 @@ class ConferenceRepositoryImpl(
     }
 
     override suspend fun deleteConference(conferenceId: String) {
-        db { ConferenceTable.deleteWhere { ConferenceTable.id eq conferenceId } }
+        db {
+            ConferenceTable.deleteWhere { ConferenceTable.id eq conferenceId }
+            normalizeConferenceDisplayOrder()
+        }
+    }
+
+    override suspend fun reorderConferences(conferenceIdsInOrder: List<String>) {
+        db {
+            val knownIds = ConferenceTable.selectAll()
+                .map { it[ConferenceTable.id] }
+                .toSet()
+            require(conferenceIdsInOrder.toSet() == knownIds && conferenceIdsInOrder.size == knownIds.size) {
+                "Conference reorder must include every known conference exactly once."
+            }
+            conferenceIdsInOrder.forEachIndexed { index, conferenceId ->
+                ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+                    it[ConferenceTable.displayOrder] = index
+                    it[ConferenceTable.updatedAtEpochMillis] = Instant.now().toEpochMilli()
+                }
+            }
+        }
     }
 
     override suspend fun getConference(conferenceId: String): Conference? = db {
@@ -1016,10 +1043,31 @@ class ConferenceRepositoryImpl(
         ConferenceRow(
             id = this[ConferenceTable.id],
             name = this[ConferenceTable.name],
+            displayOrder = this[ConferenceTable.displayOrder],
             createdAtEpochMillis = this[ConferenceTable.createdAtEpochMillis],
             updatedAtEpochMillis = this[ConferenceTable.updatedAtEpochMillis],
             lastMymunUpdateAtEpochMillis = this[ConferenceTable.lastMymunUpdateAtEpochMillis],
         )
+
+    private fun nextConferenceDisplayOrder(): Int =
+        ConferenceTable.selectAll()
+            .maxOfOrNull { it[ConferenceTable.displayOrder] + 1 }
+            ?: 0
+
+    private fun normalizeConferenceDisplayOrder() {
+        ConferenceTable.selectAll()
+            .orderBy(
+                ConferenceTable.displayOrder to SortOrder.ASC,
+                ConferenceTable.createdAtEpochMillis to SortOrder.ASC,
+                ConferenceTable.updatedAtEpochMillis to SortOrder.ASC,
+            )
+            .map { it[ConferenceTable.id] }
+            .forEachIndexed { index, conferenceId ->
+                ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+                    it[ConferenceTable.displayOrder] = index
+                }
+            }
+    }
 
     private fun normalize(value: String): String = value.trim().lowercase().replace(Regex("\\s+"), " ")
 

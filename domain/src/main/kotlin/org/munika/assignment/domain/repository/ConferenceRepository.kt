@@ -16,5 +16,7 @@ interface ConferenceRepository {
 
     suspend fun deleteConference(conferenceId: String)
 
+    suspend fun reorderConferences(conferenceIdsInOrder: List<String>)
+
     suspend fun getConference(conferenceId: String): Conference?
 }

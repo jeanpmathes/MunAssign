@@ -4,7 +4,7 @@ This document records persistence and update rules that are not obvious from the
 
 ## Ownership Boundaries
 
-- `Conference` owns all assignment data.
+- `Conference` owns all assignment data and stores organizer-managed display order.
 - `Committee` owns positions and the uniform `slotsPerPosition` value.
 - `Position` represents one assignable country or role from `Countries.Member Name`.
 - `Slot` stores the current delegate reference and assignment source.
@@ -141,3 +141,4 @@ Update metadata tables:
 - Role-specific answer mappings unique by `(question_id, normalized_raw_value)`.
 - Current slot assignments enforce at most one occupied slot per delegate per conference.
 - Conference-owned foreign keys cascade on delete.
+- `conferences.display_order` stores the organizer-managed order used by the top-bar selector and management screen.
