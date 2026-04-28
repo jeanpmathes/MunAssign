@@ -51,3 +51,7 @@
 - Add file picker dialogs and user-facing error states for incompatible transfer files, write failures, and overwrite confirmation.
 - Add keyboard/focus handling for menus, dialogs, drawers, and side panel navigation.
 - Configure native packaging metadata for MSI, DMG, and deb outputs.
+- Add a splash screen and loading indicator.
+- Add a dark mode toggle.
+- Drag and drop of excel files.
+- Emojis for countries.
