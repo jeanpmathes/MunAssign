@@ -159,8 +159,8 @@ class MyMunWorkbookParser {
                 email = email.orEmpty(),
                 normalizedEmail = email?.trim()?.lowercase(Locale.ROOT).orEmpty(),
                 applicationStatus = row.text(headers, DelegateApplicationStatus).trimToNull(),
-                submittedAt = row.date(headers, DelegateSubmittedAt),
-                createdAt = row.date(headers, DelegateCreatedAt),
+                submittedAt = row.date(headers, DelegateSubmittedAt, sheet.sheetName, issues),
+                createdAt = row.date(headers, DelegateCreatedAt, sheet.sheetName, issues),
                 feePaid = feePaid ?: false,
                 country = row.text(headers, DelegateCountry).trimToNull(),
                 city = row.text(headers, DelegateCity).trimToNull(),
@@ -169,7 +169,7 @@ class MyMunWorkbookParser {
                 diet = row.text(headers, DelegateDiet).trimToNull(),
                 phone = row.text(headers, DelegatePhone).trimToNull(),
                 nationality = row.text(headers, DelegateNationality).trimToNull(),
-                dateOfBirth = row.date(headers, DelegateDateOfBirth),
+                dateOfBirth = row.date(headers, DelegateDateOfBirth, sheet.sheetName, issues),
                 delegationName = row.text(headers, DelegateDelegation).trimToNull(),
                 isHeadDelegate = row.text(headers, DelegateHeadDelegate).trimToNull() != null,
                 mymunAssignedPositionName = row.text(headers, DelegateAssignedPosition).trimToNull(),
@@ -234,8 +234,8 @@ class MyMunWorkbookParser {
                 currentDelegates = row.text(headers, DelegationCurrentDelegates).trimToNull()?.toIntOrNull(),
                 expectedDelegates = row.text(headers, DelegationExpectedDelegates).trimToNull()?.toIntOrNull(),
                 applicationStatus = row.text(headers, DelegationApplicationStatus).trimToNull(),
-                submittedAt = row.date(headers, DelegationSubmittedAt),
-                createdAt = row.date(headers, DelegationCreatedAt),
+                submittedAt = row.date(headers, DelegationSubmittedAt, sheet.sheetName, issues),
+                createdAt = row.date(headers, DelegationCreatedAt, sheet.sheetName, issues),
             )
         }.toList()
     }
@@ -359,8 +359,18 @@ class MyMunWorkbookParser {
     private fun Row.text(columnIndex: Int): String =
         getCell(columnIndex)?.text().orEmpty()
 
-    private fun Row.date(headers: HeaderMap, header: String): LocalDate? =
-        headers.indexOrNull(header)?.let { columnIndex -> getCell(columnIndex)?.dateValue() }
+    private fun Row.date(
+        headers: HeaderMap,
+        header: String,
+        sheetName: String,
+        issues: MutableList<MymunValidationIssue>,
+    ): LocalDate? =
+        headers.indexOrNull(header)?.let { columnIndex ->
+            getCell(columnIndex)?.dateValue(
+                location = CellLocation(sheetName, excelRowNumber, columnIndex + 1, header),
+                issues = issues,
+            )
+        }
 
     private fun Row.location(sheetName: String, header: String, headers: HeaderMap): CellLocation =
         CellLocation(sheetName, excelRowNumber, (headers.indexOrNull(header) ?: 0) + 1, header)
@@ -371,7 +381,10 @@ class MyMunWorkbookParser {
             else -> formatter.formatCellValue(this)
         }
 
-    private fun Cell.dateValue(): LocalDate? {
+    private fun Cell.dateValue(
+        location: CellLocation,
+        issues: MutableList<MymunValidationIssue>,
+    ): LocalDate? {
         if (cellType == CellType.NUMERIC && DateUtil.isCellDateFormatted(this)) {
             return localDateTimeCellValue.toLocalDate()
         }
@@ -382,6 +395,12 @@ class MyMunWorkbookParser {
         return try {
             LocalDate.parse(text)
         } catch (_: DateTimeParseException) {
+            issues += MymunValidationIssue(
+                severity = MymunValidationSeverity.Error,
+                code = "invalid_date",
+                message = "${location.sheetName} row ${location.rowNumber} has an invalid date in ${location.columnName}: $text",
+                location = location,
+            )
             null
         }
     }

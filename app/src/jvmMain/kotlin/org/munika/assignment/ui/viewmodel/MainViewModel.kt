@@ -15,6 +15,7 @@ import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.repository.ConferenceRepository
 import org.munika.assignment.domain.repository.UpdateIssue
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
+import org.munika.assignment.domain.repository.UpdateSummary
 
 /**
  * Main screen state holder.
@@ -93,6 +94,7 @@ class MainViewModel(
                     it.copy(
                         selectedConference = conference,
                         updateIssues = result.issues,
+                        updateSummary = result.summary,
                         loading = false,
                     )
                 }
@@ -103,8 +105,10 @@ class MainViewModel(
                             UpdateIssue(
                                 severity = UpdateIssueSeverity.Error,
                                 message = "Workbook update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
+                                code = "update_exception",
                             ),
                         ),
+                        updateSummary = UpdateSummary(blockingErrorCount = 1),
                         loading = false,
                     )
                 }
@@ -132,4 +136,5 @@ data class MainUiState(
     val selectedConferenceId: String? = null,
     val selectedConference: Conference? = null,
     val updateIssues: List<UpdateIssue> = emptyList(),
+    val updateSummary: UpdateSummary? = null,
 )

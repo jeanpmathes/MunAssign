@@ -89,6 +89,14 @@ fun App(viewModel: MainViewModel, onOpenWorkbook: () -> Unit) {
                         Text("Selected: ${conference.name}", fontWeight = FontWeight.Bold)
                         Text("Delegates: ${conference.delegates.size} | Committees: ${conference.committees.size} | Positions: ${conference.positions.size}")
                         Text("Open ${conference.openSlots.size} | Pending ${conference.pendingSlots.size} | Assigned ${conference.assignedSlots.size}")
+                        state.updateSummary?.let { summary ->
+                            Text(
+                                "Last update: ${summary.blockingErrorCount} errors | ${summary.warningCount} warnings | " +
+                                    "delegates +${summary.delegatesCreated}/~${summary.delegatesUpdated}/-${summary.delegatesRemoved} | " +
+                                    "positions +${summary.positionsCreated}/~${summary.positionsUpdated}/-${summary.positionsRemoved} | " +
+                                    "confirmed ${summary.assignmentsConfirmed} | pending kept ${summary.pendingAssignmentsPreserved}",
+                            )
+                        }
 
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxSize()) {
                             items(conference.committees, key = { it.id.value }) { committee ->

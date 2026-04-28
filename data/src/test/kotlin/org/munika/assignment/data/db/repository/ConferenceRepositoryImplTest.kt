@@ -16,15 +16,25 @@ import org.munika.assignment.data.db.DatabaseFactory
 import org.munika.assignment.data.db.tables.AnswerRuleTypeTable
 import org.munika.assignment.data.db.tables.CommitteeTable
 import org.munika.assignment.data.db.tables.DelegateCommentTable
+import org.munika.assignment.data.db.tables.DelegateQuestionRuleTable
 import org.munika.assignment.data.db.tables.DelegateQuestionTable
 import org.munika.assignment.data.db.tables.DelegateTable
+import org.munika.assignment.data.db.tables.MunExperienceAnswerMappingTable
+import org.munika.assignment.data.db.tables.MymunUpdateIssueTable
+import org.munika.assignment.data.db.tables.PositionTable
 import org.munika.assignment.data.db.tables.QuestionHandlingTypeTable
 import org.munika.assignment.data.db.tables.QuestionRoleTable
+import org.munika.assignment.data.db.tables.SlotTable
+import org.munika.assignment.data.excel.CellLocation
 import org.munika.assignment.data.excel.MymunConfirmedAssignmentCandidate
 import org.munika.assignment.data.excel.MymunCountryPositionRow
 import org.munika.assignment.data.excel.MymunDelegateRow
+import org.munika.assignment.data.excel.MymunQuestionAnswerCell
+import org.munika.assignment.data.excel.MymunQuestionColumn
 import org.munika.assignment.data.excel.MymunWorkbookSnapshot
 import org.munika.assignment.data.excel.MymunWorkbookUpdater
+import org.munika.assignment.domain.model.AssignmentSource
+import org.munika.assignment.domain.model.MunExperienceLevel
 import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
@@ -46,6 +56,7 @@ class ConferenceRepositoryImplTest {
         assertNotNull(loaded)
         assertTrue(loaded.committees.isNotEmpty())
         assertTrue(loaded.delegates.isNotEmpty())
+        assertTrue(loaded.delegates.any { it.preferences.isNotEmpty() })
 
         repository.deleteConference(conference.id.value)
 
@@ -165,6 +176,213 @@ class ConferenceRepositoryImplTest {
         assertTrue(result.issues.any { it.severity == UpdateIssueSeverity.Error && "ambiguous" in it.message })
     }
 
+    @Test
+    fun `MyMUN update aborts when confirmed assignments exceed configured slot count`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-slot-mismatch").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments()).success)
+        transaction(database) {
+            CommitteeTable.update({ CommitteeTable.conferenceId eq conference.id.value }) {
+                it[slotsPerPosition] = 1
+            }
+        }
+
+        val result = repository.applyMymunUpdateSnapshot(
+            conferenceId = conference.id.value,
+            snapshot = snapshotWithAssignments(
+                delegates = listOf(
+                    delegate(rowNumber = 2, firstName = "Alex", lastName = "Kim", email = "alex@example.test"),
+                    delegate(rowNumber = 3, firstName = "Blake", lastName = "Roy", email = "blake@example.test"),
+                ),
+                confirmedAssignments = listOf(
+                    assignment(rowNumber = 2, positionName = "France", slotIndex = 1, delegateName = "Alex Kim"),
+                    assignment(rowNumber = 3, positionName = "Germany", slotIndex = 2, delegateName = "Blake Roy"),
+                ),
+            ),
+            sourceFilename = "slot-mismatch.xlsx",
+        )
+
+        assertFalse(result.success)
+        assertEquals(1, result.summary.blockingErrorCount)
+        assertTrue(result.issues.any { it.code == "slot_count_mismatch" && it.rowNumber == 3 })
+    }
+
+    @Test
+    fun `MyMUN update aborts unmatched confirmed delegates with structured issue metadata`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-unmatched").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        val result = repository.applyMymunUpdateSnapshot(
+            conferenceId = conference.id.value,
+            snapshot = snapshotWithAssignments(
+                confirmedAssignments = listOf(
+                    assignment(rowNumber = 2, positionName = "France", slotIndex = 1, delegateName = "Missing Person"),
+                ),
+            ),
+            sourceFilename = "unmatched.xlsx",
+        )
+
+        assertFalse(result.success)
+        val issue = result.issues.single { it.code == "unmatched_confirmed_delegate" }
+        assertEquals(UpdateIssueSeverity.Error, issue.severity)
+        assertEquals("Countries", issue.sheetName)
+        assertEquals(2, issue.rowNumber)
+        assertEquals("Delegates", issue.columnName)
+
+        transaction(database) {
+            val persistedIssue = MymunUpdateIssueTable.selectAll()
+                .where { MymunUpdateIssueTable.code eq "unmatched_confirmed_delegate" }
+                .single()
+            assertEquals("Error", persistedIssue[MymunUpdateIssueTable.severity])
+            assertEquals("Countries", persistedIssue[MymunUpdateIssueTable.sheetName])
+            assertEquals(2, persistedIssue[MymunUpdateIssueTable.rowNumber])
+            assertEquals(4, persistedIssue[MymunUpdateIssueTable.columnNumber])
+            assertEquals("Delegates", persistedIssue[MymunUpdateIssueTable.columnName])
+        }
+    }
+
+    @Test
+    fun `MyMUN update warns when assignment is matched by first name only`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-first-name").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        val result = repository.applyMymunUpdateSnapshot(
+            conferenceId = conference.id.value,
+            snapshot = snapshotWithAssignments(
+                confirmedAssignments = listOf(
+                    assignment(rowNumber = 2, positionName = "France", slotIndex = 1, delegateName = "Alex"),
+                ),
+            ),
+            sourceFilename = "first-name.xlsx",
+        )
+
+        assertTrue(result.success, result.issues.joinToString("; ") { it.message })
+        assertEquals(1, result.summary.warningCount)
+        assertTrue(result.issues.any { it.code == "first_name_only_assignment" })
+    }
+
+    @Test
+    fun `MyMUN update preserves pending app assignments when not contradicted`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-pending").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val snapshot = snapshotWithAssignments(confirmedAssignments = emptyList())
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshot).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val delegate = loaded.delegates.single { it.name.firstName == "Alex" }
+        val slot = loaded.openSlots.first()
+        transaction(database) {
+            SlotTable.update({ SlotTable.id eq slot.id.value }) {
+                it[assignedDelegateId] = delegate.id.value
+                it[assignmentSource] = AssignmentSource.Application.name
+                it[updatedAtEpochMillis] = 2L
+            }
+        }
+
+        val result = repository.applyMymunUpdateSnapshot(conference.id.value, snapshot, "pending.xlsx")
+        val reloaded = requireNotNull(repository.getConference(conference.id.value))
+
+        assertTrue(result.success, result.issues.joinToString("; ") { it.message })
+        assertEquals(1, reloaded.pendingSlots.size)
+        assertEquals(1, result.summary.pendingAssignmentsPreserved)
+        assertEquals(0, result.summary.pendingAssignmentsCleared)
+    }
+
+    @Test
+    fun `MyMUN update counts only actual changed rows in summary`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-no-op-summary").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val snapshot = snapshotWithAssignments()
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshot, "first.xlsx").success)
+        val result = repository.applyMymunUpdateSnapshot(conference.id.value, snapshot, "second.xlsx")
+
+        assertTrue(result.success, result.issues.joinToString("; ") { it.message })
+        assertEquals(0, result.summary.delegationsUpdated)
+        assertEquals(0, result.summary.committeesUpdated)
+        assertEquals(0, result.summary.positionsUpdated)
+        assertEquals(0, result.summary.delegatesUpdated)
+        assertEquals(0, result.summary.questionsUpdated)
+        assertEquals(0, result.summary.assignmentsConfirmed)
+    }
+
+    @Test
+    fun `MyMUN update counts pending assignments cleared by pruned positions`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-pruned-pending").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val initialSnapshot = snapshotWithAssignments(confirmedAssignments = emptyList())
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, initialSnapshot).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val delegate = loaded.delegates.single { it.name.firstName == "Alex" }
+        val germanySlot = loaded.positions.single { it.name == "Germany" }.slots.single()
+        transaction(database) {
+            SlotTable.update({ SlotTable.id eq germanySlot.id.value }) {
+                it[assignedDelegateId] = delegate.id.value
+                it[assignmentSource] = AssignmentSource.Application.name
+                it[updatedAtEpochMillis] = 2L
+            }
+        }
+
+        val result = repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithOnlyFrance(), "remove-germany.xlsx")
+
+        assertTrue(result.success, result.issues.joinToString("; ") { it.message })
+        assertEquals(0, result.summary.pendingAssignmentsPreserved)
+        assertEquals(1, result.summary.pendingAssignmentsCleared)
+        assertEquals(1, result.summary.positionsRemoved)
+    }
+
+    @Test
+    fun `organizer managed question rules and typed mappings survive repeated updates`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-question-config").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val snapshot = snapshotWithQuestion()
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshot).success)
+        val questionId = transaction(database) {
+            DelegateQuestionTable.selectAll().single()[DelegateQuestionTable.id]
+        }
+        transaction(database) {
+            DelegateQuestionRuleTable.insert {
+                it[id] = "rule-1"
+                it[DelegateQuestionRuleTable.questionId] = questionId
+                it[ruleTypeId] = "minimum_text_length"
+                it[intParameter] = 20
+                it[textParameter] = null
+            }
+            MunExperienceAnswerMappingTable.insert {
+                it[id] = "mapping-1"
+                it[MunExperienceAnswerMappingTable.questionId] = questionId
+                it[rawValue] = "Lots"
+                it[normalizedRawValue] = "lots"
+                it[mappedValue] = MunExperienceLevel.Advanced.name
+            }
+        }
+
+        val result = repository.applyMymunUpdateSnapshot(conference.id.value, snapshot, "question-config.xlsx")
+
+        assertTrue(result.success, result.issues.joinToString("; ") { it.message })
+        transaction(database) {
+            assertEquals(1, DelegateQuestionRuleTable.selectAll().where { DelegateQuestionRuleTable.questionId eq questionId }.count())
+            assertEquals(1, MunExperienceAnswerMappingTable.selectAll().where { MunExperienceAnswerMappingTable.questionId eq questionId }.count())
+        }
+    }
+
     private fun duplicateAssignmentSnapshot(
         delegates: List<MymunDelegateRow> = listOf(delegate()),
         confirmedAssignments: List<MymunConfirmedAssignmentCandidate> = listOf(
@@ -196,6 +414,95 @@ class ConferenceRepositoryImplTest {
             questionAnswers = emptyList(),
             preferenceCandidates = emptyList(),
             confirmedAssignmentCandidates = confirmedAssignments,
+            issues = emptyList(),
+        )
+
+    private fun snapshotWithAssignments(
+        delegates: List<MymunDelegateRow> = listOf(delegate()),
+        confirmedAssignments: List<MymunConfirmedAssignmentCandidate> = listOf(
+            assignment(rowNumber = 2, positionName = "France", slotIndex = 1),
+        ),
+    ): MymunWorkbookSnapshot =
+        MymunWorkbookSnapshot(
+            workbookName = "test.xlsx",
+            delegates = delegates,
+            countryPositions = listOf(
+                MymunCountryPositionRow(
+                    rowNumber = 2,
+                    committeeName = "GA",
+                    memberName = "France",
+                    delegationName = null,
+                    delegatesRaw = null,
+                ),
+                MymunCountryPositionRow(
+                    rowNumber = 3,
+                    committeeName = "GA",
+                    memberName = "Germany",
+                    delegationName = null,
+                    delegatesRaw = null,
+                ),
+            ),
+            delegations = emptyList(),
+            questionColumns = emptyList(),
+            questionAnswers = emptyList(),
+            preferenceCandidates = emptyList(),
+            confirmedAssignmentCandidates = confirmedAssignments,
+            issues = emptyList(),
+        )
+
+    private fun snapshotWithQuestion(): MymunWorkbookSnapshot {
+        val questionColumn = MymunQuestionColumn(
+            sheetName = "Delegates",
+            columnNumber = 5,
+            displayOrder = 4,
+            questionText = "Question: MUN experience",
+        )
+        return MymunWorkbookSnapshot(
+            workbookName = "question.xlsx",
+            delegates = listOf(delegate()),
+            countryPositions = listOf(
+                MymunCountryPositionRow(
+                    rowNumber = 2,
+                    committeeName = "GA",
+                    memberName = "France",
+                    delegationName = null,
+                    delegatesRaw = null,
+                ),
+            ),
+            delegations = emptyList(),
+            questionColumns = listOf(questionColumn),
+            questionAnswers = listOf(
+                MymunQuestionAnswerCell(
+                    delegateRowNumber = 2,
+                    questionColumn = questionColumn,
+                    answer = "Lots",
+                    location = CellLocation("Delegates", 2, 5, questionColumn.questionText),
+                ),
+            ),
+            preferenceCandidates = emptyList(),
+            confirmedAssignmentCandidates = emptyList(),
+            issues = emptyList(),
+        )
+    }
+
+    private fun snapshotWithOnlyFrance(): MymunWorkbookSnapshot =
+        MymunWorkbookSnapshot(
+            workbookName = "test.xlsx",
+            delegates = listOf(delegate()),
+            countryPositions = listOf(
+                MymunCountryPositionRow(
+                    rowNumber = 2,
+                    committeeName = "GA",
+                    memberName = "France",
+                    delegationName = null,
+                    delegatesRaw = null,
+                ),
+            ),
+            delegations = emptyList(),
+            questionColumns = emptyList(),
+            questionAnswers = emptyList(),
+            preferenceCandidates = emptyList(),
+            confirmedAssignmentCandidates = emptyList(),
             issues = emptyList(),
         )
 

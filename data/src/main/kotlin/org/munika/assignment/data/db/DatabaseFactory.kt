@@ -7,11 +7,14 @@ import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.SchemaUtils
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.transactions.TransactionManager
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
+import org.slf4j.LoggerFactory
 import org.munika.assignment.data.db.tables.AnswerRuleTypeTable
 import org.munika.assignment.data.db.tables.MunAssignTables
 import org.munika.assignment.data.db.tables.QuestionHandlingTypeTable
 import org.munika.assignment.data.db.tables.QuestionRoleTable
+import org.munika.assignment.data.db.tables.SchemaMigrationTable
 import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
 
@@ -19,6 +22,8 @@ import org.munika.assignment.domain.model.StandardQuestionRoles
  * Creates SQLite connections for the local MunAssign database.
  */
 object DatabaseFactory {
+    private val logger = LoggerFactory.getLogger(DatabaseFactory::class.java)
+
     fun defaultDatabasePath(home: Path = Path(System.getProperty("user.home"))): Path =
         home.resolve(".munassign").resolve("data.db")
 
@@ -26,10 +31,28 @@ object DatabaseFactory {
         Files.createDirectories(path.parent)
         val database = Database.connect("jdbc:sqlite:${path.toAbsolutePath()}?foreign_keys=on", driver = "org.sqlite.JDBC")
         transaction(database) {
-            SchemaUtils.create(*MunAssignTables)
+            migrateSchema()
             seedLookups()
         }
         return database
+    }
+
+    private fun migrateSchema() {
+        SchemaUtils.create(SchemaMigrationTable)
+        val appliedVersions = SchemaMigrationTable.selectAll()
+            .map { it[SchemaMigrationTable.version] }
+            .toSet()
+
+        migrations.filterNot { it.version in appliedVersions }.forEach { migration ->
+            logger.info("Applying database migration {} ({})", migration.version, migration.name)
+            migration.apply()
+            SchemaMigrationTable.insert {
+                it[version] = migration.version
+                it[name] = migration.name
+                it[appliedAtEpochMillis] = System.currentTimeMillis()
+            }
+            logger.info("Applied database migration {} ({})", migration.version, migration.name)
+        }
     }
 
     private fun seedLookups() {
@@ -66,5 +89,34 @@ object DatabaseFactory {
         "minimum_text_length" to "Minimum text length",
         "notice_when_non_blank" to "Notice when non-blank",
         "required_answer" to "Required answer",
+    )
+
+    private val migrations: List<SchemaMigration> = listOf(
+        SchemaMigration(version = 1, name = "create_initial_schema") {
+            SchemaUtils.create(*MunAssignTables)
+        },
+        SchemaMigration(version = 2, name = "add_structured_update_issue_metadata") {
+            addColumnIfMissing("mymun_update_issues", "code", "VARCHAR(128) NULL")
+            addColumnIfMissing("mymun_update_issues", "column_number", "INT NULL")
+        },
+    )
+
+    private fun addColumnIfMissing(tableName: String, columnName: String, definition: String) {
+        if (!columnExists(tableName, columnName)) {
+            TransactionManager.current().exec("ALTER TABLE $tableName ADD COLUMN $columnName $definition")
+        }
+    }
+
+    private fun columnExists(tableName: String, columnName: String): Boolean =
+        TransactionManager.current().exec("PRAGMA table_info($tableName)") { resultSet ->
+            generateSequence {
+                if (resultSet.next()) resultSet.getString("name") else null
+            }.any { it == columnName }
+        } ?: false
+
+    private data class SchemaMigration(
+        val version: Int,
+        val name: String,
+        val apply: () -> Unit,
     )
 }

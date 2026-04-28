@@ -14,7 +14,10 @@ dependencies {
     implementation(libs.exposed.jdbc)
     implementation(libs.kotlinx.coroutinesCore)
     implementation(libs.poi.ooxml)
+    implementation(libs.slf4j.api)
     implementation(libs.sqlite.jdbc)
+    runtimeOnly(libs.log4j.to.slf4j)
 
     testImplementation(libs.kotlin.test)
+    testRuntimeOnly(libs.slf4j.simple)
 }

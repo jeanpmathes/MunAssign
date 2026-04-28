@@ -1,14 +1,5 @@
 # TODO
 
-## Next - Update Hardening
-
-- Replace `SchemaUtils.create` bootstrapping with an explicit migration/versioning strategy before real user data exists.
-- Persist full structured MyMUN validation issue metadata, including sheet, row, column, code, and severity.
-- Tighten malformed date handling so invalid date-like cells become validation issues instead of silent nulls.
-- Add focused tests for slot-count mismatch aborts, unmatched confirmed delegates, first-name-only assignment warnings, and preservation of pending app assignments.
-- Add tests for organizer-managed question rules and typed-answer mappings surviving repeated MyMUN updates.
-- Add update result summaries that distinguish blocking errors, warnings, and successful writes for the UI.
-
 ## Next - Conference Management UI
 
 - Move the temporary conference/workbook screen toward the planned app shell instead of growing it further.

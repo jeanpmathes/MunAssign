@@ -50,8 +50,10 @@ import org.munika.assignment.data.db.tables.MymunUpdateRunTable
 import org.munika.assignment.data.db.tables.PositionTable
 import org.munika.assignment.data.db.tables.PreferenceTable
 import org.munika.assignment.data.db.tables.SlotTable
+import org.munika.assignment.data.excel.CellLocation
 import org.munika.assignment.data.excel.MymunConfirmedAssignmentCandidate
 import org.munika.assignment.data.excel.MymunDelegateRow
+import org.munika.assignment.data.excel.MymunDelegationRow
 import org.munika.assignment.data.excel.MymunValidationSeverity
 import org.munika.assignment.data.excel.MymunWorkbookSnapshot
 import org.munika.assignment.domain.model.AssignmentSource
@@ -63,6 +65,8 @@ import org.munika.assignment.domain.repository.ConferenceRepository
 import org.munika.assignment.domain.repository.UpdateIssue
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
 import org.munika.assignment.domain.repository.UpdateResult
+import org.munika.assignment.domain.repository.UpdateSummary
+import org.slf4j.LoggerFactory
 
 /**
  * SQLite-backed conference repository.
@@ -70,6 +74,8 @@ import org.munika.assignment.domain.repository.UpdateResult
 class ConferenceRepositoryImpl(
     private val database: Database = DatabaseFactory.connect(),
 ) : ConferenceRepository {
+    private val logger = LoggerFactory.getLogger(ConferenceRepositoryImpl::class.java)
+
     override suspend fun listConferences(): List<Conference> = db {
         ConferenceTable.selectAll()
             .orderBy(ConferenceTable.updatedAtEpochMillis)
@@ -138,8 +144,19 @@ class ConferenceRepositoryImpl(
         snapshot: MymunWorkbookSnapshot,
         sourceFilename: String? = snapshot.workbookName,
     ): UpdateResult = db {
+        logger.info(
+            "Starting MyMUN update for conference={} source={} delegates={} positions={} delegations={} confirmedAssignments={} parserIssues={}",
+            conferenceId,
+            sourceFilename,
+            snapshot.delegates.size,
+            snapshot.countryPositions.size,
+            snapshot.delegations.size,
+            snapshot.confirmedAssignmentCandidates.size,
+            snapshot.issues.size,
+        )
         val updateRunId = UUID.randomUUID().toString()
         val now = Instant.now().toEpochMilli()
+        val delta = MutableUpdateSummary()
         MymunUpdateRunTable.insert {
             it[MymunUpdateRunTable.id] = updateRunId
             it[MymunUpdateRunTable.conferenceId] = conferenceId
@@ -148,12 +165,7 @@ class ConferenceRepositoryImpl(
             it[MymunUpdateRunTable.sourceFilename] = sourceFilename
         }
 
-        val issues = snapshot.issues.map {
-            UpdateIssue(
-                severity = if (it.severity == MymunValidationSeverity.Error) UpdateIssueSeverity.Error else UpdateIssueSeverity.Warning,
-                message = it.message,
-            )
-        }.toMutableList()
+        val issues = snapshot.issues.map { it.toUpdateIssue() }.toMutableList()
 
         val existingCommittees = CommitteeTable
             .selectAll()
@@ -167,10 +179,12 @@ class ConferenceRepositoryImpl(
             .selectAll()
             .where { DelegationTable.conferenceId eq conferenceId }
             .associateBy { normalize(it[DelegationTable.normalizedName]) }
-        val existingDelegates = DelegateTable
+        val existingDelegateRows = DelegateTable
             .selectAll()
             .where { DelegateTable.conferenceId eq conferenceId }
-            .map { ExistingDelegate.from(it) }
+            .toList()
+        val existingDelegates = existingDelegateRows.map { ExistingDelegate.from(it) }
+        val existingDelegateRowsById = existingDelegateRows.associateBy { it[DelegateTable.id] }
         val existingQuestions = DelegateQuestionTable
             .selectAll()
             .where { DelegateQuestionTable.conferenceId eq conferenceId }
@@ -183,9 +197,18 @@ class ConferenceRepositoryImpl(
         requiredSlotsByCommittee.forEach { (committee, requiredSlots) ->
             val configured = existingCommittees[committee]?.get(CommitteeTable.slotsPerPosition)
             if (configured != null && requiredSlots > configured) {
+                val location = snapshot.confirmedAssignmentCandidates
+                    .filter { normalize(it.committeeName) == committee }
+                    .maxByOrNull { it.slotIndex }
+                    ?.countriesDelegatesLocation()
                 issues += UpdateIssue(
                     severity = UpdateIssueSeverity.Error,
+                    code = "slot_count_mismatch",
                     message = "Committee $committee has $configured slots configured but workbook requires $requiredSlots.",
+                    sheetName = location?.sheetName,
+                    rowNumber = location?.rowNumber,
+                    columnNumber = location?.columnNumber,
+                    columnName = location?.columnName,
                 )
             }
         }
@@ -196,14 +219,24 @@ class ConferenceRepositoryImpl(
                 is AssignmentResolution.WarningMatch -> {
                     issues += UpdateIssue(
                         severity = UpdateIssueSeverity.Warning,
+                        code = "first_name_only_assignment",
                         message = resolution.message,
+                        sheetName = candidate.countriesDelegatesLocation().sheetName,
+                        rowNumber = candidate.countriesDelegatesLocation().rowNumber,
+                        columnNumber = candidate.countriesDelegatesLocation().columnNumber,
+                        columnName = candidate.countriesDelegatesLocation().columnName,
                     )
                     candidate to resolution.delegate
                 }
                 is AssignmentResolution.Unresolved -> {
                     issues += UpdateIssue(
                         severity = UpdateIssueSeverity.Error,
+                        code = "unmatched_confirmed_delegate",
                         message = resolution.message,
+                        sheetName = candidate.countriesDelegatesLocation().sheetName,
+                        rowNumber = candidate.countriesDelegatesLocation().rowNumber,
+                        columnNumber = candidate.countriesDelegatesLocation().columnNumber,
+                        columnName = candidate.countriesDelegatesLocation().columnName,
                     )
                     null
                 }
@@ -217,20 +250,13 @@ class ConferenceRepositoryImpl(
                 val positions = assignments.joinToString { (candidate, _) -> "${candidate.committeeName} (${candidate.positionName})" }
                 issues += UpdateIssue(
                     severity = UpdateIssueSeverity.Error,
+                    code = "duplicate_confirmed_assignment",
                     message = "Confirmed assignment delegate '${delegate.displayName}' appears in more than one slot: $positions.",
                 )
             }
 
         issues.forEach { issue ->
-            MymunUpdateIssueTable.insert {
-                it[MymunUpdateIssueTable.id] = UUID.randomUUID().toString()
-                it[MymunUpdateIssueTable.updateRunId] = updateRunId
-                it[MymunUpdateIssueTable.severity] = issue.severity.name
-                it[MymunUpdateIssueTable.message] = issue.message
-                it[MymunUpdateIssueTable.sheetName] = null
-                it[MymunUpdateIssueTable.rowNumber] = null
-                it[MymunUpdateIssueTable.columnName] = null
-            }
+            insertUpdateIssue(updateRunId, issue)
         }
 
         val allBlocking = issues.filter { it.severity == UpdateIssueSeverity.Error }
@@ -238,7 +264,15 @@ class ConferenceRepositoryImpl(
             MymunUpdateRunTable.update({ MymunUpdateRunTable.id eq updateRunId }) {
                 it[MymunUpdateRunTable.completedAtEpochMillis] = Instant.now().toEpochMilli()
             }
-            return@db UpdateResult(success = false, issues = issues)
+            val summary = delta.toSummary(issues)
+            logger.warn(
+                "MyMUN update aborted for conference={} source={} errors={} warnings={}",
+                conferenceId,
+                sourceFilename,
+                summary.blockingErrorCount,
+                summary.warningCount,
+            )
+            return@db UpdateResult(success = false, issues = issues, summary = summary)
         }
 
         val delegationIdsByName = mutableMapOf<String, String>()
@@ -247,30 +281,37 @@ class ConferenceRepositoryImpl(
         val retainedDelegationIds = mutableSetOf<String>()
         val retainedDelegateIds = mutableSetOf<String>()
         val retainedQuestionIds = mutableSetOf<String>()
+        val pendingBeforeUpdate = countPendingAssignmentsForConference(conferenceId)
 
         snapshot.delegations.forEach { delegation ->
-            val delegationId = existingDelegations[normalize(delegation.name)]?.get(DelegationTable.id) ?: UUID.randomUUID().toString()
+            val normalizedDelegationName = normalize(delegation.name)
+            val existingDelegation = existingDelegations[normalizedDelegationName]
+            val delegationId = existingDelegation?.get(DelegationTable.id) ?: UUID.randomUUID().toString()
             delegationIdsByName[normalize(delegation.name)] = delegationId
             retainedDelegationIds += delegationId
-            if (existingDelegations.containsKey(normalize(delegation.name))) {
-                DelegationTable.update({ DelegationTable.id eq delegationId }) {
-                    it[DelegationTable.name] = delegation.name
-                    it[DelegationTable.normalizedName] = normalize(delegation.name)
-                    it[DelegationTable.country] = delegation.country
-                    it[DelegationTable.expectedDelegateCount] = delegation.expectedDelegates
-                    it[DelegationTable.currentDelegateCountFromMymun] = delegation.currentDelegates
+            if (existingDelegation != null) {
+                if (delegationChanged(existingDelegation, delegation)) {
+                    DelegationTable.update({ DelegationTable.id eq delegationId }) {
+                        it[DelegationTable.name] = delegation.name
+                        it[DelegationTable.normalizedName] = normalizedDelegationName
+                        it[DelegationTable.country] = delegation.country
+                        it[DelegationTable.expectedDelegateCount] = delegation.expectedDelegates
+                        it[DelegationTable.currentDelegateCountFromMymun] = delegation.currentDelegates
+                    }
+                    delta.delegationsUpdated++
                 }
             } else {
                 DelegationTable.insert {
                     it[DelegationTable.id] = delegationId
                     it[DelegationTable.conferenceId] = conferenceId
                     it[DelegationTable.name] = delegation.name
-                    it[DelegationTable.normalizedName] = normalize(delegation.name)
+                    it[DelegationTable.normalizedName] = normalizedDelegationName
                     it[DelegationTable.country] = delegation.country
                     it[DelegationTable.expectedDelegateCount] = delegation.expectedDelegates
                     it[DelegationTable.currentDelegateCountFromMymun] = delegation.currentDelegates
                     it[DelegationTable.headDelegateId] = null
                 }
+                delta.delegationsCreated++
             }
         }
 
@@ -295,22 +336,30 @@ class ConferenceRepositoryImpl(
                     it[alias] = null
                     it[CommitteeTable.slotsPerPosition] = slotsPerPosition
                 }
+                delta.committeesCreated++
             } else {
-                CommitteeTable.update({ CommitteeTable.id eq committeeId }) {
-                    it[mymunName] = first.committeeName
-                    it[normalizedMymunName] = committeeNormalized
+                if (committeeChanged(existingCommittee, first.committeeName, committeeNormalized)) {
+                    CommitteeTable.update({ CommitteeTable.id eq committeeId }) {
+                        it[mymunName] = first.committeeName
+                        it[normalizedMymunName] = committeeNormalized
+                    }
+                    delta.committeesUpdated++
                 }
             }
             committeeIds[committeeNormalized] = committeeId
 
             rows.forEach { country ->
                 val positionName = normalize(country.memberName)
-                val positionId = existingPositions[committeeId to positionName]?.get(PositionTable.id) ?: UUID.randomUUID().toString()
+                val existingPosition = existingPositions[committeeId to positionName]
+                val positionId = existingPosition?.get(PositionTable.id) ?: UUID.randomUUID().toString()
                 retainedPositionIds += positionId
-                if (existingPositions.containsKey(committeeId to positionName)) {
-                    PositionTable.update({ PositionTable.id eq positionId }) {
-                        it[PositionTable.name] = country.memberName
-                        it[PositionTable.normalizedName] = positionName
+                if (existingPosition != null) {
+                    if (positionChanged(existingPosition, country.memberName, positionName)) {
+                        PositionTable.update({ PositionTable.id eq positionId }) {
+                            it[PositionTable.name] = country.memberName
+                            it[PositionTable.normalizedName] = positionName
+                        }
+                        delta.positionsUpdated++
                     }
                 } else {
                     PositionTable.insert {
@@ -320,6 +369,7 @@ class ConferenceRepositoryImpl(
                         it[PositionTable.name] = country.memberName
                         it[PositionTable.normalizedName] = positionName
                     }
+                    delta.positionsCreated++
                 }
                 positionIds[committeeNormalized to positionName] = positionId
 
@@ -328,6 +378,7 @@ class ConferenceRepositoryImpl(
                     .toSet()
                 (1..slotsPerPosition).filterNot { it in existingSlotIndexes }.forEach { slotIndex ->
                     insertEmptySlot(positionId, slotIndex)
+                    delta.slotsCreated++
                 }
             }
         }
@@ -339,12 +390,19 @@ class ConferenceRepositoryImpl(
             delegateIdsByIdentity[matchingIdentity] = delegateId
             retainedDelegateIds += delegateId
             val delegationId = delegate.delegationName?.let { delegationIdsByName[normalize(it)] }
-            if (existingDelegates.any { it.id == delegateId }) {
-                updateDelegate(delegateId, delegate, delegationId)
+            val existingDelegate = existingDelegateRowsById[delegateId]
+            if (existingDelegate != null) {
+                if (delegateChanged(existingDelegate, delegate, delegationId)) {
+                    updateDelegate(delegateId, delegate, delegationId)
+                    delta.delegatesUpdated++
+                }
             } else {
                 insertDelegate(conferenceId, delegateId, delegate, delegationId)
+                delta.delegatesCreated++
             }
         }
+
+        replaceWorkbookManagedChildren(retainedDelegateIds, retainedQuestionIds)
 
         snapshot.preferenceCandidates.forEach { preference ->
             val delegateId = delegateIdsByRow[preference.delegateRowNumber] ?: return@forEach
@@ -358,6 +416,7 @@ class ConferenceRepositoryImpl(
                 it[PreferenceTable.rank] = preference.rank
                 it[PreferenceTable.rawPreferenceText] = preference.rawPreferenceText
             }
+            delta.preferencesWritten++
         }
 
         val questionIdsByText = mutableMapOf<String, String>()
@@ -393,16 +452,20 @@ class ConferenceRepositoryImpl(
                     it[DelegateQuestionTable.visibleInDelegateDetail] = true
                     it[DelegateQuestionTable.organizerLabel] = null
                 }
+                delta.questionsCreated++
             } else {
-                DelegateQuestionTable.update({ DelegateQuestionTable.id eq questionId }) {
-                    it[DelegateQuestionTable.questionText] = questionColumn.questionText
-                    it[DelegateQuestionTable.normalizedQuestionText] = normalizedQuestion
+                if (questionChanged(existingQuestion, questionColumn.questionText, normalizedQuestion)) {
+                    DelegateQuestionTable.update({ DelegateQuestionTable.id eq questionId }) {
+                        it[DelegateQuestionTable.questionText] = questionColumn.questionText
+                        it[DelegateQuestionTable.normalizedQuestionText] = normalizedQuestion
+                    }
+                    delta.questionsUpdated++
                 }
             }
         }
 
+        val existingSlotAssignments = loadSlotAssignments(retainedPositionIds)
         clearMymunAssignments(retainedPositionIds)
-        replaceWorkbookManagedChildren(retainedDelegateIds, retainedQuestionIds)
 
         snapshot.questionAnswers.forEach { answerCell ->
             val delegateId = delegateIdsByRow[answerCell.delegateRowNumber] ?: return@forEach
@@ -413,6 +476,7 @@ class ConferenceRepositoryImpl(
                 it[DelegateQuestionAnswerTable.questionId] = questionId
                 it[DelegateQuestionAnswerTable.answer] = answerCell.answer
             }
+            delta.answersWritten++
         }
 
         assignmentResolutions.forEach { (confirmed, delegate) ->
@@ -424,9 +488,12 @@ class ConferenceRepositoryImpl(
                 it[SlotTable.assignmentSource] = AssignmentSource.Mymun.name
                 it[SlotTable.updatedAtEpochMillis] = Instant.now().toEpochMilli()
             }
+            if (existingSlotAssignments[positionId to confirmed.slotIndex] != SlotAssignment(delegateId, AssignmentSource.Mymun.name)) {
+                delta.assignmentsConfirmed++
+            }
         }
 
-        pruneRemovedRows(
+        val pruned = pruneRemovedRows(
             conferenceId = conferenceId,
             retainedCommitteeIds = retainedCommitteeIds,
             retainedPositionIds = retainedPositionIds,
@@ -434,6 +501,15 @@ class ConferenceRepositoryImpl(
             retainedDelegateIds = retainedDelegateIds,
             retainedQuestionIds = retainedQuestionIds,
         )
+        delta.committeesRemoved += pruned.committees
+        delta.positionsRemoved += pruned.positions
+        delta.delegationsRemoved += pruned.delegations
+        delta.delegatesRemoved += pruned.delegates
+        delta.questionsRemoved += pruned.questions
+
+        val pendingAfterAssignmentReconcile = countPendingAssignmentsForConference(conferenceId)
+        delta.pendingAssignmentsPreserved = pendingAfterAssignmentReconcile
+        delta.pendingAssignmentsCleared = (pendingBeforeUpdate - pendingAfterAssignmentReconcile).coerceAtLeast(0)
 
         ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
             it[ConferenceTable.updatedAtEpochMillis] = Instant.now().toEpochMilli()
@@ -444,7 +520,37 @@ class ConferenceRepositoryImpl(
             it[MymunUpdateRunTable.completedAtEpochMillis] = Instant.now().toEpochMilli()
         }
 
-        UpdateResult(success = true, issues = issues)
+        val summary = delta.toSummary(issues)
+        logger.info(
+            "MyMUN update completed for conference={} source={} errors={} warnings={} delegates(+{}/~{}/-{}) committees(+{}/~{}/-{}) positions(+{}/~{}/-{}) slotsCreated={} confirmedAssignments={} pendingPreserved={} pendingCleared={} questions(+{}/~{}/-{}) delegations(+{}/~{}/-{}) preferences={} answers={}",
+            conferenceId,
+            sourceFilename,
+            summary.blockingErrorCount,
+            summary.warningCount,
+            summary.delegatesCreated,
+            summary.delegatesUpdated,
+            summary.delegatesRemoved,
+            summary.committeesCreated,
+            summary.committeesUpdated,
+            summary.committeesRemoved,
+            summary.positionsCreated,
+            summary.positionsUpdated,
+            summary.positionsRemoved,
+            summary.slotsCreated,
+            summary.assignmentsConfirmed,
+            summary.pendingAssignmentsPreserved,
+            summary.pendingAssignmentsCleared,
+            summary.questionsCreated,
+            summary.questionsUpdated,
+            summary.questionsRemoved,
+            summary.delegationsCreated,
+            summary.delegationsUpdated,
+            summary.delegationsRemoved,
+            summary.preferencesWritten,
+            summary.answersWritten,
+        )
+
+        UpdateResult(success = true, issues = issues, summary = summary)
     }
 
     private fun resolveConfirmedAssignment(
@@ -503,6 +609,74 @@ class ConferenceRepositoryImpl(
             it[SlotTable.updatedAtEpochMillis] = Instant.now().toEpochMilli()
         }
     }
+
+    private fun countPendingAssignmentsForConference(conferenceId: String): Int {
+        val positionIds = PositionTable.selectAll()
+            .where { PositionTable.conferenceId eq conferenceId }
+            .map { it[PositionTable.id] }
+            .toSet()
+        return countPendingAssignments(positionIds)
+    }
+
+    private fun countPendingAssignments(positionIds: Set<String>): Int {
+        if (positionIds.isEmpty()) return 0
+        return SlotTable.selectAll().where {
+            (SlotTable.positionId inList positionIds.toList()) and (SlotTable.assignmentSource eq AssignmentSource.Application.name)
+        }.count().toInt()
+    }
+
+    private fun loadSlotAssignments(positionIds: Set<String>): Map<Pair<String, Int>, SlotAssignment> {
+        if (positionIds.isEmpty()) return emptyMap()
+        return SlotTable.selectAll().where { SlotTable.positionId inList positionIds.toList() }
+            .mapNotNull { row ->
+                val delegateId = row[SlotTable.assignedDelegateId] ?: return@mapNotNull null
+                val source = row[SlotTable.assignmentSource] ?: return@mapNotNull null
+                (row[SlotTable.positionId] to row[SlotTable.slotIndex]) to SlotAssignment(delegateId, source)
+            }
+            .toMap()
+    }
+
+    private fun delegationChanged(row: ResultRow, incoming: MymunDelegationRow): Boolean =
+        row[DelegationTable.name] != incoming.name ||
+            row[DelegationTable.normalizedName] != normalize(incoming.name) ||
+            row[DelegationTable.country] != incoming.country ||
+            row[DelegationTable.expectedDelegateCount] != incoming.expectedDelegates ||
+            row[DelegationTable.currentDelegateCountFromMymun] != incoming.currentDelegates
+
+    private fun committeeChanged(row: ResultRow, mymunName: String, normalizedMymunName: String): Boolean =
+        row[CommitteeTable.mymunName] != mymunName ||
+            row[CommitteeTable.normalizedMymunName] != normalizedMymunName
+
+    private fun positionChanged(row: ResultRow, name: String, normalizedName: String): Boolean =
+        row[PositionTable.name] != name ||
+            row[PositionTable.normalizedName] != normalizedName
+
+    private fun questionChanged(row: ResultRow, questionText: String, normalizedQuestionText: String): Boolean =
+        row[DelegateQuestionTable.questionText] != questionText ||
+            row[DelegateQuestionTable.normalizedQuestionText] != normalizedQuestionText
+
+    private fun delegateChanged(row: ResultRow, incoming: MymunDelegateRow, delegationId: String?): Boolean =
+        row[DelegateTable.delegationId] != delegationId ||
+            row[DelegateTable.firstName] != incoming.firstName ||
+            row[DelegateTable.lastName] != incoming.lastName ||
+            row[DelegateTable.normalizedFirstName] != normalize(incoming.firstName) ||
+            row[DelegateTable.normalizedLastName] != normalize(incoming.lastName) ||
+            row[DelegateTable.email] != incoming.email.ifBlank { null } ||
+            row[DelegateTable.normalizedEmail] != incoming.normalizedEmail.ifBlank { null } ||
+            row[DelegateTable.country] != incoming.country ||
+            row[DelegateTable.city] != incoming.city ||
+            row[DelegateTable.streetAddress] != incoming.streetAddress ||
+            row[DelegateTable.zipCode] != incoming.zipCode ||
+            row[DelegateTable.diet] != incoming.diet ||
+            row[DelegateTable.phone] != incoming.phone ||
+            row[DelegateTable.nationality] != incoming.nationality ||
+            row[DelegateTable.dateOfBirth] != incoming.dateOfBirth?.toString() ||
+            row[DelegateTable.delegationNameFromMymun] != incoming.delegationName ||
+            row[DelegateTable.applicationStatus] != incoming.applicationStatus ||
+            row[DelegateTable.paymentStatus] != (if (incoming.feePaid) PaymentStatus.Paid.name else PaymentStatus.Unpaid.name) ||
+            row[DelegateTable.isHeadDelegate] != incoming.isHeadDelegate ||
+            row[DelegateTable.createdAtFromMymunEpochMillis] != incoming.createdAt?.toEpochMilliUtc() ||
+            row[DelegateTable.submittedAtEpochMillis] != incoming.submittedAt?.toEpochMilliUtc()
 
     private fun insertDelegate(
         conferenceId: String,
@@ -603,31 +777,74 @@ class ConferenceRepositoryImpl(
         retainedDelegationIds: Set<String>,
         retainedDelegateIds: Set<String>,
         retainedQuestionIds: Set<String>,
-    ) {
+    ): PrunedRowCounts {
+        var positions = 0
+        var committees = 0
+        var delegates = 0
+        var delegations = 0
+        var questions = 0
+
         PositionTable.selectAll().where { PositionTable.conferenceId eq conferenceId }
             .map { it[PositionTable.id] }
             .filterNot { it in retainedPositionIds }
-            .forEach { positionId -> PositionTable.deleteWhere { PositionTable.id eq positionId } }
+            .forEach { positionId ->
+                PositionTable.deleteWhere { PositionTable.id eq positionId }
+                positions++
+            }
 
         CommitteeTable.selectAll().where { CommitteeTable.conferenceId eq conferenceId }
             .map { it[CommitteeTable.id] }
             .filterNot { it in retainedCommitteeIds }
-            .forEach { committeeId -> CommitteeTable.deleteWhere { CommitteeTable.id eq committeeId } }
+            .forEach { committeeId ->
+                CommitteeTable.deleteWhere { CommitteeTable.id eq committeeId }
+                committees++
+            }
 
         DelegateTable.selectAll().where { DelegateTable.conferenceId eq conferenceId }
             .map { it[DelegateTable.id] }
             .filterNot { it in retainedDelegateIds }
-            .forEach { delegateId -> DelegateTable.deleteWhere { DelegateTable.id eq delegateId } }
+            .forEach { delegateId ->
+                DelegateTable.deleteWhere { DelegateTable.id eq delegateId }
+                delegates++
+            }
 
         DelegationTable.selectAll().where { DelegationTable.conferenceId eq conferenceId }
             .map { it[DelegationTable.id] }
             .filterNot { it in retainedDelegationIds }
-            .forEach { delegationId -> DelegationTable.deleteWhere { DelegationTable.id eq delegationId } }
+            .forEach { delegationId ->
+                DelegationTable.deleteWhere { DelegationTable.id eq delegationId }
+                delegations++
+            }
 
         DelegateQuestionTable.selectAll().where { DelegateQuestionTable.conferenceId eq conferenceId }
             .map { it[DelegateQuestionTable.id] }
             .filterNot { it in retainedQuestionIds }
-            .forEach { questionId -> DelegateQuestionTable.deleteWhere { DelegateQuestionTable.id eq questionId } }
+            .forEach { questionId ->
+                DelegateQuestionTable.deleteWhere { DelegateQuestionTable.id eq questionId }
+                questions++
+            }
+
+        return PrunedRowCounts(
+            positions = positions,
+            committees = committees,
+            delegates = delegates,
+            delegations = delegations,
+            questions = questions,
+        )
+    }
+
+    private fun insertUpdateIssue(updateRunId: String, issue: UpdateIssue) {
+        MymunUpdateIssueTable.insert {
+            it[MymunUpdateIssueTable.id] = UUID.randomUUID().toString()
+            it[MymunUpdateIssueTable.updateRunId] = updateRunId
+            it[MymunUpdateIssueTable.severity] = issue.severity.name
+            it[MymunUpdateIssueTable.code] = issue.code
+            it[MymunUpdateIssueTable.message] = issue.message
+            it[MymunUpdateIssueTable.sheetName] = issue.sheetName
+            it[MymunUpdateIssueTable.rowNumber] = issue.rowNumber
+            it[MymunUpdateIssueTable.columnNumber] = issue.columnNumber
+            it[MymunUpdateIssueTable.columnName] = issue.columnName
+        }
     }
 
     private suspend fun <T> db(block: suspend () -> T): T =
@@ -808,6 +1025,25 @@ class ConferenceRepositoryImpl(
 
     private fun LocalDate.toEpochMilliUtc(): Long = atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli()
 
+    private fun org.munika.assignment.data.excel.MymunValidationIssue.toUpdateIssue(): UpdateIssue =
+        UpdateIssue(
+            severity = if (severity == MymunValidationSeverity.Error) UpdateIssueSeverity.Error else UpdateIssueSeverity.Warning,
+            code = code,
+            message = message,
+            sheetName = location?.sheetName,
+            rowNumber = location?.rowNumber,
+            columnNumber = location?.columnNumber,
+            columnName = location?.columnName,
+        )
+
+    private fun MymunConfirmedAssignmentCandidate.countriesDelegatesLocation(): CellLocation =
+        CellLocation(
+            sheetName = "Countries",
+            rowNumber = countryRowNumber,
+            columnNumber = 4,
+            columnName = "Delegates",
+        )
+
     private val MymunDelegateRow.matchingIdentity: DelegateMatchingIdentity
         get() = DelegateMatchingIdentity(
             firstName = normalize(firstName),
@@ -835,6 +1071,70 @@ class ConferenceRepositoryImpl(
         val zipCode: String,
         val dateOfBirth: String?,
     )
+
+    private data class PrunedRowCounts(
+        val positions: Int,
+        val committees: Int,
+        val delegates: Int,
+        val delegations: Int,
+        val questions: Int,
+    )
+
+    private data class SlotAssignment(
+        val delegateId: String,
+        val assignmentSource: String,
+    )
+
+    private data class MutableUpdateSummary(
+        var delegatesCreated: Int = 0,
+        var delegatesUpdated: Int = 0,
+        var delegatesRemoved: Int = 0,
+        var committeesCreated: Int = 0,
+        var committeesUpdated: Int = 0,
+        var committeesRemoved: Int = 0,
+        var positionsCreated: Int = 0,
+        var positionsUpdated: Int = 0,
+        var positionsRemoved: Int = 0,
+        var slotsCreated: Int = 0,
+        var assignmentsConfirmed: Int = 0,
+        var pendingAssignmentsPreserved: Int = 0,
+        var pendingAssignmentsCleared: Int = 0,
+        var questionsCreated: Int = 0,
+        var questionsUpdated: Int = 0,
+        var questionsRemoved: Int = 0,
+        var delegationsCreated: Int = 0,
+        var delegationsUpdated: Int = 0,
+        var delegationsRemoved: Int = 0,
+        var preferencesWritten: Int = 0,
+        var answersWritten: Int = 0,
+    ) {
+        fun toSummary(issues: List<UpdateIssue>): UpdateSummary =
+            UpdateSummary(
+                blockingErrorCount = issues.count { it.severity == UpdateIssueSeverity.Error },
+                warningCount = issues.count { it.severity == UpdateIssueSeverity.Warning },
+                delegatesCreated = delegatesCreated,
+                delegatesUpdated = delegatesUpdated,
+                delegatesRemoved = delegatesRemoved,
+                committeesCreated = committeesCreated,
+                committeesUpdated = committeesUpdated,
+                committeesRemoved = committeesRemoved,
+                positionsCreated = positionsCreated,
+                positionsUpdated = positionsUpdated,
+                positionsRemoved = positionsRemoved,
+                slotsCreated = slotsCreated,
+                assignmentsConfirmed = assignmentsConfirmed,
+                pendingAssignmentsPreserved = pendingAssignmentsPreserved,
+                pendingAssignmentsCleared = pendingAssignmentsCleared,
+                questionsCreated = questionsCreated,
+                questionsUpdated = questionsUpdated,
+                questionsRemoved = questionsRemoved,
+                delegationsCreated = delegationsCreated,
+                delegationsUpdated = delegationsUpdated,
+                delegationsRemoved = delegationsRemoved,
+                preferencesWritten = preferencesWritten,
+                answersWritten = answersWritten,
+            )
+    }
 
     private data class ExistingDelegate(
         val id: String,

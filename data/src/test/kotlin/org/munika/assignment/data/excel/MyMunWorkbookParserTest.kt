@@ -1,10 +1,13 @@
 package org.munika.assignment.data.excel
 
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.nio.file.Paths
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import org.apache.poi.xssf.usermodel.XSSFWorkbook
 
 class MyMunWorkbookParserTest {
     private val parser = MyMunWorkbookParser()
@@ -89,5 +92,51 @@ class MyMunWorkbookParserTest {
         assertEquals("Germany", delegation.country)
         assertEquals(3, delegation.currentDelegates)
         assertEquals(7, delegation.expectedDelegates)
+    }
+
+    @Test
+    fun `invalid date cells become blocking validation issues`() {
+        val workbookBytes = ByteArrayOutputStream().use { output ->
+            XSSFWorkbook().use { workbook ->
+                val countries = workbook.createSheet("Countries")
+                countries.createRow(0).apply {
+                    createCell(0).setCellValue("Committee Name")
+                    createCell(1).setCellValue("Member Name")
+                    createCell(2).setCellValue("Delegation Name")
+                    createCell(3).setCellValue("Delegates")
+                }
+                countries.createRow(1).apply {
+                    createCell(0).setCellValue("GA")
+                    createCell(1).setCellValue("France")
+                }
+
+                val delegates = workbook.createSheet("Delegates")
+                delegates.createRow(0).apply {
+                    createCell(0).setCellValue("First Name")
+                    createCell(1).setCellValue("Last Name")
+                    createCell(2).setCellValue("Email")
+                    createCell(3).setCellValue("Fee Paid")
+                    createCell(4).setCellValue("Date of Birth")
+                }
+                delegates.createRow(1).apply {
+                    createCell(0).setCellValue("Alex")
+                    createCell(1).setCellValue("Kim")
+                    createCell(2).setCellValue("alex@example.test")
+                    createCell(3).setCellValue("yes")
+                    createCell(4).setCellValue("not-a-date")
+                }
+
+                workbook.write(output)
+            }
+            output.toByteArray()
+        }
+
+        val snapshot = parser.parse(ByteArrayInputStream(workbookBytes), "invalid-date.xlsx")
+
+        val issue = snapshot.issues.single { it.code == "invalid_date" }
+        assertEquals(MymunValidationSeverity.Error, issue.severity)
+        assertEquals("Delegates", issue.location?.sheetName)
+        assertEquals(2, issue.location?.rowNumber)
+        assertEquals("Date of Birth", issue.location?.columnName)
     }
 }

@@ -31,6 +31,7 @@ kotlin {
             implementation(compose.desktop.currentOs)
             implementation(libs.koin.core)
             implementation(libs.kotlinx.coroutinesSwing)
+            runtimeOnly(libs.slf4j.simple)
         }
     }
 }

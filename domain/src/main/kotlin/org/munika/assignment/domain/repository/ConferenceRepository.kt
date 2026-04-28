@@ -18,18 +18,3 @@ interface ConferenceRepository {
 
     suspend fun getConference(conferenceId: String): Conference?
 }
-
-data class UpdateResult(
-    val success: Boolean,
-    val issues: List<UpdateIssue>,
-)
-
-data class UpdateIssue(
-    val severity: UpdateIssueSeverity,
-    val message: String,
-)
-
-enum class UpdateIssueSeverity {
-    Warning,
-    Error,
-}
