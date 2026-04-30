@@ -37,3 +37,4 @@
 - Add a dark mode toggle.
 - Drag and drop of excel files.
 - Emojis for countries.
+- Fix all warnings.
