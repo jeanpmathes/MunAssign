@@ -36,6 +36,7 @@ Always read these project docs before substantial work:
 - Mutating operations should live on the concept that owns the invariant. For example, slot assignment rules belong on `Slot`.
 - MyMUN parsing should produce staging objects and validation issues before persistence. Blocking issues must prevent writes.
 - Compose functions should be small, stateless where practical, and driven by UI state from ViewModels.
+- UI controls and compact status indicators should have helpful tooltips unless their meaning is completely obvious from visible text.
 
 ## Documentation Comments
 

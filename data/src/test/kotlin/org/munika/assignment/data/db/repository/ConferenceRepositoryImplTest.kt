@@ -3,6 +3,7 @@ package org.munika.assignment.data.db.repository
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -128,6 +129,106 @@ class ConferenceRepositoryImplTest {
         }
 
         assertEquals(listOf(first.id, second.id), repository.listConferences().map { it.id })
+    }
+
+    @Test
+    fun `increasing committee slot count creates empty slots for every position`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-slot-increase").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(confirmedAssignments = emptyList())).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val committee = loaded.committees.single()
+
+        val updated = repository.setCommitteeSlotsPerPosition(conference.id.value, committee.id.value, 3)
+
+        val updatedCommittee = updated.committees.single()
+        assertEquals(3, updatedCommittee.slotsPerPosition)
+        assertTrue(updatedCommittee.positions.all { it.slots.map { slot -> slot.index } == listOf(1, 2, 3) })
+        assertTrue(updatedCommittee.positions.all { position -> position.slots.filter { it.index > 1 }.all { it.isEmpty } })
+    }
+
+    @Test
+    fun `decreasing committee slot count removes only empty trailing slots`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-slot-decrease").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(confirmedAssignments = emptyList())).success)
+        val committee = requireNotNull(repository.getConference(conference.id.value)).committees.single()
+        repository.setCommitteeSlotsPerPosition(conference.id.value, committee.id.value, 3)
+
+        val updated = repository.setCommitteeSlotsPerPosition(conference.id.value, committee.id.value, 1)
+
+        val updatedCommittee = updated.committees.single()
+        assertEquals(1, updatedCommittee.slotsPerPosition)
+        assertTrue(updatedCommittee.positions.all { it.slots.map { slot -> slot.index } == listOf(1) })
+        transaction(database) {
+            assertEquals(2, SlotTable.selectAll().count())
+        }
+    }
+
+    @Test
+    fun `decreasing committee slot count is blocked when removed slot is pending`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-slot-pending-block").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(confirmedAssignments = emptyList())).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val committee = loaded.committees.single()
+        val expanded = repository.setCommitteeSlotsPerPosition(conference.id.value, committee.id.value, 2)
+        val delegate = expanded.delegates.single()
+        val trailingSlot = expanded.positions.single { it.name == "Germany" }.slots.single { it.index == 2 }
+        transaction(database) {
+            SlotTable.update({ SlotTable.id eq trailingSlot.id.value }) {
+                it[assignedDelegateId] = delegate.id.value
+                it[assignmentSource] = AssignmentSource.Application.name
+                it[updatedAtEpochMillis] = 2L
+            }
+        }
+
+        assertFailsWith<IllegalArgumentException> {
+            repository.setCommitteeSlotsPerPosition(conference.id.value, committee.id.value, 1)
+        }
+
+        val reloaded = requireNotNull(repository.getConference(conference.id.value)).committees.single()
+        assertEquals(2, reloaded.slotsPerPosition)
+        assertEquals(1, requireNotNull(repository.getConference(conference.id.value)).pendingSlots.size)
+    }
+
+    @Test
+    fun `decreasing committee slot count is blocked when removed slot is confirmed`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-slot-confirmed-block").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(confirmedAssignments = emptyList())).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val committee = loaded.committees.single()
+        val expanded = repository.setCommitteeSlotsPerPosition(conference.id.value, committee.id.value, 2)
+        val delegate = expanded.delegates.single()
+        val trailingSlot = expanded.positions.single { it.name == "Germany" }.slots.single { it.index == 2 }
+        transaction(database) {
+            SlotTable.update({ SlotTable.id eq trailingSlot.id.value }) {
+                it[assignedDelegateId] = delegate.id.value
+                it[assignmentSource] = AssignmentSource.Mymun.name
+                it[updatedAtEpochMillis] = 2L
+            }
+        }
+
+        assertFailsWith<IllegalArgumentException> {
+            repository.setCommitteeSlotsPerPosition(conference.id.value, committee.id.value, 1)
+        }
+
+        val reloaded = requireNotNull(repository.getConference(conference.id.value)).committees.single()
+        assertEquals(2, reloaded.slotsPerPosition)
+        assertEquals(1, requireNotNull(repository.getConference(conference.id.value)).assignedSlots.size)
     }
 
     @Test

@@ -23,8 +23,10 @@ fun App(viewModel: MainViewModel, onOpenWorkbook: () -> Unit) {
                 onRenameConference = viewModel::renameConference,
                 onDeleteConference = viewModel::deleteConference,
                 onReorderConferences = viewModel::reorderConferences,
+                onSetCommitteeSlotsPerPosition = viewModel::setCommitteeSlotsPerPosition,
                 onOpenWorkbook = onOpenWorkbook,
                 onClearConferenceActionError = viewModel::clearConferenceActionError,
+                onClearBoardActionError = viewModel::clearBoardActionError,
             )
         }
     }

@@ -7,6 +7,7 @@ import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.greater
 import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.neq
 import org.jetbrains.exposed.v1.core.or
@@ -151,6 +152,61 @@ class ConferenceRepositoryImpl(
                 }
             }
         }
+    }
+
+    override suspend fun setCommitteeSlotsPerPosition(
+        conferenceId: String,
+        committeeId: String,
+        slotsPerPosition: Int,
+    ): Conference = db {
+        require(slotsPerPosition >= 1) { "Committee slot count must be at least 1." }
+        val committee = requireNotNull(
+            CommitteeTable.selectAll()
+                .where { (CommitteeTable.id eq committeeId) and (CommitteeTable.conferenceId eq conferenceId) }
+                .singleOrNull(),
+        ) { "Committee $committeeId does not belong to conference $conferenceId." }
+        val currentSlotsPerPosition = committee[CommitteeTable.slotsPerPosition]
+        if (currentSlotsPerPosition == slotsPerPosition) {
+            return@db loadConferenceGraph(conferenceId)
+        }
+
+        val positionIds = PositionTable.selectAll()
+            .where { PositionTable.committeeId eq committeeId }
+            .map { it[PositionTable.id] }
+        if (slotsPerPosition < currentSlotsPerPosition && positionIds.isNotEmpty()) {
+            val occupiedRemovedSlot = SlotTable.selectAll().where {
+                (SlotTable.positionId inList positionIds) and
+                    (SlotTable.slotIndex greater slotsPerPosition) and
+                    (SlotTable.assignedDelegateId neq null)
+            }.firstOrNull()
+            require(occupiedRemovedSlot == null) {
+                "Cannot reduce slot count because one or more removed slots are occupied."
+            }
+        }
+
+        val now = Instant.now().toEpochMilli()
+        if (slotsPerPosition > currentSlotsPerPosition) {
+            positionIds.forEach { positionId ->
+                val existingSlotIndexes = SlotTable.selectAll().where { SlotTable.positionId eq positionId }
+                    .map { it[SlotTable.slotIndex] }
+                    .toSet()
+                ((currentSlotsPerPosition + 1)..slotsPerPosition)
+                    .filterNot { it in existingSlotIndexes }
+                    .forEach { slotIndex -> insertEmptySlot(positionId, slotIndex) }
+            }
+        } else if (positionIds.isNotEmpty()) {
+            SlotTable.deleteWhere {
+                (SlotTable.positionId inList positionIds) and (SlotTable.slotIndex greater slotsPerPosition)
+            }
+        }
+
+        CommitteeTable.update({ CommitteeTable.id eq committeeId }) {
+            it[CommitteeTable.slotsPerPosition] = slotsPerPosition
+        }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[ConferenceTable.updatedAtEpochMillis] = now
+        }
+        loadConferenceGraph(conferenceId)
     }
 
     override suspend fun getConference(conferenceId: String): Conference? = db {

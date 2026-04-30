@@ -138,6 +138,49 @@ class MainViewModel(
         _state.update { it.copy(conferenceActionError = null) }
     }
 
+    fun clearBoardActionError() {
+        _state.update { it.copy(boardActionError = null) }
+    }
+
+    fun setCommitteeSlotsPerPosition(committeeId: String, slotsPerPosition: Int) {
+        val selectedId = selectedIdOrNull() ?: return
+        if (slotsPerPosition < 1) {
+            _state.update { it.copy(boardActionError = "Committee slot count must be at least 1.") }
+            return
+        }
+        scope.launch {
+            _state.update { it.copy(loading = true, boardActionError = null) }
+            try {
+                val conference = repository.setCommitteeSlotsPerPosition(selectedId, committeeId, slotsPerPosition)
+                _state.update {
+                    it.copy(
+                        selectedConference = conference,
+                        loading = false,
+                        boardActionError = null,
+                    )
+                }
+            } catch (exception: IllegalArgumentException) {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        boardActionError = exception.message ?: "Slot count could not be changed.",
+                    )
+                }
+            } catch (exception: Exception) {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        boardActionError = "Slot count update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
+                    )
+                }
+            }
+        }
+    }
+
+    fun requestScrollToPosition(committeeId: String, positionId: String) {
+        _state.update { it.copy(boardScrollRequest = BoardScrollRequest(committeeId = committeeId, positionId = positionId)) }
+    }
+
     fun updateFromWorkbook(path: Path) {
         val selectedId = selectedIdOrNull() ?: return
         scope.launch {
@@ -214,4 +257,6 @@ data class MainUiState(
     val updateIssues: List<UpdateIssue> = emptyList(),
     val updateSummary: UpdateSummary? = null,
     val conferenceActionError: String? = null,
+    val boardActionError: String? = null,
+    val boardScrollRequest: BoardScrollRequest? = null,
 )

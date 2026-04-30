@@ -18,5 +18,17 @@ interface ConferenceRepository {
 
     suspend fun reorderConferences(conferenceIdsInOrder: List<String>)
 
+    /**
+     * Sets the uniform slot count for every position in one committee.
+     *
+     * Implementations must create missing empty slots when increasing the count and reject
+     * reductions that would remove occupied slots.
+     */
+    suspend fun setCommitteeSlotsPerPosition(
+        conferenceId: String,
+        committeeId: String,
+        slotsPerPosition: Int,
+    ): Conference
+
     suspend fun getConference(conferenceId: String): Conference?
 }

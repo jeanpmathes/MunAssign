@@ -76,7 +76,9 @@ import org.munika.assignment.domain.model.PaymentStatus
 import org.munika.assignment.domain.repository.UpdateIssue
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
 import org.munika.assignment.domain.repository.UpdateSummary
+import org.munika.assignment.ui.screen.component.AssignmentBoard
 import org.munika.assignment.ui.viewmodel.MainUiState
+import org.munika.assignment.ui.viewmodel.toAssignmentBoardUiState
 
 @Composable
 fun MainScreen(
@@ -86,8 +88,10 @@ fun MainScreen(
     onRenameConference: (String, String) -> Boolean,
     onDeleteConference: (String) -> Unit,
     onReorderConferences: (List<String>) -> Boolean,
+    onSetCommitteeSlotsPerPosition: (String, Int) -> Unit,
     onOpenWorkbook: () -> Unit,
     onClearConferenceActionError: () -> Unit,
+    onClearBoardActionError: () -> Unit,
 ) {
     var createDialogOpen by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<Conference?>(null) }
@@ -134,7 +138,10 @@ fun MainScreen(
                         loading = state.loading,
                         summary = state.updateSummary,
                         issues = state.updateIssues,
-                        onOpenWorkbook = onOpenWorkbook,
+                        boardActionError = state.boardActionError,
+                        boardScrollRequest = state.boardScrollRequest,
+                        onSetCommitteeSlotsPerPosition = onSetCommitteeSlotsPerPosition,
+                        onClearBoardActionError = onClearBoardActionError,
                     )
                 }
             }
@@ -465,19 +472,22 @@ private fun ConferenceWorkspace(
     loading: Boolean,
     summary: UpdateSummary?,
     issues: List<UpdateIssue>,
-    onOpenWorkbook: () -> Unit,
+    boardActionError: String?,
+    boardScrollRequest: org.munika.assignment.ui.viewmodel.BoardScrollRequest?,
+    onSetCommitteeSlotsPerPosition: (String, Int) -> Unit,
+    onClearBoardActionError: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         UpdateResultSurface(summary = summary, issues = issues)
-        Card(border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-            Column(modifier = Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Assignment board", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text("${conference.committees.size} committees, ${conference.positions.size} positions, ${conference.slots.size} slots")
-                if (conference.delegates.none { it.active && it.paymentStatus == PaymentStatus.Paid }) {
-                    Text("No visible active paid delegates yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
+        AssignmentBoard(
+            board = conference.toAssignmentBoardUiState(),
+            loading = loading,
+            actionError = boardActionError,
+            scrollRequest = boardScrollRequest,
+            onSetCommitteeSlotsPerPosition = onSetCommitteeSlotsPerPosition,
+            onClearActionError = onClearBoardActionError,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 

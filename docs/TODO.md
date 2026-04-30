@@ -1,15 +1,5 @@
 # TODO
 
-## Next - Assignment Board
-
-- Build the main horizontally scrollable board with top stats, committee columns, position cards, and slot rows.
-- Render empty, pending, and assigned slot states with clear visual distinction.
-- Show interested delegate counts and inline interested delegates when no delegate is assigned.
-- Apply unpaid/inactive visibility rules and grey out confirmed-assigned delegates where they appear as interested elsewhere.
-- Preserve board scroll position after updates and assignment actions.
-- Drive scroll-to-position/slot navigation through ViewModel events, with each committee column owning its list state.
-- Replace the current assignment-board placeholder in the main workspace.
-
 ## Next - Assignment Actions
 
 - Add right-click slot context menus using Compose pointer input for secondary-button release.
