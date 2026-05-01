@@ -177,6 +177,73 @@ class MainViewModel(
         }
     }
 
+    fun assignDelegateToSlot(slotId: String, delegateId: String, moveExistingPending: Boolean) {
+        val selectedId = selectedIdOrNull() ?: return
+        scope.launch {
+            _state.update { it.copy(loading = true, boardActionError = null) }
+            try {
+                val conference = repository.assignDelegateToSlot(
+                    conferenceId = selectedId,
+                    slotId = slotId,
+                    delegateId = delegateId,
+                    moveExistingPending = moveExistingPending,
+                )
+                _state.update {
+                    it.copy(
+                        selectedConference = conference,
+                        loading = false,
+                        boardActionError = null,
+                    )
+                }
+            } catch (exception: IllegalArgumentException) {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        boardActionError = exception.message ?: "Assignment could not be changed.",
+                    )
+                }
+            } catch (exception: Exception) {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        boardActionError = "Assignment update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
+                    )
+                }
+            }
+        }
+    }
+
+    fun clearPendingSlot(slotId: String) {
+        val selectedId = selectedIdOrNull() ?: return
+        scope.launch {
+            _state.update { it.copy(loading = true, boardActionError = null) }
+            try {
+                val conference = repository.clearPendingSlot(selectedId, slotId)
+                _state.update {
+                    it.copy(
+                        selectedConference = conference,
+                        loading = false,
+                        boardActionError = null,
+                    )
+                }
+            } catch (exception: IllegalArgumentException) {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        boardActionError = exception.message ?: "Pending assignment could not be cleared.",
+                    )
+                }
+            } catch (exception: Exception) {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        boardActionError = "Assignment clear failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
+                    )
+                }
+            }
+        }
+    }
+
     fun requestScrollToPosition(committeeId: String, positionId: String) {
         _state.update { it.copy(boardScrollRequest = BoardScrollRequest(committeeId = committeeId, positionId = positionId)) }
     }

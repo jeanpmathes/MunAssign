@@ -1,16 +1,6 @@
 # TODO
 
-## Next - Assignment Actions
-
-- Add right-click slot context menus using Compose pointer input for secondary-button release.
-- Support pending assignment from interested delegates.
-- Support manual assignment of active paid delegates even without expressed interest.
-- Support clearing and replacing pending assignments.
-- Keep confirmed assignments controlled by MyMUN updates only.
-- Persist assignment actions through repository/use-case calls and refresh board state.
-- Add tests for slot mutation invariants and persistence behavior.
-
-## Later - Delegate Detail And List
+## Next - Delegate Detail And List
 
 - Make visible delegate names clickable.
 - Add side panel with imported profile data, assignment state, preferences, configured question answers, comments, delegation context, and deactivate/reactivate controls.
@@ -38,3 +28,8 @@
 - Drag and drop of excel files.
 - Emojis for countries.
 - Fix all warnings.
+- Improve upload experience (no weird message) and the UI when conference is empty.
+
+## Experimental
+
+- Consider drag and drop for assignment workflows. Interested delegate bubbles could be dragged onto open slots, and pending assignments could be dragged between slots with the same MyMUN-confirmed assignment protections used by the current buttons/dialogs.

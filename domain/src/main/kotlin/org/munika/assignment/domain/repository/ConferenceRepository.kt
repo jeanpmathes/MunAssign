@@ -30,5 +30,26 @@ interface ConferenceRepository {
         slotsPerPosition: Int,
     ): Conference
 
+    /**
+     * Creates or replaces a pending MunAssign assignment for one slot.
+     *
+     * Implementations must never overwrite MyMUN-confirmed assignments. If the chosen delegate
+     * already has a pending assignment elsewhere, [moveExistingPending] controls whether that
+     * existing pending assignment is moved or rejected.
+     */
+    suspend fun assignDelegateToSlot(
+        conferenceId: String,
+        slotId: String,
+        delegateId: String,
+        moveExistingPending: Boolean,
+    ): Conference
+
+    /**
+     * Clears a pending MunAssign assignment from one slot.
+     *
+     * MyMUN-confirmed assignments are controlled only by later MyMUN updates and must be rejected.
+     */
+    suspend fun clearPendingSlot(conferenceId: String, slotId: String): Conference
+
     suspend fun getConference(conferenceId: String): Conference?
 }

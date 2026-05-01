@@ -27,6 +27,7 @@ data class PositionBoardUiState(
     val name: String,
     val slots: List<SlotBoardUiState>,
     val interestedDelegates: List<InterestedDelegateUiState>,
+    val assignmentCandidates: List<AssignmentDelegateCandidateUiState>,
 ) {
     val occupiedSlotCount: Int = slots.count { it.status != SlotBoardStatus.Empty }
     val shouldShowInterestedDelegates: Boolean = occupiedSlotCount == 0
@@ -38,15 +39,29 @@ data class SlotBoardUiState(
     val index: Int,
     val status: SlotBoardStatus,
     val delegateName: String?,
+    val delegateId: String?,
     val matchesDelegatePreference: Boolean,
+    val positionName: String,
 )
 
 data class InterestedDelegateUiState(
     val id: String,
     val name: String,
     val preferenceRank: Int,
+    val pendingAssignmentLabel: String?,
     val confirmedAssignmentLabel: String?,
 )
+
+data class AssignmentDelegateCandidateUiState(
+    val id: String,
+    val name: String,
+    val preferenceRank: Int?,
+    val pendingAssignmentLabel: String?,
+    val confirmedAssignmentLabel: String?,
+) {
+    val canAssign: Boolean = confirmedAssignmentLabel == null
+    val isPendingElsewhere: Boolean = pendingAssignmentLabel != null
+}
 
 enum class SlotBoardStatus {
     Empty,
@@ -89,10 +104,28 @@ private fun Position.toBoardUiState(): PositionBoardUiState =
                     id = delegate.id.value,
                     name = delegate.displayName,
                     preferenceRank = rank,
+                    pendingAssignmentLabel = delegate.pendingAssignmentLabelUnless(this),
                     confirmedAssignmentLabel = delegate.confirmedAssignmentLabelUnless(this),
                 )
             }
             .sortedWith(compareBy<InterestedDelegateUiState> { it.preferenceRank }.thenBy { it.name }),
+        assignmentCandidates = conference.delegates
+            .filter { it.visibleOnAssignmentBoard() }
+            .filter { it.currentSlot?.isAssigned != true }
+            .map { delegate ->
+                AssignmentDelegateCandidateUiState(
+                    id = delegate.id.value,
+                    name = delegate.displayName,
+                    preferenceRank = delegate.preferences.firstOrNull { it.position === this }?.rank,
+                    pendingAssignmentLabel = delegate.pendingAssignmentLabel(),
+                    confirmedAssignmentLabel = delegate.confirmedAssignmentLabel(),
+                )
+            }
+            .sortedWith(
+                compareBy<AssignmentDelegateCandidateUiState> { it.assignmentSortRank }
+                    .thenBy { it.preferenceRank ?: Int.MAX_VALUE }
+                    .thenBy { it.name },
+            ),
     )
 
 private fun Slot.toBoardUiState(): SlotBoardUiState =
@@ -105,7 +138,9 @@ private fun Slot.toBoardUiState(): SlotBoardUiState =
             AssignmentStatus.Assigned -> SlotBoardStatus.Assigned
         },
         delegateName = delegate?.displayName,
+        delegateId = delegate?.id?.value,
         matchesDelegatePreference = matchesDelegatePreference,
+        positionName = position.name,
     )
 
 private fun Delegate.visibleOnAssignmentBoard(): Boolean =
@@ -116,3 +151,28 @@ private fun Delegate.confirmedAssignmentLabelUnless(position: Position): String?
     if (assignedPosition === position || currentSlot?.isAssigned != true) return null
     return "${assignedPosition.committee.displayName} (${assignedPosition.name})"
 }
+
+private fun Delegate.pendingAssignmentLabelUnless(position: Position): String? {
+    val assignedPosition = currentPosition ?: return null
+    if (assignedPosition === position || currentSlot?.isPending != true) return null
+    return "${assignedPosition.committee.displayName} (${assignedPosition.name})"
+}
+
+private fun Delegate.confirmedAssignmentLabel(): String? {
+    val assignedPosition = currentPosition ?: return null
+    if (currentSlot?.isAssigned != true) return null
+    return "${assignedPosition.committee.displayName} (${assignedPosition.name})"
+}
+
+private fun Delegate.pendingAssignmentLabel(): String? {
+    val assignedPosition = currentPosition ?: return null
+    if (currentSlot?.isPending != true) return null
+    return "${assignedPosition.committee.displayName} (${assignedPosition.name})"
+}
+
+private val AssignmentDelegateCandidateUiState.assignmentSortRank: Int
+    get() = when {
+        confirmedAssignmentLabel != null -> 2
+        pendingAssignmentLabel != null -> 1
+        else -> 0
+    }

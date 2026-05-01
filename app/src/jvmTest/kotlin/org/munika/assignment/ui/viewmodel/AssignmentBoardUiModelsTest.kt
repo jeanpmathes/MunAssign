@@ -52,6 +52,20 @@ class AssignmentBoardUiModelsTest {
         )
     }
 
+    @Test
+    fun `assignment candidates include assignable active paid delegates and mark pending elsewhere`() {
+        val board = board()
+        board.france.slots.single().assign(board.available, AssignmentSource.Application, Instant.EPOCH)
+        board.germanySlot.assign(board.confirmedElsewhere, AssignmentSource.Mymun, Instant.EPOCH)
+
+        val germany = board.conference.toAssignmentBoardUiState()
+            .committees.single()
+            .positions.single { it.name == "Germany" }
+
+        assertEquals(listOf("Neutral Delegate", "Available Delegate"), germany.assignmentCandidates.map { it.name })
+        assertEquals("GA (France)", germany.assignmentCandidates.single { it.name == "Available Delegate" }.pendingAssignmentLabel)
+    }
+
     private fun board(slotCount: Int = 1): Board {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val committee = Committee(CommitteeId("committee"), conference, "GA", slotsPerPosition = slotCount)
@@ -61,10 +75,11 @@ class AssignmentBoardUiModelsTest {
         val unpaid = delegate(conference, "unpaid", "Unpaid", "Delegate", PaymentStatus.Unpaid, active = true)
         val inactive = delegate(conference, "inactive", "Inactive", "Delegate", PaymentStatus.Paid, active = false)
         val confirmedElsewhere = delegate(conference, "confirmed", "Confirmed", "Elsewhere", PaymentStatus.Paid, active = true)
+        val neutral = delegate(conference, "neutral", "Neutral", "Delegate", PaymentStatus.Paid, active = true)
 
         conference.committees += committee
         committee.positions += listOf(france, germany)
-        conference.delegates += listOf(available, unpaid, inactive, confirmedElsewhere)
+        conference.delegates += listOf(available, unpaid, inactive, confirmedElsewhere, neutral)
         france.slots += (1..slotCount).map { Slot(SlotId("france-$it"), france, it, Instant.EPOCH) }
         germany.slots += Slot(SlotId("germany-1"), germany, 1, Instant.EPOCH)
         listOf(available, unpaid, inactive, confirmedElsewhere).forEachIndexed { index, delegate ->

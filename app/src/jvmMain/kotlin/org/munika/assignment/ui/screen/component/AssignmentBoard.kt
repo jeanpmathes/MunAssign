@@ -33,6 +33,8 @@ fun AssignmentBoard(
     actionError: String?,
     scrollRequest: BoardScrollRequest?,
     onSetCommitteeSlotsPerPosition: (String, Int) -> Unit,
+    onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
+    onClearPendingSlot: (slotId: String) -> Unit,
     onClearActionError: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -84,6 +86,8 @@ fun AssignmentBoard(
                     loading = loading,
                     listState = columnListStates.getOrPut(committee.id) { LazyListState() },
                     onSetSlotsPerPosition = onSetCommitteeSlotsPerPosition,
+                    onAssignDelegateToSlot = onAssignDelegateToSlot,
+                    onClearPendingSlot = onClearPendingSlot,
                 )
             }
         }

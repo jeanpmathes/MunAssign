@@ -39,7 +39,7 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It k
 3. The parser builds a staging snapshot and validation issues before writing.
 4. Blocking validation errors abort the update and leave the database unchanged.
 5. The board shows committees as columns, positions as cards, and slots as rows.
-6. Right-click actions can create or clear pending assignments, but cannot locally confirm a final assignment.
+6. Slot controls can create or clear pending assignments, but cannot locally confirm a final assignment.
 7. Later MyMUN updates reconcile confirmed assignments from `Countries.Delegates`.
 
 ## UI Requirements
@@ -70,4 +70,4 @@ The parser should tolerate whitespace variation in headers and comma-separated `
 - Foreign keys should cascade for conference-owned data.
 - Assignment difficulty is computed from current state when needed; it is not stored on `Delegate`.
 - Scroll-to-position/slot navigation should be driven by ViewModel events, with each committee column owning its list state.
-- Right-click slot menus should use Compose pointer input for secondary-button release.
+- Slot assignment actions should be available through visible row controls; secondary-button menus may mirror those actions for faster desktop use.

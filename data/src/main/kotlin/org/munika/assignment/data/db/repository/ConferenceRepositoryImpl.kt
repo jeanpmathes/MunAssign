@@ -216,6 +216,98 @@ class ConferenceRepositoryImpl(
         loadConferenceGraph(conferenceId)
     }
 
+    override suspend fun assignDelegateToSlot(
+        conferenceId: String,
+        slotId: String,
+        delegateId: String,
+        moveExistingPending: Boolean,
+    ): Conference = db {
+        val slot = requireSlotInConference(conferenceId, slotId)
+        require(slot[SlotTable.assignmentSource] != AssignmentSource.Mymun.name) {
+            "Confirmed assignments are controlled by MyMUN updates and cannot be changed in MunAssign."
+        }
+        val replacedDelegateId = slot[SlotTable.assignedDelegateId]
+
+        val delegate = requireNotNull(
+            DelegateTable.selectAll()
+                .where { (DelegateTable.id eq delegateId) and (DelegateTable.conferenceId eq conferenceId) }
+                .singleOrNull(),
+        ) { "Delegate $delegateId does not belong to conference $conferenceId." }
+        require(delegate[DelegateTable.active]) { "Only active delegates can be manually assigned." }
+        require(delegate[DelegateTable.paymentStatus] == PaymentStatus.Paid.name) {
+            "Only paid delegates can be manually assigned."
+        }
+
+        val existingAssignment = SlotTable.selectAll()
+            .where { SlotTable.assignedDelegateId eq delegateId }
+            .singleOrNull()
+        if (existingAssignment != null && existingAssignment[SlotTable.id] != slotId) {
+            when (existingAssignment[SlotTable.assignmentSource]) {
+                AssignmentSource.Mymun.name -> {
+                    throw IllegalArgumentException(
+                        "Confirmed assignments are controlled by MyMUN updates and cannot be moved in MunAssign.",
+                    )
+                }
+                AssignmentSource.Application.name -> {
+                    require(moveExistingPending) {
+                        "Delegate already has a pending assignment. Confirm moving it before assigning a new slot."
+                    }
+                    clearSlotAssignment(existingAssignment[SlotTable.id], Instant.now().toEpochMilli())
+                    logger.info(
+                        "Moved pending assignment delegate={} fromSlot={} toSlot={} conference={}",
+                        delegateId,
+                        existingAssignment[SlotTable.id],
+                        slotId,
+                        conferenceId,
+                    )
+                }
+                else -> error("Assigned delegate ${delegate[DelegateTable.id]} has no assignment source.")
+            }
+        }
+
+        val now = Instant.now().toEpochMilli()
+        SlotTable.update({ SlotTable.id eq slotId }) {
+            it[assignedDelegateId] = delegateId
+            it[assignmentSource] = AssignmentSource.Application.name
+            it[updatedAtEpochMillis] = now
+        }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = now
+        }
+        logger.info(
+            "Assigned delegate={} to slot={} conference={} source={} replacedDelegate={}",
+            delegateId,
+            slotId,
+            conferenceId,
+            AssignmentSource.Application.name,
+            replacedDelegateId,
+        )
+        loadConferenceGraph(conferenceId)
+    }
+
+    override suspend fun clearPendingSlot(conferenceId: String, slotId: String): Conference = db {
+        val slot = requireSlotInConference(conferenceId, slotId)
+        require(slot[SlotTable.assignmentSource] != AssignmentSource.Mymun.name) {
+            "Confirmed assignments are controlled by MyMUN updates and cannot be cleared in MunAssign."
+        }
+        require(slot[SlotTable.assignmentSource] == AssignmentSource.Application.name) {
+            "Only pending MunAssign assignments can be cleared."
+        }
+
+        val now = Instant.now().toEpochMilli()
+        clearSlotAssignment(slotId, now)
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = now
+        }
+        logger.info(
+            "Cleared pending assignment slot={} delegate={} conference={}",
+            slotId,
+            slot[SlotTable.assignedDelegateId],
+            conferenceId,
+        )
+        loadConferenceGraph(conferenceId)
+    }
+
     /**
      * Applies an already parsed MyMUN update snapshot to one conference.
      *
@@ -690,6 +782,29 @@ class ConferenceRepositoryImpl(
             it[SlotTable.assignedDelegateId] = null
             it[SlotTable.assignmentSource] = null
             it[SlotTable.updatedAtEpochMillis] = Instant.now().toEpochMilli()
+        }
+    }
+
+    private fun requireSlotInConference(conferenceId: String, slotId: String): ResultRow {
+        val slot = requireNotNull(SlotTable.selectAll().where { SlotTable.id eq slotId }.singleOrNull()) {
+            "Slot $slotId does not exist."
+        }
+        val position = requireNotNull(
+            PositionTable.selectAll()
+                .where { (PositionTable.id eq slot[SlotTable.positionId]) and (PositionTable.conferenceId eq conferenceId) }
+                .singleOrNull(),
+        ) { "Slot $slotId does not belong to conference $conferenceId." }
+        require(position[PositionTable.conferenceId] == conferenceId) {
+            "Slot $slotId does not belong to conference $conferenceId."
+        }
+        return slot
+    }
+
+    private fun clearSlotAssignment(slotId: String, updatedAt: Long) {
+        SlotTable.update({ SlotTable.id eq slotId }) {
+            it[assignedDelegateId] = null
+            it[assignmentSource] = null
+            it[updatedAtEpochMillis] = updatedAt
         }
     }
 

@@ -89,6 +89,8 @@ fun MainScreen(
     onDeleteConference: (String) -> Unit,
     onReorderConferences: (List<String>) -> Boolean,
     onSetCommitteeSlotsPerPosition: (String, Int) -> Unit,
+    onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
+    onClearPendingSlot: (slotId: String) -> Unit,
     onOpenWorkbook: () -> Unit,
     onClearConferenceActionError: () -> Unit,
     onClearBoardActionError: () -> Unit,
@@ -141,6 +143,8 @@ fun MainScreen(
                         boardActionError = state.boardActionError,
                         boardScrollRequest = state.boardScrollRequest,
                         onSetCommitteeSlotsPerPosition = onSetCommitteeSlotsPerPosition,
+                        onAssignDelegateToSlot = onAssignDelegateToSlot,
+                        onClearPendingSlot = onClearPendingSlot,
                         onClearBoardActionError = onClearBoardActionError,
                     )
                 }
@@ -345,6 +349,9 @@ private fun ConferenceStats(conference: Conference) {
     val assignedActivePaidDelegates = conference.delegates.count {
         it.active && it.paymentStatus == PaymentStatus.Paid && it.currentSlot != null
     }
+    val pendingActivePaidDelegates = conference.delegates.count {
+        it.active && it.paymentStatus == PaymentStatus.Paid && it.currentSlot?.isPending == true
+    }
     val totalSlots = conference.slots.size
     val filledSlots = conference.pendingSlots.size + conference.assignedSlots.size
 
@@ -356,8 +363,8 @@ private fun ConferenceStats(conference: Conference) {
         )
         StatGroup(
             label = "Delegates",
-            value = "$assignedActivePaidDelegates / $activePaidDelegates assigned",
-            tooltip = "Active paid delegates assigned to any slot out of all active paid delegates.",
+            value = "$assignedActivePaidDelegates / $activePaidDelegates assigned · $pendingActivePaidDelegates pending",
+            tooltip = "Active paid delegates assigned to any pending or confirmed slot out of all active paid delegates. Pending counts app-created assignments still waiting for MyMUN confirmation.",
         )
         StatGroup(
             label = "Slots",
@@ -475,6 +482,8 @@ private fun ConferenceWorkspace(
     boardActionError: String?,
     boardScrollRequest: org.munika.assignment.ui.viewmodel.BoardScrollRequest?,
     onSetCommitteeSlotsPerPosition: (String, Int) -> Unit,
+    onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
+    onClearPendingSlot: (slotId: String) -> Unit,
     onClearBoardActionError: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -485,6 +494,8 @@ private fun ConferenceWorkspace(
             actionError = boardActionError,
             scrollRequest = boardScrollRequest,
             onSetCommitteeSlotsPerPosition = onSetCommitteeSlotsPerPosition,
+            onAssignDelegateToSlot = onAssignDelegateToSlot,
+            onClearPendingSlot = onClearPendingSlot,
             onClearActionError = onClearBoardActionError,
             modifier = Modifier.weight(1f),
         )

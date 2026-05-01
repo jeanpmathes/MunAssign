@@ -46,6 +46,8 @@ fun CommitteeColumn(
     loading: Boolean,
     listState: LazyListState,
     onSetSlotsPerPosition: (String, Int) -> Unit,
+    onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
+    onClearPendingSlot: (slotId: String) -> Unit,
 ) {
     var blockedReductionMessage by remember(committee.id, committee.slotsPerPosition) { mutableStateOf<String?>(null) }
 
@@ -79,7 +81,11 @@ fun CommitteeColumn(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(committee.positions, key = { it.id }) { position ->
-                    PositionCard(position = position)
+                    PositionCard(
+                        position = position,
+                        onAssignDelegateToSlot = onAssignDelegateToSlot,
+                        onClearPendingSlot = onClearPendingSlot,
+                    )
                 }
             }
         }

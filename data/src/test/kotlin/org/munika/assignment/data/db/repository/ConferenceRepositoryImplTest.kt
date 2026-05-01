@@ -6,6 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import org.jetbrains.exposed.v1.core.eq
@@ -37,6 +38,7 @@ import org.munika.assignment.data.excel.MymunWorkbookSnapshot
 import org.munika.assignment.data.excel.MymunWorkbookUpdater
 import org.munika.assignment.domain.model.AssignmentSource
 import org.munika.assignment.domain.model.MunExperienceLevel
+import org.munika.assignment.domain.model.PaymentStatus
 import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
@@ -229,6 +231,174 @@ class ConferenceRepositoryImplTest {
         val reloaded = requireNotNull(repository.getConference(conference.id.value)).committees.single()
         assertEquals(2, reloaded.slotsPerPosition)
         assertEquals(1, requireNotNull(repository.getConference(conference.id.value)).assignedSlots.size)
+    }
+
+    @Test
+    fun `manual assignment persists as pending`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-manual-assign").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(confirmedAssignments = emptyList())).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val delegate = loaded.delegates.single()
+        val slot = loaded.openSlots.first()
+
+        val updated = repository.assignDelegateToSlot(conference.id.value, slot.id.value, delegate.id.value, moveExistingPending = false)
+
+        val pendingSlot = updated.pendingSlots.single()
+        assertEquals(slot.id, pendingSlot.id)
+        assertEquals(delegate.id, pendingSlot.delegate?.id)
+        assertEquals(AssignmentSource.Application, pendingSlot.source)
+    }
+
+    @Test
+    fun `clearing pending slot persists and frees delegate`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-clear-pending").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(confirmedAssignments = emptyList())).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val delegate = loaded.delegates.single()
+        val slot = loaded.openSlots.first()
+        repository.assignDelegateToSlot(conference.id.value, slot.id.value, delegate.id.value, moveExistingPending = false)
+
+        val updated = repository.clearPendingSlot(conference.id.value, slot.id.value)
+
+        assertTrue(updated.pendingSlots.isEmpty())
+        assertNull(updated.delegates.single().currentSlot)
+    }
+
+    @Test
+    fun `manual assignment replaces pending slot with unassigned delegate`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-replace-pending").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val delegates = listOf(
+            delegate(rowNumber = 2, firstName = "Alex", lastName = "Kim", email = "alex@example.test"),
+            delegate(rowNumber = 3, firstName = "Blake", lastName = "Roy", email = "blake@example.test"),
+        )
+
+        assertTrue(
+            repository.applyMymunUpdateSnapshot(
+                conference.id.value,
+                snapshotWithAssignments(delegates = delegates, confirmedAssignments = emptyList()),
+            ).success,
+        )
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val firstDelegate = loaded.delegates.single { it.name.firstName == "Alex" }
+        val secondDelegate = loaded.delegates.single { it.name.firstName == "Blake" }
+        val slot = loaded.openSlots.first()
+        repository.assignDelegateToSlot(conference.id.value, slot.id.value, firstDelegate.id.value, moveExistingPending = false)
+
+        val updated = repository.assignDelegateToSlot(conference.id.value, slot.id.value, secondDelegate.id.value, moveExistingPending = false)
+
+        assertEquals(secondDelegate.id, updated.pendingSlots.single().delegate?.id)
+        assertNull(updated.delegates.single { it.id == firstDelegate.id }.currentSlot)
+    }
+
+    @Test
+    fun `manual assignment requires confirmation before moving existing pending assignment`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-move-pending").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(confirmedAssignments = emptyList())).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val delegate = loaded.delegates.single()
+        val sourceSlot = loaded.positions.single { it.name == "France" }.slots.single()
+        val targetSlot = loaded.positions.single { it.name == "Germany" }.slots.single()
+        repository.assignDelegateToSlot(conference.id.value, sourceSlot.id.value, delegate.id.value, moveExistingPending = false)
+
+        assertFailsWith<IllegalArgumentException> {
+            repository.assignDelegateToSlot(conference.id.value, targetSlot.id.value, delegate.id.value, moveExistingPending = false)
+        }
+
+        val moved = repository.assignDelegateToSlot(conference.id.value, targetSlot.id.value, delegate.id.value, moveExistingPending = true)
+        assertEquals(targetSlot.id, moved.pendingSlots.single().id)
+        assertTrue(moved.positions.single { it.name == "France" }.slots.single().isEmpty)
+    }
+
+    @Test
+    fun `manual assignment cannot change confirmed assignments or confirmed delegates`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-confirmed-read-only").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val delegates = listOf(
+            delegate(rowNumber = 2, firstName = "Alex", lastName = "Kim", email = "alex@example.test"),
+            delegate(rowNumber = 3, firstName = "Blake", lastName = "Roy", email = "blake@example.test"),
+        )
+
+        assertTrue(
+            repository.applyMymunUpdateSnapshot(
+                conference.id.value,
+                snapshotWithAssignments(
+                    delegates = delegates,
+                    confirmedAssignments = listOf(assignment(rowNumber = 2, positionName = "France", slotIndex = 1, delegateName = "Alex Kim")),
+                ),
+            ).success,
+        )
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val confirmedDelegate = loaded.delegates.single { it.name.firstName == "Alex" }
+        val unassignedDelegate = loaded.delegates.single { it.name.firstName == "Blake" }
+        val confirmedSlot = loaded.assignedSlots.single()
+        val emptySlot = loaded.openSlots.single()
+
+        assertFailsWith<IllegalArgumentException> {
+            repository.clearPendingSlot(conference.id.value, confirmedSlot.id.value)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            repository.assignDelegateToSlot(conference.id.value, confirmedSlot.id.value, unassignedDelegate.id.value, moveExistingPending = false)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            repository.assignDelegateToSlot(conference.id.value, emptySlot.id.value, confirmedDelegate.id.value, moveExistingPending = true)
+        }
+        Unit
+    }
+
+    @Test
+    fun `manual assignment rejects unpaid and inactive delegates`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-unavailable-delegates").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val delegates = listOf(
+            delegate(rowNumber = 2, firstName = "Alex", lastName = "Kim", email = "alex@example.test"),
+            delegate(rowNumber = 3, firstName = "Blake", lastName = "Roy", email = "blake@example.test"),
+        )
+
+        assertTrue(
+            repository.applyMymunUpdateSnapshot(
+                conference.id.value,
+                snapshotWithAssignments(delegates = delegates, confirmedAssignments = emptyList()),
+            ).success,
+        )
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val unpaidDelegate = loaded.delegates.single { it.name.firstName == "Alex" }
+        val inactiveDelegate = loaded.delegates.single { it.name.firstName == "Blake" }
+        val slots = loaded.openSlots
+        transaction(database) {
+            DelegateTable.update({ DelegateTable.id eq unpaidDelegate.id.value }) {
+                it[paymentStatus] = PaymentStatus.Unpaid.name
+            }
+            DelegateTable.update({ DelegateTable.id eq inactiveDelegate.id.value }) {
+                it[active] = false
+            }
+        }
+
+        assertFailsWith<IllegalArgumentException> {
+            repository.assignDelegateToSlot(conference.id.value, slots[0].id.value, unpaidDelegate.id.value, moveExistingPending = false)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            repository.assignDelegateToSlot(conference.id.value, slots[1].id.value, inactiveDelegate.id.value, moveExistingPending = false)
+        }
+        Unit
     }
 
     @Test
