@@ -142,6 +142,22 @@ class MainViewModel(
         _state.update { it.copy(boardActionError = null) }
     }
 
+    fun openDelegateDetail(delegateId: String) {
+        _state.update { it.copy(selectedDelegateId = delegateId) }
+    }
+
+    fun closeDelegateDetail() {
+        _state.update { it.copy(selectedDelegateId = null) }
+    }
+
+    fun navigateToBoardPosition(committeeId: String, positionId: String) {
+        _state.update {
+            it.copy(
+                boardScrollRequest = BoardScrollRequest(committeeId = committeeId, positionId = positionId),
+            )
+        }
+    }
+
     fun setCommitteeSlotsPerPosition(committeeId: String, slotsPerPosition: Int) {
         val selectedId = selectedIdOrNull() ?: return
         if (slotsPerPosition < 1) {
@@ -244,6 +260,104 @@ class MainViewModel(
         }
     }
 
+    fun deactivateDelegate(delegateId: String) {
+        val selectedId = selectedIdOrNull() ?: return
+        scope.launch {
+            _state.update { it.copy(loading = true, boardActionError = null) }
+            try {
+                val conference = repository.deactivateDelegate(selectedId, delegateId)
+                _state.update {
+                    it.copy(
+                        selectedConference = conference,
+                        loading = false,
+                        boardActionError = null,
+                    )
+                }
+            } catch (exception: IllegalArgumentException) {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        boardActionError = exception.message ?: "Delegate could not be deactivated.",
+                    )
+                }
+            } catch (exception: Exception) {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        boardActionError = "Delegate update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
+                    )
+                }
+            }
+        }
+    }
+
+    fun reactivateDelegate(delegateId: String) {
+        val selectedId = selectedIdOrNull() ?: return
+        scope.launch {
+            _state.update { it.copy(loading = true, boardActionError = null) }
+            try {
+                val conference = repository.reactivateDelegate(selectedId, delegateId)
+                _state.update {
+                    it.copy(
+                        selectedConference = conference,
+                        loading = false,
+                        boardActionError = null,
+                    )
+                }
+            } catch (exception: IllegalArgumentException) {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        boardActionError = exception.message ?: "Delegate could not be reactivated.",
+                    )
+                }
+            } catch (exception: Exception) {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        boardActionError = "Delegate update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
+                    )
+                }
+            }
+        }
+    }
+
+    fun addDelegateComment(delegateId: String, body: String) {
+        val selectedId = selectedIdOrNull() ?: return
+        scope.launch {
+            try {
+                val conference = repository.addDelegateComment(selectedId, delegateId, body)
+                _state.update { it.copy(selectedConference = conference, boardActionError = null) }
+            } catch (exception: IllegalArgumentException) {
+                _state.update { it.copy(boardActionError = exception.message ?: "Comment could not be added.") }
+            }
+        }
+    }
+
+    fun updateDelegateComment(commentId: String, body: String) {
+        val selectedId = selectedIdOrNull() ?: return
+        scope.launch {
+            try {
+                val conference = repository.updateDelegateComment(selectedId, commentId, body)
+                _state.update { it.copy(selectedConference = conference, boardActionError = null) }
+            } catch (exception: IllegalArgumentException) {
+                _state.update { it.copy(boardActionError = exception.message ?: "Comment could not be updated.") }
+            }
+        }
+    }
+
+    fun deleteDelegateComment(commentId: String) {
+        val selectedId = selectedIdOrNull() ?: return
+        scope.launch {
+            try {
+                val conference = repository.deleteDelegateComment(selectedId, commentId)
+                _state.update { it.copy(selectedConference = conference, boardActionError = null) }
+            } catch (exception: IllegalArgumentException) {
+                _state.update { it.copy(boardActionError = exception.message ?: "Comment could not be removed.") }
+            }
+        }
+    }
+
     fun requestScrollToPosition(committeeId: String, positionId: String) {
         _state.update { it.copy(boardScrollRequest = BoardScrollRequest(committeeId = committeeId, positionId = positionId)) }
     }
@@ -326,4 +440,5 @@ data class MainUiState(
     val conferenceActionError: String? = null,
     val boardActionError: String? = null,
     val boardScrollRequest: BoardScrollRequest? = null,
+    val selectedDelegateId: String? = null,
 )

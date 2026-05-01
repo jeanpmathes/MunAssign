@@ -22,6 +22,9 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +50,8 @@ fun PositionCard(
     position: PositionBoardUiState,
     onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
     onClearPendingSlot: (slotId: String) -> Unit,
+    onOpenDelegateDetail: (String) -> Unit,
+    highlighted: Boolean,
 ) {
     var menuSlot by remember(position.id) { mutableStateOf<SlotBoardUiState?>(null) }
     var assignmentSlot by remember(position.id) { mutableStateOf<SlotBoardUiState?>(null) }
@@ -54,10 +59,19 @@ fun PositionCard(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(
+            width = if (highlighted) 2.dp else 1.dp,
+            color = if (highlighted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+        ),
+        colors = CardDefaults.cardColors(
+            containerColor = if (highlighted) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.38f)
+            } else {
+                MaterialTheme.colorScheme.surface
+            },
+        ),
         shape = RoundedCornerShape(8.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (highlighted) 5.dp else 1.dp),
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -87,6 +101,7 @@ fun PositionCard(
                             onOpenContextMenu = { menuSlot = slot },
                             onOpenAssignmentDialog = { assignmentSlot = slot },
                             onClearPendingAssignment = { onClearPendingSlot(slot.id) },
+                            onOpenDelegateDetail = onOpenDelegateDetail,
                         )
                         SlotContextMenu(
                             expanded = menuSlot?.id == slot.id,
@@ -131,6 +146,7 @@ fun PositionCard(
                                     pendingMoveRequest = PendingInterestedMoveRequest(slot, delegate)
                                 }
                             },
+                            onOpenDelegateDetail = { onOpenDelegateDetail(delegate.id) },
                         )
                     }
                 }
@@ -183,7 +199,11 @@ private data class PendingInterestedMoveRequest(
 )
 
 @Composable
-private fun InterestedDelegateChip(delegate: InterestedDelegateUiState, onAssign: () -> Unit) {
+private fun InterestedDelegateChip(
+    delegate: InterestedDelegateUiState,
+    onAssign: () -> Unit,
+    onOpenDelegateDetail: () -> Unit,
+) {
     val confirmedAssignmentLabel = delegate.confirmedAssignmentLabel
     val pendingAssignmentLabel = delegate.pendingAssignmentLabel
     val textColor = if (confirmedAssignmentLabel != null || pendingAssignmentLabel != null) {
@@ -206,8 +226,14 @@ private fun InterestedDelegateChip(delegate: InterestedDelegateUiState, onAssign
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f))
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(999.dp))
                 .pointerInput(delegate.id, pendingAssignmentLabel, confirmedAssignmentLabel) {
-                    if (confirmedAssignmentLabel != null) return@pointerInput
-                    detectTapGestures(onDoubleTap = { onAssign() })
+                    detectTapGestures(
+                        onTap = { onOpenDelegateDetail() },
+                        onDoubleTap = {
+                            if (confirmedAssignmentLabel == null) {
+                                onAssign()
+                            }
+                        },
+                    )
                 }
                 .padding(horizontal = 8.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -230,6 +256,16 @@ private fun InterestedDelegateChip(delegate: InterestedDelegateUiState, onAssign
                 overflow = TextOverflow.Ellipsis,
                 textDecoration = if (confirmedAssignmentLabel != null) TextDecoration.LineThrough else TextDecoration.None,
             )
+            if (delegate.isHighSchooler) {
+                BoardTooltip("High school delegate.") {
+                    Icon(
+                        Icons.Filled.School,
+                        contentDescription = "High school delegate",
+                        tint = Color(0xFF8E24AA),
+                        modifier = Modifier.height(14.dp),
+                    )
+                }
+            }
         }
     }
 }

@@ -40,6 +40,7 @@ data class SlotBoardUiState(
     val status: SlotBoardStatus,
     val delegateName: String?,
     val delegateId: String?,
+    val delegateIsHighSchooler: Boolean,
     val matchesDelegatePreference: Boolean,
     val positionName: String,
 )
@@ -47,6 +48,7 @@ data class SlotBoardUiState(
 data class InterestedDelegateUiState(
     val id: String,
     val name: String,
+    val isHighSchooler: Boolean,
     val preferenceRank: Int,
     val pendingAssignmentLabel: String?,
     val confirmedAssignmentLabel: String?,
@@ -103,6 +105,7 @@ private fun Position.toBoardUiState(): PositionBoardUiState =
                 InterestedDelegateUiState(
                     id = delegate.id.value,
                     name = delegate.displayName,
+                    isHighSchooler = delegate.isHighSchooler(),
                     preferenceRank = rank,
                     pendingAssignmentLabel = delegate.pendingAssignmentLabelUnless(this),
                     confirmedAssignmentLabel = delegate.confirmedAssignmentLabelUnless(this),
@@ -139,12 +142,16 @@ private fun Slot.toBoardUiState(): SlotBoardUiState =
         },
         delegateName = delegate?.displayName,
         delegateId = delegate?.id?.value,
+        delegateIsHighSchooler = delegate?.isHighSchooler() == true,
         matchesDelegatePreference = matchesDelegatePreference,
         positionName = position.name,
     )
 
 private fun Delegate.visibleOnAssignmentBoard(): Boolean =
     active && paymentStatus == PaymentStatus.Paid
+
+private fun Delegate.isHighSchooler(): Boolean =
+    highSchoolerStatus == org.munika.assignment.domain.model.HighSchoolerStatus.Yes
 
 private fun Delegate.confirmedAssignmentLabelUnless(position: Position): String? {
     val assignedPosition = currentPosition ?: return null

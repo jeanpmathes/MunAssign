@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +48,7 @@ fun SlotRow(
     onOpenContextMenu: () -> Unit,
     onOpenAssignmentDialog: () -> Unit,
     onClearPendingAssignment: () -> Unit,
+    onOpenDelegateDetail: (String) -> Unit,
 ) {
     val style = slot.status.style()
     Row(
@@ -84,13 +86,29 @@ fun SlotRow(
         Spacer(Modifier.width(8.dp))
         Text(
             text = slot.delegateName ?: style.emptyText,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .pointerInput(slot.delegateId) {
+                    val delegateId = slot.delegateId ?: return@pointerInput
+                    detectTapGestures(onTap = { onOpenDelegateDetail(delegateId) })
+                },
             style = MaterialTheme.typography.bodySmall,
             fontWeight = if (slot.delegateName == null) FontWeight.Normal else FontWeight.SemiBold,
             color = if (slot.delegateName == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        if (slot.delegateIsHighSchooler) {
+            BoardTooltip("High school delegate.") {
+                Icon(
+                    Icons.Filled.School,
+                    contentDescription = "High school delegate",
+                    tint = Color(0xFF8E24AA),
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            Spacer(Modifier.width(6.dp))
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             when (slot.status) {
                 SlotBoardStatus.Empty -> {

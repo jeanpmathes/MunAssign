@@ -48,6 +48,8 @@ fun CommitteeColumn(
     onSetSlotsPerPosition: (String, Int) -> Unit,
     onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
     onClearPendingSlot: (slotId: String) -> Unit,
+    onOpenDelegateDetail: (String) -> Unit,
+    highlightedPositionId: String?,
 ) {
     var blockedReductionMessage by remember(committee.id, committee.slotsPerPosition) { mutableStateOf<String?>(null) }
 
@@ -85,6 +87,8 @@ fun CommitteeColumn(
                         position = position,
                         onAssignDelegateToSlot = onAssignDelegateToSlot,
                         onClearPendingSlot = onClearPendingSlot,
+                        onOpenDelegateDetail = onOpenDelegateDetail,
+                        highlighted = position.id == highlightedPositionId,
                     )
                 }
             }

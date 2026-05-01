@@ -1,11 +1,12 @@
 # TODO
 
+## Bugs
+
+- A multi slot position does not show interested delegates when only one slot is already assigned.
+- A multi slot position tooltip when using it on slot 1 to assign the delegate that is pending in slot 2, does not show the move question modal but instead shows an error message in the top.
+
 ## Next - Delegate Detail And List
 
-- Make visible delegate names clickable.
-- Add side panel with imported profile data, assignment state, preferences, configured question answers, comments, delegation context, and deactivate/reactivate controls.
-- Make assignments and preferences navigate back to the board.
-- Add autosaved organizer comment history.
 - Add delegate list drawer with active paid delegates by default.
 - Add delegate filters for unassigned delegates, difficulty, and committee interest.
 - Add delegate sorting by difficulty, name, and assignment status.
@@ -28,6 +29,7 @@
 - Drag and drop of excel files.
 - Emojis for countries.
 - Fix all warnings.
+- HS handling.
 - Improve upload experience (no weird message) and the UI when conference is empty.
 
 ## Experimental

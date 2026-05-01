@@ -77,7 +77,9 @@ import org.munika.assignment.domain.repository.UpdateIssue
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
 import org.munika.assignment.domain.repository.UpdateSummary
 import org.munika.assignment.ui.screen.component.AssignmentBoard
+import org.munika.assignment.ui.screen.component.DelegateSidePanel
 import org.munika.assignment.ui.viewmodel.MainUiState
+import org.munika.assignment.ui.viewmodel.toDelegateDetailUiState
 import org.munika.assignment.ui.viewmodel.toAssignmentBoardUiState
 
 @Composable
@@ -91,6 +93,14 @@ fun MainScreen(
     onSetCommitteeSlotsPerPosition: (String, Int) -> Unit,
     onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
     onClearPendingSlot: (slotId: String) -> Unit,
+    onOpenDelegateDetail: (String) -> Unit,
+    onCloseDelegateDetail: () -> Unit,
+    onNavigateToBoardPosition: (committeeId: String, positionId: String) -> Unit,
+    onDeactivateDelegate: (String) -> Unit,
+    onReactivateDelegate: (String) -> Unit,
+    onAddDelegateComment: (delegateId: String, body: String) -> Unit,
+    onUpdateDelegateComment: (commentId: String, body: String) -> Unit,
+    onDeleteDelegateComment: (commentId: String) -> Unit,
     onOpenWorkbook: () -> Unit,
     onClearConferenceActionError: () -> Unit,
     onClearBoardActionError: () -> Unit,
@@ -142,9 +152,18 @@ fun MainScreen(
                         issues = state.updateIssues,
                         boardActionError = state.boardActionError,
                         boardScrollRequest = state.boardScrollRequest,
+                        selectedDelegateId = state.selectedDelegateId,
                         onSetCommitteeSlotsPerPosition = onSetCommitteeSlotsPerPosition,
                         onAssignDelegateToSlot = onAssignDelegateToSlot,
                         onClearPendingSlot = onClearPendingSlot,
+                        onOpenDelegateDetail = onOpenDelegateDetail,
+                        onCloseDelegateDetail = onCloseDelegateDetail,
+                        onNavigateToBoardPosition = onNavigateToBoardPosition,
+                        onDeactivateDelegate = onDeactivateDelegate,
+                        onReactivateDelegate = onReactivateDelegate,
+                        onAddDelegateComment = onAddDelegateComment,
+                        onUpdateDelegateComment = onUpdateDelegateComment,
+                        onDeleteDelegateComment = onDeleteDelegateComment,
                         onClearBoardActionError = onClearBoardActionError,
                     )
                 }
@@ -481,24 +500,49 @@ private fun ConferenceWorkspace(
     issues: List<UpdateIssue>,
     boardActionError: String?,
     boardScrollRequest: org.munika.assignment.ui.viewmodel.BoardScrollRequest?,
+    selectedDelegateId: String?,
     onSetCommitteeSlotsPerPosition: (String, Int) -> Unit,
     onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
     onClearPendingSlot: (slotId: String) -> Unit,
+    onOpenDelegateDetail: (String) -> Unit,
+    onCloseDelegateDetail: () -> Unit,
+    onNavigateToBoardPosition: (committeeId: String, positionId: String) -> Unit,
+    onDeactivateDelegate: (String) -> Unit,
+    onReactivateDelegate: (String) -> Unit,
+    onAddDelegateComment: (delegateId: String, body: String) -> Unit,
+    onUpdateDelegateComment: (commentId: String, body: String) -> Unit,
+    onDeleteDelegateComment: (commentId: String) -> Unit,
     onClearBoardActionError: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         UpdateResultSurface(summary = summary, issues = issues)
-        AssignmentBoard(
-            board = conference.toAssignmentBoardUiState(),
-            loading = loading,
-            actionError = boardActionError,
-            scrollRequest = boardScrollRequest,
-            onSetCommitteeSlotsPerPosition = onSetCommitteeSlotsPerPosition,
-            onAssignDelegateToSlot = onAssignDelegateToSlot,
-            onClearPendingSlot = onClearPendingSlot,
-            onClearActionError = onClearBoardActionError,
-            modifier = Modifier.weight(1f),
-        )
+        Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            AssignmentBoard(
+                board = conference.toAssignmentBoardUiState(),
+                loading = loading,
+                actionError = boardActionError,
+                scrollRequest = boardScrollRequest,
+                onSetCommitteeSlotsPerPosition = onSetCommitteeSlotsPerPosition,
+                onAssignDelegateToSlot = onAssignDelegateToSlot,
+                onClearPendingSlot = onClearPendingSlot,
+                onOpenDelegateDetail = onOpenDelegateDetail,
+                onClearActionError = onClearBoardActionError,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+            conference.toDelegateDetailUiState(selectedDelegateId)?.let { detail ->
+                DelegateSidePanel(
+                    detail = detail,
+                    loading = loading,
+                    onClose = onCloseDelegateDetail,
+                    onNavigateToPosition = onNavigateToBoardPosition,
+                    onDeactivate = onDeactivateDelegate,
+                    onReactivate = onReactivateDelegate,
+                    onAddComment = onAddDelegateComment,
+                    onUpdateComment = onUpdateDelegateComment,
+                    onDeleteComment = onDeleteDelegateComment,
+                )
+            }
+        }
     }
 }
 

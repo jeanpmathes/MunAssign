@@ -308,6 +308,85 @@ class ConferenceRepositoryImpl(
         loadConferenceGraph(conferenceId)
     }
 
+    override suspend fun deactivateDelegate(conferenceId: String, delegateId: String): Conference = db {
+        requireDelegateInConference(conferenceId, delegateId)
+        val assignedSlot = SlotTable.selectAll()
+            .where { SlotTable.assignedDelegateId eq delegateId }
+            .singleOrNull()
+        require(assignedSlot?.get(SlotTable.assignmentSource) != AssignmentSource.Mymun.name) {
+            "Confirmed delegates cannot be deactivated in MunAssign."
+        }
+
+        val now = Instant.now().toEpochMilli()
+        if (assignedSlot?.get(SlotTable.assignmentSource) == AssignmentSource.Application.name) {
+            clearSlotAssignment(assignedSlot[SlotTable.id], now)
+        }
+        DelegateTable.update({ (DelegateTable.id eq delegateId) and (DelegateTable.conferenceId eq conferenceId) }) {
+            it[DelegateTable.active] = false
+        }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = now
+        }
+        logger.info("Deactivated delegate={} conference={} clearedPending={}", delegateId, conferenceId, assignedSlot != null)
+        loadConferenceGraph(conferenceId)
+    }
+
+    override suspend fun reactivateDelegate(conferenceId: String, delegateId: String): Conference = db {
+        requireDelegateInConference(conferenceId, delegateId)
+        val now = Instant.now().toEpochMilli()
+        DelegateTable.update({ (DelegateTable.id eq delegateId) and (DelegateTable.conferenceId eq conferenceId) }) {
+            it[DelegateTable.active] = true
+        }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = now
+        }
+        logger.info("Reactivated delegate={} conference={}", delegateId, conferenceId)
+        loadConferenceGraph(conferenceId)
+    }
+
+    override suspend fun addDelegateComment(conferenceId: String, delegateId: String, body: String): Conference = db {
+        val trimmed = body.trim()
+        require(trimmed.isNotBlank()) { "Comment body must not be blank." }
+        requireDelegateInConference(conferenceId, delegateId)
+        val now = Instant.now().toEpochMilli()
+        DelegateCommentTable.insert {
+            it[DelegateCommentTable.id] = UUID.randomUUID().toString()
+            it[DelegateCommentTable.delegateId] = delegateId
+            it[DelegateCommentTable.body] = trimmed
+            it[DelegateCommentTable.createdAtEpochMillis] = now
+            it[DelegateCommentTable.updatedAtEpochMillis] = now
+        }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = now
+        }
+        loadConferenceGraph(conferenceId)
+    }
+
+    override suspend fun updateDelegateComment(conferenceId: String, commentId: String, body: String): Conference = db {
+        val trimmed = body.trim()
+        require(trimmed.isNotBlank()) { "Comment body must not be blank." }
+        requireCommentInConference(conferenceId, commentId)
+        val now = Instant.now().toEpochMilli()
+        DelegateCommentTable.update({ DelegateCommentTable.id eq commentId }) {
+            it[DelegateCommentTable.body] = trimmed
+            it[updatedAtEpochMillis] = now
+        }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = now
+        }
+        loadConferenceGraph(conferenceId)
+    }
+
+    override suspend fun deleteDelegateComment(conferenceId: String, commentId: String): Conference = db {
+        requireCommentInConference(conferenceId, commentId)
+        val now = Instant.now().toEpochMilli()
+        DelegateCommentTable.deleteWhere { DelegateCommentTable.id eq commentId }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = now
+        }
+        loadConferenceGraph(conferenceId)
+    }
+
     /**
      * Applies an already parsed MyMUN update snapshot to one conference.
      *
@@ -798,6 +877,23 @@ class ConferenceRepositoryImpl(
             "Slot $slotId does not belong to conference $conferenceId."
         }
         return slot
+    }
+
+    private fun requireDelegateInConference(conferenceId: String, delegateId: String): ResultRow =
+        requireNotNull(
+            DelegateTable.selectAll()
+                .where { (DelegateTable.id eq delegateId) and (DelegateTable.conferenceId eq conferenceId) }
+                .singleOrNull(),
+        ) { "Delegate $delegateId does not belong to conference $conferenceId." }
+
+    private fun requireCommentInConference(conferenceId: String, commentId: String): ResultRow {
+        val comment = requireNotNull(
+            DelegateCommentTable.selectAll()
+                .where { DelegateCommentTable.id eq commentId }
+                .singleOrNull(),
+        ) { "Comment $commentId does not exist." }
+        requireDelegateInConference(conferenceId, comment[DelegateCommentTable.delegateId])
+        return comment
     }
 
     private fun clearSlotAssignment(slotId: String, updatedAt: Long) {

@@ -402,6 +402,77 @@ class ConferenceRepositoryImplTest {
     }
 
     @Test
+    fun `deactivating delegate clears pending assignment and reactivation does not restore it`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-deactivate-pending").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(confirmedAssignments = emptyList())).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val delegate = loaded.delegates.single()
+        val slot = loaded.openSlots.first()
+        repository.assignDelegateToSlot(conference.id.value, slot.id.value, delegate.id.value, moveExistingPending = false)
+
+        val deactivated = repository.deactivateDelegate(conference.id.value, delegate.id.value)
+
+        val inactiveDelegate = deactivated.delegates.single()
+        assertFalse(inactiveDelegate.active)
+        assertNull(inactiveDelegate.currentSlot)
+        assertTrue(deactivated.pendingSlots.isEmpty())
+
+        val reactivated = repository.reactivateDelegate(conference.id.value, delegate.id.value)
+
+        val activeDelegate = reactivated.delegates.single()
+        assertTrue(activeDelegate.active)
+        assertNull(activeDelegate.currentSlot)
+        assertTrue(reactivated.pendingSlots.isEmpty())
+        Unit
+    }
+
+    @Test
+    fun `deactivating confirmed delegate is rejected`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-deactivate-confirmed").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments()).success)
+        val delegate = requireNotNull(repository.getConference(conference.id.value)).delegates.single()
+
+        assertFailsWith<IllegalArgumentException> {
+            repository.deactivateDelegate(conference.id.value, delegate.id.value)
+        }
+
+        val reloaded = requireNotNull(repository.getConference(conference.id.value)).delegates.single()
+        assertTrue(reloaded.active)
+        assertNotNull(reloaded.currentSlot)
+        Unit
+    }
+
+    @Test
+    fun `delegate comments can be added updated and deleted`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-comments").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(confirmedAssignments = emptyList())).success)
+        val delegate = requireNotNull(repository.getConference(conference.id.value)).delegates.single()
+
+        val added = repository.addDelegateComment(conference.id.value, delegate.id.value, " First note ")
+        val comment = added.delegates.single().comments.single()
+        assertEquals("First note", comment.body)
+
+        val updated = repository.updateDelegateComment(conference.id.value, comment.id.value, "Edited note")
+        assertEquals("Edited note", updated.delegates.single().comments.single().body)
+
+        val deleted = repository.deleteDelegateComment(conference.id.value, comment.id.value)
+        assertTrue(deleted.delegates.single().comments.isEmpty())
+        Unit
+    }
+
+    @Test
     fun `conference display order column exists after migration`() {
         val dbPath = Files.createTempDirectory("munassign-order-column").resolve("data.db")
         val database = DatabaseFactory.connect(dbPath)

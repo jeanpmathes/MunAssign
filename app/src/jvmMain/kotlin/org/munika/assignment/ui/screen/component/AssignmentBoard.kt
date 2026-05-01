@@ -19,10 +19,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import org.munika.assignment.ui.viewmodel.AssignmentBoardUiState
 import org.munika.assignment.ui.viewmodel.BoardScrollRequest
 
@@ -35,11 +39,13 @@ fun AssignmentBoard(
     onSetCommitteeSlotsPerPosition: (String, Int) -> Unit,
     onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
     onClearPendingSlot: (slotId: String) -> Unit,
+    onOpenDelegateDetail: (String) -> Unit,
     onClearActionError: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val horizontalState = remember(board.conferenceId) { LazyListState() }
     val columnListStates = remember(board.conferenceId) { mutableMapOf<String, LazyListState>() }
+    var highlightedPositionId by remember(board.conferenceId) { mutableStateOf<String?>(null) }
 
     LaunchedEffect(scrollRequest?.requestId) {
         val request = scrollRequest ?: return@LaunchedEffect
@@ -51,6 +57,11 @@ fun AssignmentBoard(
         val positionIndex = committee.positions.indexOfFirst { it.id == positionId }
         if (positionIndex >= 0) {
             columnListStates.getOrPut(committee.id) { LazyListState() }.animateScrollToItem(positionIndex)
+        }
+        highlightedPositionId = positionId
+        delay(1200)
+        if (highlightedPositionId == positionId) {
+            highlightedPositionId = null
         }
     }
 
@@ -88,6 +99,8 @@ fun AssignmentBoard(
                     onSetSlotsPerPosition = onSetCommitteeSlotsPerPosition,
                     onAssignDelegateToSlot = onAssignDelegateToSlot,
                     onClearPendingSlot = onClearPendingSlot,
+                    onOpenDelegateDetail = onOpenDelegateDetail,
+                    highlightedPositionId = highlightedPositionId,
                 )
             }
         }

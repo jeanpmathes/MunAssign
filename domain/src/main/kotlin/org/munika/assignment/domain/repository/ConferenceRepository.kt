@@ -51,5 +51,35 @@ interface ConferenceRepository {
      */
     suspend fun clearPendingSlot(conferenceId: String, slotId: String): Conference
 
+    /**
+     * Deactivates one delegate for local assignment workflows.
+     *
+     * Implementations must reject delegates with MyMUN-confirmed assignments. Pending MunAssign
+     * assignments are organizer-managed and should be cleared as part of deactivation.
+     */
+    suspend fun deactivateDelegate(conferenceId: String, delegateId: String): Conference
+
+    /**
+     * Reactivates one delegate for local assignment workflows.
+     *
+     * Reactivation restores eligibility but must not recreate any previously cleared assignment.
+     */
+    suspend fun reactivateDelegate(conferenceId: String, delegateId: String): Conference
+
+    /**
+     * Adds an organizer-managed note to one delegate.
+     */
+    suspend fun addDelegateComment(conferenceId: String, delegateId: String, body: String): Conference
+
+    /**
+     * Updates an organizer-managed delegate note.
+     */
+    suspend fun updateDelegateComment(conferenceId: String, commentId: String, body: String): Conference
+
+    /**
+     * Deletes an organizer-managed delegate note.
+     */
+    suspend fun deleteDelegateComment(conferenceId: String, commentId: String): Conference
+
     suspend fun getConference(conferenceId: String): Conference?
 }
