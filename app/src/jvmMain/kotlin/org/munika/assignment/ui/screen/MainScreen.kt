@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ManageAccounts
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -77,8 +78,12 @@ import org.munika.assignment.domain.repository.UpdateIssue
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
 import org.munika.assignment.domain.repository.UpdateSummary
 import org.munika.assignment.ui.screen.component.AssignmentBoard
+import org.munika.assignment.ui.screen.component.DelegateListPanel
 import org.munika.assignment.ui.screen.component.DelegateSidePanel
+import org.munika.assignment.ui.viewmodel.DelegateListControlsUiState
+import org.munika.assignment.ui.viewmodel.DelegateListPreset
 import org.munika.assignment.ui.viewmodel.MainUiState
+import org.munika.assignment.ui.viewmodel.toDelegateListUiState
 import org.munika.assignment.ui.viewmodel.toDelegateDetailUiState
 import org.munika.assignment.ui.viewmodel.toAssignmentBoardUiState
 
@@ -93,6 +98,10 @@ fun MainScreen(
     onSetCommitteeSlotsPerPosition: (String, Int) -> Unit,
     onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
     onClearPendingSlot: (slotId: String) -> Unit,
+    onOpenDelegateList: () -> Unit,
+    onCloseDelegateList: () -> Unit,
+    onUpdateDelegateListControls: (DelegateListControlsUiState) -> Unit,
+    onApplyDelegateListPreset: (DelegateListPreset) -> Unit,
     onOpenDelegateDetail: (String) -> Unit,
     onCloseDelegateDetail: () -> Unit,
     onNavigateToBoardPosition: (committeeId: String, positionId: String) -> Unit,
@@ -127,6 +136,7 @@ fun MainScreen(
                     onClearConferenceActionError()
                     managementOpen = true
                 },
+                onOpenDelegateList = onOpenDelegateList,
                 onOpenWorkbook = onOpenWorkbook,
             )
             Box(modifier = Modifier.fillMaxSize().padding(24.dp)) {
@@ -153,9 +163,14 @@ fun MainScreen(
                         boardActionError = state.boardActionError,
                         boardScrollRequest = state.boardScrollRequest,
                         selectedDelegateId = state.selectedDelegateId,
+                        delegateListOpen = state.delegateListOpen,
+                        delegateListControls = state.delegateListControls,
                         onSetCommitteeSlotsPerPosition = onSetCommitteeSlotsPerPosition,
                         onAssignDelegateToSlot = onAssignDelegateToSlot,
                         onClearPendingSlot = onClearPendingSlot,
+                        onCloseDelegateList = onCloseDelegateList,
+                        onUpdateDelegateListControls = onUpdateDelegateListControls,
+                        onApplyDelegateListPreset = onApplyDelegateListPreset,
                         onOpenDelegateDetail = onOpenDelegateDetail,
                         onCloseDelegateDetail = onCloseDelegateDetail,
                         onNavigateToBoardPosition = onNavigateToBoardPosition,
@@ -230,6 +245,7 @@ private fun TopBar(
     onOpenCreate: () -> Unit,
     onOpenRename: (Conference) -> Unit,
     onOpenManagement: () -> Unit,
+    onOpenDelegateList: () -> Unit,
     onOpenWorkbook: (() -> Unit)? = null,
 ) {
     Surface(shadowElevation = 2.dp, color = MaterialTheme.colorScheme.surface) {
@@ -276,6 +292,13 @@ private fun TopBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.End,
             ) {
+                TooltipIconButton(
+                    tooltip = "Open delegate list",
+                    icon = Icons.Filled.People,
+                    onClick = onOpenDelegateList,
+                    enabled = !state.loading && state.selectedConference != null,
+                )
+                Spacer(Modifier.width(8.dp))
                 if (state.loading) {
                     CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
@@ -501,9 +524,14 @@ private fun ConferenceWorkspace(
     boardActionError: String?,
     boardScrollRequest: org.munika.assignment.ui.viewmodel.BoardScrollRequest?,
     selectedDelegateId: String?,
+    delegateListOpen: Boolean,
+    delegateListControls: DelegateListControlsUiState,
     onSetCommitteeSlotsPerPosition: (String, Int) -> Unit,
     onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
     onClearPendingSlot: (slotId: String) -> Unit,
+    onCloseDelegateList: () -> Unit,
+    onUpdateDelegateListControls: (DelegateListControlsUiState) -> Unit,
+    onApplyDelegateListPreset: (DelegateListPreset) -> Unit,
     onOpenDelegateDetail: (String) -> Unit,
     onCloseDelegateDetail: () -> Unit,
     onNavigateToBoardPosition: (committeeId: String, positionId: String) -> Unit,
@@ -529,6 +557,17 @@ private fun ConferenceWorkspace(
                 onClearActionError = onClearBoardActionError,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
+            if (delegateListOpen) {
+                DelegateListPanel(
+                    list = conference.toDelegateListUiState(delegateListControls),
+                    controls = delegateListControls,
+                    onControlsChange = onUpdateDelegateListControls,
+                    onApplyPreset = onApplyDelegateListPreset,
+                    onOpenDelegateDetail = onOpenDelegateDetail,
+                    onNavigateToPosition = onNavigateToBoardPosition,
+                    onClose = onCloseDelegateList,
+                )
+            }
             conference.toDelegateDetailUiState(selectedDelegateId)?.let { detail ->
                 DelegateSidePanel(
                     detail = detail,

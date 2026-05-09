@@ -150,6 +150,22 @@ class MainViewModel(
         _state.update { it.copy(selectedDelegateId = null) }
     }
 
+    fun openDelegateList(): Unit {
+        _state.update { it.copy(delegateListOpen = true) }
+    }
+
+    fun closeDelegateList(): Unit {
+        _state.update { it.copy(delegateListOpen = false) }
+    }
+
+    fun updateDelegateListControls(controls: DelegateListControlsUiState): Unit {
+        _state.update { it.copy(delegateListControls = controls) }
+    }
+
+    fun applyDelegateListPreset(preset: DelegateListPreset): Unit {
+        _state.update { it.copy(delegateListControls = it.delegateListControls.applyPreset(preset)) }
+    }
+
     fun navigateToBoardPosition(committeeId: String, positionId: String) {
         _state.update {
             it.copy(
@@ -441,4 +457,6 @@ data class MainUiState(
     val boardActionError: String? = null,
     val boardScrollRequest: BoardScrollRequest? = null,
     val selectedDelegateId: String? = null,
+    val delegateListOpen: Boolean = false,
+    val delegateListControls: DelegateListControlsUiState = DelegateListControlsUiState(),
 )

@@ -49,7 +49,7 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It k
 - Each position shows slot rows, interested delegate count, and interested delegates inline when the position has no assignment.
 - Confirmed-assigned delegates are greyed out where they appear as interested delegates elsewhere.
 - Clicking a delegate opens a side panel with profile data, assignment state, preferences, configured question answers, comment history, and deactivate/reactivate controls.
-- The delegate list panel shows active paid delegates by default, with filters for unassigned delegates, difficulty, and committee interest.
+- The delegate list panel shows active paid delegates by default, with search, assignment/payment/active/committee filters, presets, and sorting by submitted date, difficulty, name, assignment status, and warning/notice count. Difficulty is a sort key only.
 - Slot count is committee-level; every position in a committee has the same number of slots. Changing the count requires confirmation.
 
 ## Update And Transfer
