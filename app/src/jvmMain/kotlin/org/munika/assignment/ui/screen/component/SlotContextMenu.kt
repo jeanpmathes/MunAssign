@@ -23,7 +23,7 @@ fun SlotContextMenu(
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         when (slot.status) {
             SlotBoardStatus.Empty -> {
-                val assignableInterestedDelegates = interestedDelegates.filter { it.confirmedAssignmentLabel == null }
+                val assignableInterestedDelegates = interestedDelegates.filter { it.canAssign }
                 if (assignableInterestedDelegates.isNotEmpty()) {
                     assignableInterestedDelegates.forEach { delegate ->
                         DropdownMenuItem(

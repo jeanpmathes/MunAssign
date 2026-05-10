@@ -108,11 +108,12 @@ fun PositionCard(
                             slot = slot,
                             interestedDelegates = position.interestedDelegates,
                             onAssignInterestedDelegate = { delegate ->
-                                if (delegate.pendingAssignmentLabel == null) {
-                                    onAssignDelegateToSlot(slot.id, delegate.id, false)
-                                } else {
-                                    pendingMoveRequest = PendingInterestedMoveRequest(slot, delegate)
-                                }
+                                assignInterestedDelegate(
+                                    slot = slot,
+                                    delegate = delegate,
+                                    onMovePending = { pendingMoveRequest = PendingInterestedMoveRequest(slot, delegate) },
+                                    onAssign = { onAssignDelegateToSlot(slot.id, delegate.id, false) },
+                                )
                             },
                             onOpenManualAssignment = { assignmentSlot = slot },
                             onClearPendingAssignment = { onClearPendingSlot(slot.id) },
@@ -140,11 +141,12 @@ fun PositionCard(
                             onAssign = {
                                 val slot = position.slots.firstOrNull { it.status == org.munika.assignment.ui.viewmodel.SlotBoardStatus.Empty }
                                     ?: return@InterestedDelegateChip
-                                if (delegate.pendingAssignmentLabel == null) {
-                                    onAssignDelegateToSlot(slot.id, delegate.id, false)
-                                } else {
-                                    pendingMoveRequest = PendingInterestedMoveRequest(slot, delegate)
-                                }
+                                assignInterestedDelegate(
+                                    slot = slot,
+                                    delegate = delegate,
+                                    onMovePending = { pendingMoveRequest = PendingInterestedMoveRequest(slot, delegate) },
+                                    onAssign = { onAssignDelegateToSlot(slot.id, delegate.id, false) },
+                                )
                             },
                             onOpenDelegateDetail = { onOpenDelegateDetail(delegate.id) },
                         )
@@ -197,6 +199,20 @@ private data class PendingInterestedMoveRequest(
     val slot: SlotBoardUiState,
     val delegate: InterestedDelegateUiState,
 )
+
+private fun assignInterestedDelegate(
+    slot: SlotBoardUiState,
+    delegate: InterestedDelegateUiState,
+    onMovePending: () -> Unit,
+    onAssign: () -> Unit,
+) {
+    when {
+        !delegate.canAssign -> Unit
+        delegate.pendingAssignmentSlotId == slot.id -> Unit
+        delegate.pendingAssignmentSlotId != null -> onMovePending()
+        else -> onAssign()
+    }
+}
 
 @Composable
 private fun InterestedDelegateChip(

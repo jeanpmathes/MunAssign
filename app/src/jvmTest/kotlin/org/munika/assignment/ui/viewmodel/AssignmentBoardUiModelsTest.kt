@@ -3,7 +3,9 @@ package org.munika.assignment.ui.viewmodel
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import org.munika.assignment.domain.model.AssignmentSource
 import org.munika.assignment.domain.model.Committee
 import org.munika.assignment.domain.model.CommitteeId
@@ -50,6 +52,40 @@ class AssignmentBoardUiModelsTest {
             listOf(SlotBoardStatus.Empty, SlotBoardStatus.Pending, SlotBoardStatus.Assigned),
             france.slots.map { it.status },
         )
+    }
+
+    @Test
+    fun `interested delegates remain visible while a multi slot position has an open slot`() {
+        val board = board(slotCount = 2)
+        board.france.slots[0].assign(board.available, AssignmentSource.Application, Instant.EPOCH)
+
+        val france = board.conference.toAssignmentBoardUiState()
+            .committees.single()
+            .positions.single { it.name == "France" }
+        val available = france.interestedDelegates.single { it.name == "Available Delegate" }
+
+        assertTrue(france.shouldShowInterestedDelegates)
+        assertEquals("GA (France)", available.pendingAssignmentLabel)
+        assertEquals("france-1", available.pendingAssignmentSlotId)
+        assertNull(available.confirmedAssignmentLabel)
+        assertNull(available.confirmedAssignmentSlotId)
+    }
+
+    @Test
+    fun `interested delegates are hidden when a multi slot position has no open slot`() {
+        val board = board(slotCount = 2)
+        board.france.slots[0].assign(board.available, AssignmentSource.Application, Instant.EPOCH)
+        board.france.slots[1].assign(board.confirmedElsewhere, AssignmentSource.Mymun, Instant.EPOCH)
+
+        val france = board.conference.toAssignmentBoardUiState()
+            .committees.single()
+            .positions.single { it.name == "France" }
+        val confirmed = france.interestedDelegates.single { it.name == "Confirmed Elsewhere" }
+
+        assertFalse(france.shouldShowInterestedDelegates)
+        assertEquals("GA (France)", confirmed.confirmedAssignmentLabel)
+        assertEquals("france-2", confirmed.confirmedAssignmentSlotId)
+        assertFalse(confirmed.canAssign)
     }
 
     @Test

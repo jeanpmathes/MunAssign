@@ -1,10 +1,5 @@
 # TODO
 
-## Bugs
-
-- A multi slot position does not show interested delegates when only one slot is already assigned.
-- A multi slot position tooltip when using it on slot 1 to assign the delegate that is pending in slot 2, does not show the move question modal but instead shows an error message in the top.
-
 ## Later - Question Configuration
 
 - Build UI for question roles, handling types, visibility, organizer labels, answer rules, and typed-answer mappings.
