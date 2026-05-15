@@ -8,4 +8,5 @@ data class DelegateQuestionRow(
     val handlingTypeId: String,
     val visibleInDelegateDetail: Boolean,
     val organizerLabel: String?,
+    val displayOrder: Int,
 )

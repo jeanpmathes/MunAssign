@@ -44,10 +44,13 @@ class QuestionTest {
             id = QuestionId("question"),
             questionText = "Do you need visa support?",
             handling = StandardQuestionHandlingTypes.VisaSupport,
-            rules = listOf(NoticeWhenNonBlank("Visa support requested.")),
+            rules = listOf(NoticeWhenAffirmative("Visa support requested.")),
         )
 
         assertTrue(question.issuesFor(null).isEmpty())
+        assertTrue(question.issuesFor("   ").isEmpty())
+        assertTrue(question.issuesFor("-").isEmpty())
+        assertTrue(question.issuesFor("No").isEmpty())
         assertEquals(listOf(AnswerIssue("Visa support requested.", AnswerIssueSeverity.Notice)), question.issuesFor("Yes"))
     }
 }

@@ -1,13 +1,12 @@
 # TODO
 
-## Later - Question Configuration
-
-- Build UI for question roles, handling types, visibility, organizer labels, answer rules, and typed-answer mappings.
-- Surface answer warnings/notices in delegate detail and assignment workflows.
-- Add safe defaults for newly detected questions while preserving organizer configuration across updates.
-
 ## Later - Transfer And Polish
 
+- Improve HS handling.
+- Emojis for countries.
+- Fix all warnings.
+- Improve upload experience (no weird message) and the UI when conference is empty.
+- Polish question configuration keyboard/focus handling after regular use.
 - Implement `.munassign` SQLite export for a single conference.
 - Implement `.munassign` SQLite import that can replace the selected conference or create a new conference.
 - Add file picker dialogs and user-facing error states for incompatible transfer files, write failures, and overwrite confirmation.
@@ -16,10 +15,6 @@
 - Add a splash screen and loading indicator.
 - Add a dark mode toggle.
 - Drag and drop of excel files.
-- Emojis for countries.
-- Fix all warnings.
-- HS handling.
-- Improve upload experience (no weird message) and the UI when conference is empty.
 
 ## Experimental
 

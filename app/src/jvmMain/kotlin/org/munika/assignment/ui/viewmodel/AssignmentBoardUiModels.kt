@@ -1,5 +1,6 @@
 package org.munika.assignment.ui.viewmodel
 
+import org.munika.assignment.domain.model.AnswerIssueSeverity
 import org.munika.assignment.domain.model.AssignmentStatus
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.Delegate
@@ -64,6 +65,8 @@ data class AssignmentDelegateCandidateUiState(
     val preferenceRank: Int?,
     val pendingAssignmentLabel: String?,
     val confirmedAssignmentLabel: String?,
+    val warningCount: Int,
+    val noticeCount: Int,
 ) {
     val canAssign: Boolean = confirmedAssignmentLabel == null
     val isPendingElsewhere: Boolean = pendingAssignmentLabel != null
@@ -128,6 +131,8 @@ private fun Position.toBoardUiState(): PositionBoardUiState =
                     preferenceRank = delegate.preferences.firstOrNull { it.position === this }?.rank,
                     pendingAssignmentLabel = delegate.pendingAssignmentLabel(),
                     confirmedAssignmentLabel = delegate.confirmedAssignmentLabel(),
+                    warningCount = delegate.warningCount(),
+                    noticeCount = delegate.noticeCount(),
                 )
             }
             .sortedWith(
@@ -176,6 +181,12 @@ private fun Delegate.pendingAssignmentLabel(): String? {
 
 private fun Delegate.pendingAssignmentSlotId(): String? =
     currentSlot?.takeIf { it.isPending }?.id?.value
+
+private fun Delegate.warningCount(): Int =
+    answers.sumOf { answer -> answer.issues.count { it.severity == AnswerIssueSeverity.Warning } }
+
+private fun Delegate.noticeCount(): Int =
+    answers.sumOf { answer -> answer.issues.count { it.severity == AnswerIssueSeverity.Notice } }
 
 private val AssignmentDelegateCandidateUiState.assignmentSortRank: Int
     get() = when {

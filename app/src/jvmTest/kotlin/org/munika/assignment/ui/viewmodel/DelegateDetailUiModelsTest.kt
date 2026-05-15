@@ -151,6 +151,7 @@ class DelegateDetailUiModelsTest {
             questionText = "Why?",
             organizerLabel = "Motivation",
             visibleInDelegateDetail = true,
+            displayOrder = 0,
             rules = listOf(RequiredAnswer("Required")),
         )
         val visaQuestion = Question(
@@ -158,6 +159,7 @@ class DelegateDetailUiModelsTest {
             questionText = "Visa?",
             organizerLabel = "Visa",
             visibleInDelegateDetail = true,
+            displayOrder = 1,
             rules = listOf(NoticeWhenNonBlank("Visa support")),
         )
         val experienceQuestion = Question(

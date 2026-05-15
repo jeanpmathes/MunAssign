@@ -60,7 +60,16 @@ import org.munika.assignment.data.excel.MymunValidationSeverity
 import org.munika.assignment.data.excel.MymunWorkbookSnapshot
 import org.munika.assignment.domain.model.AssignmentSource
 import org.munika.assignment.domain.model.Conference
+import org.munika.assignment.domain.model.HighSchoolerAnswerMapping
+import org.munika.assignment.domain.model.LanguageLevelAnswerMapping
+import org.munika.assignment.domain.model.MinimumSentenceCount
+import org.munika.assignment.domain.model.MinimumTextLength
+import org.munika.assignment.domain.model.MunExperienceAnswerMapping
+import org.munika.assignment.domain.model.NoticeWhenAffirmative
+import org.munika.assignment.domain.model.NoticeWhenNonBlank
 import org.munika.assignment.domain.model.PaymentStatus
+import org.munika.assignment.domain.model.QuestionConfiguration
+import org.munika.assignment.domain.model.RequiredAnswer
 import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
 import org.munika.assignment.domain.repository.ConferenceRepository
@@ -387,6 +396,64 @@ class ConferenceRepositoryImpl(
         loadConferenceGraph(conferenceId)
     }
 
+    override suspend fun updateQuestionConfiguration(
+        conferenceId: String,
+        configuration: QuestionConfiguration,
+    ): Conference = db {
+        val questionId = configuration.questionId.value
+        val question = requireNotNull(
+            DelegateQuestionTable.selectAll()
+                .where { (DelegateQuestionTable.id eq questionId) and (DelegateQuestionTable.conferenceId eq conferenceId) }
+                .singleOrNull(),
+        ) { "Question $questionId does not belong to conference $conferenceId." }
+        require(question[DelegateQuestionTable.questionText] == configuration.questionText) {
+            "Imported question text is controlled by MyMUN updates."
+        }
+
+        val now = Instant.now().toEpochMilli()
+        DelegateQuestionTable.update({ DelegateQuestionTable.id eq questionId }) {
+            it[roleId] = configuration.role?.id
+            it[handlingTypeId] = configuration.handling.id
+            it[visibleInDelegateDetail] = configuration.role == null && configuration.visibleInDelegateDetail
+            it[organizerLabel] = configuration.organizerLabel?.trim()?.takeIf(String::isNotBlank)
+            it[displayOrder] = configuration.displayOrder
+        }
+        replaceQuestionRules(questionId, configuration)
+        when (configuration.role) {
+            StandardQuestionRoles.ExperienceLevel -> replaceMunExperienceMappings(questionId, configuration.mappings.munExperience)
+            StandardQuestionRoles.HighSchoolerStatus -> replaceHighSchoolerMappings(questionId, configuration.mappings.highSchooler)
+            StandardQuestionRoles.LanguageLevel -> replaceLanguageLevelMappings(questionId, configuration.mappings.languageLevel)
+            null -> Unit
+        }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = now
+        }
+        loadConferenceGraph(conferenceId)
+    }
+
+    override suspend fun reorderQuestionConfigurations(
+        conferenceId: String,
+        questionIdsInDisplayOrder: List<String>,
+    ): Conference = db {
+        val knownIds = DelegateQuestionTable.selectAll()
+            .where { DelegateQuestionTable.conferenceId eq conferenceId }
+            .map { it[DelegateQuestionTable.id] }
+            .toSet()
+        require(questionIdsInDisplayOrder.toSet() == knownIds && questionIdsInDisplayOrder.size == knownIds.size) {
+            "Question reorder must include every known question exactly once."
+        }
+        val now = Instant.now().toEpochMilli()
+        questionIdsInDisplayOrder.forEachIndexed { index, questionId ->
+            DelegateQuestionTable.update({ DelegateQuestionTable.id eq questionId }) {
+                it[displayOrder] = index
+            }
+        }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = now
+        }
+        loadConferenceGraph(conferenceId)
+    }
+
     /**
      * Applies an already parsed MyMUN update snapshot to one conference.
      *
@@ -680,20 +747,8 @@ class ConferenceRepositoryImpl(
             val questionId = existingQuestion?.get(DelegateQuestionTable.id) ?: UUID.randomUUID().toString()
             questionIdsByText[questionColumn.questionText] = questionId
             retainedQuestionIds += questionId
-            val questionTextLower = questionColumn.questionText.lowercase()
-            val roleId = when {
-                "experience" in questionTextLower -> StandardQuestionRoles.ExperienceLevel.id
-                "high school" in questionTextLower -> StandardQuestionRoles.HighSchoolerStatus.id
-                "english" in questionTextLower || "language" in questionTextLower -> StandardQuestionRoles.LanguageLevel.id
-                else -> null
-            }
-            val handlingId = when {
-                "why" in questionTextLower && "committee" in questionTextLower -> StandardQuestionHandlingTypes.CommitteeChoiceExplanation.id
-                "visa" in questionTextLower -> StandardQuestionHandlingTypes.VisaSupport.id
-                "delegation" in questionTextLower -> StandardQuestionHandlingTypes.DelegationMembership.id
-                roleId != null -> StandardQuestionHandlingTypes.ExpectedTypedAnswer.id
-                else -> StandardQuestionHandlingTypes.Default.id
-            }
+            val roleId = inferQuestionRoleId(questionColumn.questionText)
+            val handlingId = inferQuestionHandlingId(questionColumn.questionText, roleId)
 
             if (existingQuestion == null) {
                 DelegateQuestionTable.insert {
@@ -703,8 +758,9 @@ class ConferenceRepositoryImpl(
                     it[DelegateQuestionTable.normalizedQuestionText] = normalizedQuestion
                     it[DelegateQuestionTable.roleId] = roleId
                     it[DelegateQuestionTable.handlingTypeId] = handlingId
-                    it[DelegateQuestionTable.visibleInDelegateDetail] = true
+                    it[DelegateQuestionTable.visibleInDelegateDetail] = roleId == null
                     it[DelegateQuestionTable.organizerLabel] = null
+                    it[DelegateQuestionTable.displayOrder] = questionColumn.displayOrder
                 }
                 delta.questionsCreated++
             } else {
@@ -949,6 +1005,41 @@ class ConferenceRepositoryImpl(
         row[DelegateQuestionTable.questionText] != questionText ||
             row[DelegateQuestionTable.normalizedQuestionText] != normalizedQuestionText
 
+    private fun inferQuestionRoleId(questionText: String): String? {
+        val normalized = normalize(questionText)
+        return when {
+            Regex("""\bhigh[- ]?school(er|ers)?\b""").containsMatchIn(normalized) ->
+                StandardQuestionRoles.HighSchoolerStatus.id
+            Regex("""\b(mun|model united nations)\s+experience\b""").containsMatchIn(normalized) ||
+                "experience level" in normalized ||
+                Regex("""\bhow\s+(much\s+)?(mun\s+)?experience\b""").containsMatchIn(normalized) ->
+                StandardQuestionRoles.ExperienceLevel.id
+            "english level" in normalized ||
+                "level of english" in normalized ||
+                "language level" in normalized ||
+                Regex("""\b(english|language)\s+proficiency\b""").containsMatchIn(normalized) ->
+                StandardQuestionRoles.LanguageLevel.id
+            else -> null
+        }
+    }
+
+    private fun inferQuestionHandlingId(questionText: String, roleId: String?): String {
+        val normalized = normalize(questionText)
+        return when {
+            isCommitteeExplanationQuestion(normalized) -> StandardQuestionHandlingTypes.CommitteeChoiceExplanation.id
+            "visa" in normalized -> StandardQuestionHandlingTypes.VisaSupport.id
+            "delegation" in normalized -> StandardQuestionHandlingTypes.DelegationMembership.id
+            roleId != null -> StandardQuestionHandlingTypes.ExpectedTypedAnswer.id
+            else -> StandardQuestionHandlingTypes.Default.id
+        }
+    }
+
+    private fun isCommitteeExplanationQuestion(normalizedQuestionText: String): Boolean =
+        ("why" in normalizedQuestionText && "committee" in normalizedQuestionText) ||
+            ("explain" in normalizedQuestionText &&
+                ("committee" in normalizedQuestionText || "comittee" in normalizedQuestionText) &&
+                "choice" in normalizedQuestionText)
+
     private fun delegateChanged(row: ResultRow, incoming: MymunDelegateRow, delegationId: String?): Boolean =
         row[DelegateTable.delegationId] != delegationId ||
             row[DelegateTable.firstName] != incoming.firstName ||
@@ -1141,6 +1232,82 @@ class ConferenceRepositoryImpl(
         }
     }
 
+    private fun replaceQuestionRules(questionId: String, configuration: QuestionConfiguration) {
+        DelegateQuestionRuleTable.deleteWhere { DelegateQuestionRuleTable.questionId eq questionId }
+        configuration.rules.forEach { rule ->
+            DelegateQuestionRuleTable.insert {
+                it[id] = UUID.randomUUID().toString()
+                it[DelegateQuestionRuleTable.questionId] = questionId
+                when (rule) {
+                    is MinimumSentenceCount -> {
+                        it[ruleTypeId] = "minimum_sentence_count"
+                        it[intParameter] = rule.count
+                        it[textParameter] = null
+                    }
+                    is MinimumTextLength -> {
+                        it[ruleTypeId] = "minimum_text_length"
+                        it[intParameter] = rule.length
+                        it[textParameter] = null
+                    }
+                    is NoticeWhenNonBlank -> {
+                        it[ruleTypeId] = "notice_when_non_blank"
+                        it[intParameter] = null
+                        it[textParameter] = rule.message
+                    }
+                    is NoticeWhenAffirmative -> {
+                        it[ruleTypeId] = "notice_when_affirmative"
+                        it[intParameter] = null
+                        it[textParameter] = rule.message
+                    }
+                    is RequiredAnswer -> {
+                        it[ruleTypeId] = "required_answer"
+                        it[intParameter] = null
+                        it[textParameter] = rule.message
+                    }
+                }
+            }
+        }
+    }
+
+    private fun replaceMunExperienceMappings(questionId: String, mappings: List<MunExperienceAnswerMapping>) {
+        MunExperienceAnswerMappingTable.deleteWhere { MunExperienceAnswerMappingTable.questionId eq questionId }
+        mappings.forEach { mapping ->
+            MunExperienceAnswerMappingTable.insert {
+                it[id] = UUID.randomUUID().toString()
+                it[MunExperienceAnswerMappingTable.questionId] = questionId
+                it[rawValue] = mapping.rawValue.trim()
+                it[normalizedRawValue] = normalizeAnswer(mapping.rawValue)
+                it[mappedValue] = mapping.value.name
+            }
+        }
+    }
+
+    private fun replaceHighSchoolerMappings(questionId: String, mappings: List<HighSchoolerAnswerMapping>) {
+        HighSchoolerAnswerMappingTable.deleteWhere { HighSchoolerAnswerMappingTable.questionId eq questionId }
+        mappings.forEach { mapping ->
+            HighSchoolerAnswerMappingTable.insert {
+                it[id] = UUID.randomUUID().toString()
+                it[HighSchoolerAnswerMappingTable.questionId] = questionId
+                it[rawValue] = mapping.rawValue.trim()
+                it[normalizedRawValue] = normalizeAnswer(mapping.rawValue)
+                it[mappedValue] = mapping.value.name
+            }
+        }
+    }
+
+    private fun replaceLanguageLevelMappings(questionId: String, mappings: List<LanguageLevelAnswerMapping>) {
+        LanguageLevelAnswerMappingTable.deleteWhere { LanguageLevelAnswerMappingTable.questionId eq questionId }
+        mappings.forEach { mapping ->
+            LanguageLevelAnswerMappingTable.insert {
+                it[id] = UUID.randomUUID().toString()
+                it[LanguageLevelAnswerMappingTable.questionId] = questionId
+                it[rawValue] = mapping.rawValue.trim()
+                it[normalizedRawValue] = normalizeAnswer(mapping.rawValue)
+                it[mappedValue] = mapping.value.name
+            }
+        }
+    }
+
     private suspend fun <T> db(block: suspend () -> T): T =
         newSuspendedTransaction(Dispatchers.IO, db = database) { block() }
 
@@ -1249,6 +1416,7 @@ class ConferenceRepositoryImpl(
                     handlingTypeId = row[DelegateQuestionTable.handlingTypeId],
                     visibleInDelegateDetail = row[DelegateQuestionTable.visibleInDelegateDetail],
                     organizerLabel = row[DelegateQuestionTable.organizerLabel],
+                    displayOrder = row[DelegateQuestionTable.displayOrder],
                 )
             },
             questionRules = if (questionIds.isEmpty()) emptyList() else DelegateQuestionRuleTable.selectAll().where {
@@ -1337,6 +1505,8 @@ class ConferenceRepositoryImpl(
     }
 
     private fun normalize(value: String): String = value.trim().lowercase().replace(Regex("\\s+"), " ")
+
+    private fun normalizeAnswer(value: String): String = value.trim().lowercase()
 
     private fun LocalDate.toEpochMilliUtc(): Long = atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli()
 

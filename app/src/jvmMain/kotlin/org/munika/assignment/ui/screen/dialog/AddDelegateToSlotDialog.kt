@@ -139,6 +139,12 @@ private fun DelegateCandidateRow(
                 candidate.preferenceRank?.let { rank ->
                     Text("Preference #$rank", style = MaterialTheme.typography.labelMedium)
                 }
+                if (candidate.warningCount > 0) {
+                    Text("${candidate.warningCount} W", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                }
+                if (candidate.noticeCount > 0) {
+                    Text("${candidate.noticeCount} N", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             val detail = if (alreadyInSlot) {
                 "Already pending here"

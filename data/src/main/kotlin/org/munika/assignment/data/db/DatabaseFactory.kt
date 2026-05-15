@@ -87,6 +87,7 @@ object DatabaseFactory {
     private val answerRuleDefaults: List<Pair<String, String>> = listOf(
         "minimum_sentence_count" to "Minimum sentence count",
         "minimum_text_length" to "Minimum text length",
+        "notice_when_affirmative" to "Notice when affirmative",
         "notice_when_non_blank" to "Notice when non-blank",
         "required_answer" to "Required answer",
     )
@@ -110,6 +111,19 @@ object DatabaseFactory {
             }.orEmpty()
             conferenceIds.forEachIndexed { index, id ->
                 TransactionManager.current().exec("UPDATE conferences SET display_order = $index WHERE id = '$id'")
+            }
+        },
+        SchemaMigration(version = 4, name = "add_question_display_order") {
+            addColumnIfMissing("delegate_questions", "display_order", "INT NOT NULL DEFAULT 0")
+            val questionIds = TransactionManager.current().exec(
+                "SELECT id FROM delegate_questions ORDER BY conference_id, rowid",
+            ) { resultSet ->
+                generateSequence {
+                    if (resultSet.next()) resultSet.getString("id") else null
+                }.toList()
+            }.orEmpty()
+            questionIds.forEachIndexed { index, id ->
+                TransactionManager.current().exec("UPDATE delegate_questions SET display_order = $index WHERE id = '$id'")
             }
         },
     )

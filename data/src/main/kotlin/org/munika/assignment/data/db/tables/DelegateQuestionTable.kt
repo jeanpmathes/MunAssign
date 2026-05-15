@@ -12,6 +12,7 @@ object DelegateQuestionTable : Table("delegate_questions") {
     val handlingTypeId = varchar("handling_type_id", 64).references(QuestionHandlingTypeTable.id)
     val visibleInDelegateDetail = bool("visible_in_delegate_detail")
     val organizerLabel = varchar("organizer_label", 255).nullable()
+    val displayOrder = integer("display_order")
 
     override val primaryKey = PrimaryKey(id)
 

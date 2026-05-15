@@ -22,6 +22,8 @@ import org.munika.assignment.data.db.tables.DelegateCommentTable
 import org.munika.assignment.data.db.tables.DelegateQuestionRuleTable
 import org.munika.assignment.data.db.tables.DelegateQuestionTable
 import org.munika.assignment.data.db.tables.DelegateTable
+import org.munika.assignment.data.db.tables.HighSchoolerAnswerMappingTable
+import org.munika.assignment.data.db.tables.LanguageLevelAnswerMappingTable
 import org.munika.assignment.data.db.tables.MunExperienceAnswerMappingTable
 import org.munika.assignment.data.db.tables.MymunUpdateIssueTable
 import org.munika.assignment.data.db.tables.PositionTable
@@ -37,10 +39,20 @@ import org.munika.assignment.data.excel.MymunQuestionColumn
 import org.munika.assignment.data.excel.MymunWorkbookSnapshot
 import org.munika.assignment.data.excel.MymunWorkbookUpdater
 import org.munika.assignment.domain.model.AssignmentSource
+import org.munika.assignment.domain.model.HighSchoolerAnswerMapping
+import org.munika.assignment.domain.model.HighSchoolerStatus
+import org.munika.assignment.domain.model.LanguageLevel
+import org.munika.assignment.domain.model.LanguageLevelAnswerMapping
+import org.munika.assignment.domain.model.MinimumTextLength
+import org.munika.assignment.domain.model.MunExperienceAnswerMapping
 import org.munika.assignment.domain.model.MunExperienceLevel
+import org.munika.assignment.domain.model.NoticeWhenNonBlank
 import org.munika.assignment.domain.model.PaymentStatus
+import org.munika.assignment.domain.model.QuestionConfiguration
+import org.munika.assignment.domain.model.RequiredAnswer
 import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
+import org.munika.assignment.domain.model.TypedAnswerMappings
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
 
 class ConferenceRepositoryImplTest {
@@ -789,6 +801,196 @@ class ConferenceRepositoryImplTest {
         }
     }
 
+    @Test
+    fun `question configuration update saves local handling label rules and mappings`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-question-save").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val snapshot = snapshotWithQuestion()
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshot).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val question = loaded.questions.single()
+
+        val updated = repository.updateQuestionConfiguration(
+            conferenceId = conference.id.value,
+            configuration = QuestionConfiguration(
+                questionId = question.id,
+                questionText = question.questionText,
+                role = StandardQuestionRoles.ExperienceLevel,
+                handling = StandardQuestionHandlingTypes.ExpectedTypedAnswer,
+                visibleInDelegateDetail = false,
+                organizerLabel = " Experience ",
+                displayOrder = 2,
+                rules = listOf(RequiredAnswer("Missing"), MinimumTextLength(12), NoticeWhenNonBlank("Review")),
+                mappings = TypedAnswerMappings(
+                    munExperience = listOf(MunExperienceAnswerMapping("Lots", MunExperienceLevel.Advanced)),
+                ),
+            ),
+        )
+
+        val reloadedQuestion = updated.questions.single()
+        assertFalse(reloadedQuestion.visibleInDelegateDetail)
+        assertEquals("Experience", reloadedQuestion.organizerLabel)
+        assertEquals(StandardQuestionRoles.ExperienceLevel, reloadedQuestion.role)
+        assertEquals(StandardQuestionHandlingTypes.ExpectedTypedAnswer, reloadedQuestion.handling)
+        assertEquals(3, reloadedQuestion.rules.size)
+        assertEquals(MunExperienceLevel.Advanced, reloadedQuestion.mapMunExperience(" lots "))
+        transaction(database) {
+            assertEquals(3, DelegateQuestionRuleTable.selectAll().where { DelegateQuestionRuleTable.questionId eq question.id.value }.count())
+            assertEquals(1, MunExperienceAnswerMappingTable.selectAll().where { MunExperienceAnswerMappingTable.questionId eq question.id.value }.count())
+        }
+    }
+
+    @Test
+    fun `question configuration update normalizes blank labels and rejects duplicate mappings`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-question-validation").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithQuestion()).success)
+        val question = requireNotNull(repository.getConference(conference.id.value)).questions.single()
+
+        val saved = repository.updateQuestionConfiguration(
+            conferenceId = conference.id.value,
+            configuration = QuestionConfiguration(
+                questionId = question.id,
+                questionText = question.questionText,
+                role = StandardQuestionRoles.HighSchoolerStatus,
+                handling = StandardQuestionHandlingTypes.ExpectedTypedAnswer,
+                visibleInDelegateDetail = true,
+                organizerLabel = "   ",
+                displayOrder = question.displayOrder,
+                rules = emptyList(),
+                mappings = TypedAnswerMappings(
+                    highSchooler = listOf(HighSchoolerAnswerMapping("Yes", HighSchoolerStatus.Yes)),
+                ),
+            ),
+        )
+        assertNull(saved.questions.single().organizerLabel)
+
+        assertFailsWith<IllegalArgumentException> {
+            repository.updateQuestionConfiguration(
+                conferenceId = conference.id.value,
+                configuration = QuestionConfiguration(
+                    questionId = question.id,
+                    questionText = question.questionText,
+                    role = StandardQuestionRoles.LanguageLevel,
+                    handling = StandardQuestionHandlingTypes.ExpectedTypedAnswer,
+                    visibleInDelegateDetail = true,
+                    organizerLabel = null,
+                    displayOrder = question.displayOrder,
+                    rules = emptyList(),
+                    mappings = TypedAnswerMappings(
+                        languageLevel = listOf(
+                            LanguageLevelAnswerMapping("B1", LanguageLevel.IndependentUserB1B2),
+                            LanguageLevelAnswerMapping(" b1 ", LanguageLevel.IndependentUserB1B2),
+                        ),
+                    ),
+                ),
+            )
+        }
+        Unit
+    }
+
+    @Test
+    fun `question configuration update touches only selected role mapping table`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-question-role-mappings").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithQuestion()).success)
+        val question = requireNotNull(repository.getConference(conference.id.value)).questions.single()
+        transaction(database) {
+            MunExperienceAnswerMappingTable.insert {
+                it[id] = "experience-mapping"
+                it[MunExperienceAnswerMappingTable.questionId] = question.id.value
+                it[rawValue] = "Lots"
+                it[normalizedRawValue] = "lots"
+                it[mappedValue] = MunExperienceLevel.Advanced.name
+            }
+            HighSchoolerAnswerMappingTable.insert {
+                it[id] = "school-mapping"
+                it[HighSchoolerAnswerMappingTable.questionId] = question.id.value
+                it[rawValue] = "Yes"
+                it[normalizedRawValue] = "yes"
+                it[mappedValue] = HighSchoolerStatus.Yes.name
+            }
+        }
+
+        repository.updateQuestionConfiguration(
+            conferenceId = conference.id.value,
+            configuration = QuestionConfiguration(
+                questionId = question.id,
+                questionText = question.questionText,
+                role = StandardQuestionRoles.LanguageLevel,
+                handling = StandardQuestionHandlingTypes.ExpectedTypedAnswer,
+                visibleInDelegateDetail = true,
+                organizerLabel = null,
+                displayOrder = question.displayOrder,
+                rules = emptyList(),
+                mappings = TypedAnswerMappings(
+                    languageLevel = listOf(LanguageLevelAnswerMapping("B1", LanguageLevel.IndependentUserB1B2)),
+                ),
+            ),
+        )
+
+        transaction(database) {
+            assertEquals(1, MunExperienceAnswerMappingTable.selectAll().where { MunExperienceAnswerMappingTable.questionId eq question.id.value }.count())
+            assertEquals(1, HighSchoolerAnswerMappingTable.selectAll().where { HighSchoolerAnswerMappingTable.questionId eq question.id.value }.count())
+            assertEquals(1, LanguageLevelAnswerMappingTable.selectAll().where { LanguageLevelAnswerMappingTable.questionId eq question.id.value }.count())
+        }
+    }
+
+    @Test
+    fun `question role heuristics detect specific role questions without broad experience matches`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-question-heuristics").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        assertTrue(
+            repository.applyMymunUpdateSnapshot(
+                conference.id.value,
+                snapshotWithQuestions(
+                    listOf(
+                        "Question: Please describe any of your accessibility needs.",
+                        "Question: Are you a high-schooler?",
+                        "Question: What is your MUN experience?",
+                        "Question: Please explain your choice of comittees.",
+                    ),
+                ),
+            ).success,
+        )
+        val questions = requireNotNull(repository.getConference(conference.id.value)).questions.associateBy { it.questionText }
+
+        assertNull(questions.getValue("Question: Please describe any of your accessibility needs.").role)
+        assertEquals(StandardQuestionRoles.HighSchoolerStatus, questions.getValue("Question: Are you a high-schooler?").role)
+        assertEquals(StandardQuestionRoles.ExperienceLevel, questions.getValue("Question: What is your MUN experience?").role)
+        assertEquals(
+            StandardQuestionHandlingTypes.CommitteeChoiceExplanation,
+            questions.getValue("Question: Please explain your choice of comittees.").handling,
+        )
+    }
+
+    @Test
+    fun `question reorder persists display order`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-question-order").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithQuestions(listOf("Question: A", "Question: B"))).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val reorderedIds = loaded.questions.sortedByDescending { it.questionText }.map { it.id.value }
+        val reordered = repository.reorderQuestionConfigurations(conference.id.value, reorderedIds)
+
+        assertEquals(listOf("Question: B", "Question: A"), reordered.questions.sortedBy { it.displayOrder }.map { it.questionText })
+    }
+
     private fun duplicateAssignmentSnapshot(
         delegates: List<MymunDelegateRow> = listOf(delegate()),
         confirmedAssignments: List<MymunConfirmedAssignmentCandidate> = listOf(
@@ -856,13 +1058,18 @@ class ConferenceRepositoryImplTest {
             issues = emptyList(),
         )
 
-    private fun snapshotWithQuestion(): MymunWorkbookSnapshot {
-        val questionColumn = MymunQuestionColumn(
+    private fun snapshotWithQuestion(): MymunWorkbookSnapshot =
+        snapshotWithQuestions(listOf("Question: MUN experience"))
+
+    private fun snapshotWithQuestions(questionTexts: List<String>): MymunWorkbookSnapshot {
+        val questionColumns = questionTexts.mapIndexed { index, questionText ->
+            MymunQuestionColumn(
             sheetName = "Delegates",
-            columnNumber = 5,
-            displayOrder = 4,
-            questionText = "Question: MUN experience",
-        )
+                columnNumber = 5 + index,
+                displayOrder = 4 + index,
+                questionText = questionText,
+            )
+        }
         return MymunWorkbookSnapshot(
             workbookName = "question.xlsx",
             delegates = listOf(delegate()),
@@ -876,15 +1083,15 @@ class ConferenceRepositoryImplTest {
                 ),
             ),
             delegations = emptyList(),
-            questionColumns = listOf(questionColumn),
-            questionAnswers = listOf(
+            questionColumns = questionColumns,
+            questionAnswers = questionColumns.map { questionColumn ->
                 MymunQuestionAnswerCell(
                     delegateRowNumber = 2,
                     questionColumn = questionColumn,
                     answer = "Lots",
                     location = CellLocation("Delegates", 2, 5, questionColumn.questionText),
-                ),
-            ),
+                )
+            },
             preferenceCandidates = emptyList(),
             confirmedAssignmentCandidates = emptyList(),
             issues = emptyList(),

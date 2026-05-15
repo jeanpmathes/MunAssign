@@ -20,6 +20,11 @@ import org.munika.assignment.domain.model.Position
 import org.munika.assignment.domain.model.PositionId
 import org.munika.assignment.domain.model.Preference
 import org.munika.assignment.domain.model.PreferenceId
+import org.munika.assignment.domain.model.Question
+import org.munika.assignment.domain.model.QuestionAnswer
+import org.munika.assignment.domain.model.QuestionAnswerId
+import org.munika.assignment.domain.model.QuestionId
+import org.munika.assignment.domain.model.RequiredAnswer
 import org.munika.assignment.domain.model.Slot
 import org.munika.assignment.domain.model.SlotId
 
@@ -100,6 +105,24 @@ class AssignmentBoardUiModelsTest {
 
         assertEquals(listOf("Neutral Delegate", "Available Delegate"), germany.assignmentCandidates.map { it.name })
         assertEquals("GA (France)", germany.assignmentCandidates.single { it.name == "Available Delegate" }.pendingAssignmentLabel)
+    }
+
+    @Test
+    fun `assignment candidates include answer warning and notice counts`() {
+        val board = board()
+        val warningQuestion = Question(QuestionId("warning"), "Warning", rules = listOf(RequiredAnswer("Missing")))
+        val noticeQuestion = Question(QuestionId("notice"), "Notice", rules = listOf(org.munika.assignment.domain.model.NoticeWhenNonBlank("Check")))
+        board.conference.questions += listOf(warningQuestion, noticeQuestion)
+        board.available.answers += QuestionAnswer(QuestionAnswerId("warning-answer"), board.available, warningQuestion, null)
+        board.available.answers += QuestionAnswer(QuestionAnswerId("notice-answer"), board.available, noticeQuestion, "yes")
+
+        val germany = board.conference.toAssignmentBoardUiState()
+            .committees.single()
+            .positions.single { it.name == "Germany" }
+        val candidate = germany.assignmentCandidates.single { it.name == "Available Delegate" }
+
+        assertEquals(1, candidate.warningCount)
+        assertEquals(1, candidate.noticeCount)
     }
 
     private fun board(slotCount: Int = 1): Board {

@@ -13,6 +13,7 @@ class Question(
     val handling: QuestionHandlingType = StandardQuestionHandlingTypes.Default,
     val visibleInDelegateDetail: Boolean = true,
     val organizerLabel: String? = null,
+    val displayOrder: Int = 0,
     val rules: List<AnswerRule> = emptyList(),
     val mappings: TypedAnswerMappings = TypedAnswerMappings.defaults(),
 ) : DomainObject<QuestionId> {

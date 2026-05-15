@@ -74,15 +74,18 @@ import kotlin.math.abs
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.Delegate
 import org.munika.assignment.domain.model.PaymentStatus
+import org.munika.assignment.domain.model.QuestionConfiguration
 import org.munika.assignment.domain.repository.UpdateIssue
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
 import org.munika.assignment.domain.repository.UpdateSummary
+import org.munika.assignment.ui.screen.dialog.QuestionConfigurationDialog
 import org.munika.assignment.ui.screen.component.AssignmentBoard
 import org.munika.assignment.ui.screen.component.DelegateListPanel
 import org.munika.assignment.ui.screen.component.DelegateSidePanel
 import org.munika.assignment.ui.viewmodel.DelegateListControlsUiState
 import org.munika.assignment.ui.viewmodel.DelegateListPreset
 import org.munika.assignment.ui.viewmodel.MainUiState
+import org.munika.assignment.ui.viewmodel.toQuestionConfigurationListUiState
 import org.munika.assignment.ui.viewmodel.toDelegateListUiState
 import org.munika.assignment.ui.viewmodel.toDelegateDetailUiState
 import org.munika.assignment.ui.viewmodel.toAssignmentBoardUiState
@@ -100,6 +103,9 @@ fun MainScreen(
     onClearPendingSlot: (slotId: String) -> Unit,
     onOpenDelegateList: () -> Unit,
     onCloseDelegateList: () -> Unit,
+    onOpenQuestionConfiguration: () -> Unit,
+    onCloseQuestionConfiguration: () -> Unit,
+    onUpdateQuestionConfigurations: (List<QuestionConfiguration>) -> Unit,
     onUpdateDelegateListControls: (DelegateListControlsUiState) -> Unit,
     onApplyDelegateListPreset: (DelegateListPreset) -> Unit,
     onOpenDelegateDetail: (String) -> Unit,
@@ -137,6 +143,7 @@ fun MainScreen(
                     managementOpen = true
                 },
                 onOpenDelegateList = onOpenDelegateList,
+                onOpenQuestionConfiguration = onOpenQuestionConfiguration,
                 onOpenWorkbook = onOpenWorkbook,
             )
             Box(modifier = Modifier.fillMaxSize().padding(24.dp)) {
@@ -236,6 +243,16 @@ fun MainScreen(
             onClearConferenceActionError = onClearConferenceActionError,
         )
     }
+
+    if (state.questionConfigurationOpen && selectedConference != null) {
+        QuestionConfigurationDialog(
+            conference = selectedConference,
+            list = selectedConference.toQuestionConfigurationListUiState(),
+            error = state.questionConfigurationError,
+            onDismiss = onCloseQuestionConfiguration,
+            onSave = onUpdateQuestionConfigurations,
+        )
+    }
 }
 
 @Composable
@@ -246,6 +263,7 @@ private fun TopBar(
     onOpenRename: (Conference) -> Unit,
     onOpenManagement: () -> Unit,
     onOpenDelegateList: () -> Unit,
+    onOpenQuestionConfiguration: () -> Unit,
     onOpenWorkbook: (() -> Unit)? = null,
 ) {
     Surface(shadowElevation = 2.dp, color = MaterialTheme.colorScheme.surface) {
@@ -275,6 +293,7 @@ private fun TopBar(
             }
 
             Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 WithTooltip("Select a MyMUN Excel workbook to update the selected conference.") {
                     Button(
                         onClick = { onOpenWorkbook?.invoke() },
@@ -283,6 +302,17 @@ private fun TopBar(
                         Icon(Icons.Filled.UploadFile, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
                         Text("Update")
+                    }
+                }
+                    WithTooltip("Configure imported MyMUN questions.") {
+                        OutlinedButton(
+                            onClick = onOpenQuestionConfiguration,
+                            enabled = !state.loading && state.selectedConference?.questions?.isNotEmpty() == true,
+                        ) {
+                            Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Questions")
+                        }
                     }
                 }
             }

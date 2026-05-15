@@ -26,6 +26,7 @@ import org.munika.assignment.domain.model.MinimumSentenceCount
 import org.munika.assignment.domain.model.MinimumTextLength
 import org.munika.assignment.domain.model.MunExperienceAnswerMapping
 import org.munika.assignment.domain.model.MunExperienceLevel
+import org.munika.assignment.domain.model.NoticeWhenAffirmative
 import org.munika.assignment.domain.model.NoticeWhenNonBlank
 import org.munika.assignment.domain.model.PaymentStatus
 import org.munika.assignment.domain.model.PersonName
@@ -148,6 +149,7 @@ object ConferenceGraphMapper {
                 handling = handling,
                 visibleInDelegateDetail = row.visibleInDelegateDetail,
                 organizerLabel = row.organizerLabel,
+                displayOrder = row.displayOrder,
                 rules = rules.ifEmpty { handling.defaultRules() },
                 mappings = TypedAnswerMappings(
                     munExperience = rows.munExperienceMappings
@@ -240,6 +242,7 @@ object ConferenceGraphMapper {
         when (ruleTypeId) {
             "minimum_sentence_count" -> intParameter?.let(::MinimumSentenceCount)
             "minimum_text_length" -> intParameter?.let(::MinimumTextLength)
+            "notice_when_affirmative" -> NoticeWhenAffirmative(textParameter ?: "Answer requires attention.")
             "notice_when_non_blank", "warn_when_non_blank" -> NoticeWhenNonBlank(textParameter ?: "Answer requires attention.")
             "required_answer" -> RequiredAnswer(textParameter ?: "Answer is required.")
             else -> null
@@ -248,7 +251,7 @@ object ConferenceGraphMapper {
     private fun org.munika.assignment.domain.model.QuestionHandlingType.defaultRules(): List<AnswerRule> =
         when (this) {
             StandardQuestionHandlingTypes.CommitteeChoiceExplanation -> listOf(MinimumSentenceCount(3))
-            StandardQuestionHandlingTypes.VisaSupport -> listOf(NoticeWhenNonBlank("Visa support requested."))
+            StandardQuestionHandlingTypes.VisaSupport -> listOf(NoticeWhenAffirmative("Visa support requested."))
             else -> emptyList()
         }
 

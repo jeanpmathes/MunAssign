@@ -132,6 +132,7 @@ fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiSta
                 StandardQuestionRoles.LanguageLevel,
             )
         }
+        .sortedWith(compareBy<org.munika.assignment.domain.model.QuestionAnswer> { it.question.displayOrder }.thenBy { it.question.questionText })
         .map { answer ->
             DelegateAnswerUiState(
                 label = answer.question.displayLabel,
@@ -145,7 +146,6 @@ fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiSta
                 },
             )
         }
-        .sortedBy { it.label }
     return DelegateDetailUiState(
         id = delegate.id.value,
         name = delegate.displayName,

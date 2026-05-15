@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.munika.assignment.data.excel.MymunWorkbookUpdater
 import org.munika.assignment.domain.model.Conference
+import org.munika.assignment.domain.model.QuestionConfiguration
 import org.munika.assignment.domain.repository.ConferenceRepository
 import org.munika.assignment.domain.repository.UpdateIssue
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
@@ -156,6 +157,14 @@ class MainViewModel(
 
     fun closeDelegateList(): Unit {
         _state.update { it.copy(delegateListOpen = false) }
+    }
+
+    fun openQuestionConfiguration(): Unit {
+        _state.update { it.copy(questionConfigurationOpen = true, questionConfigurationError = null) }
+    }
+
+    fun closeQuestionConfiguration(): Unit {
+        _state.update { it.copy(questionConfigurationOpen = false, questionConfigurationError = null) }
     }
 
     fun updateDelegateListControls(controls: DelegateListControlsUiState): Unit {
@@ -374,6 +383,65 @@ class MainViewModel(
         }
     }
 
+    fun updateQuestionConfiguration(configuration: QuestionConfiguration) {
+        val selectedId = selectedIdOrNull() ?: return
+        scope.launch {
+            try {
+                val conference = repository.updateQuestionConfiguration(selectedId, configuration)
+                _state.update {
+                    it.copy(
+                        selectedConference = conference,
+                        questionConfigurationError = null,
+                        boardActionError = null,
+                    )
+                }
+            } catch (exception: IllegalArgumentException) {
+                _state.update {
+                    it.copy(questionConfigurationError = exception.message ?: "Question configuration could not be saved.")
+                }
+            } catch (exception: Exception) {
+                _state.update {
+                    it.copy(
+                        questionConfigurationError = "Question configuration update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
+                    )
+                }
+            }
+        }
+    }
+
+    fun updateQuestionConfigurations(configurations: List<QuestionConfiguration>) {
+        val selectedId = selectedIdOrNull() ?: return
+        scope.launch {
+            try {
+                var conference = _state.value.selectedConference
+                configurations.forEach { configuration ->
+                    conference = repository.updateQuestionConfiguration(selectedId, configuration)
+                }
+                conference = repository.reorderQuestionConfigurations(
+                    selectedId,
+                    configurations.sortedBy { it.displayOrder }.map { it.questionId.value },
+                )
+                _state.update {
+                    it.copy(
+                        selectedConference = conference,
+                        questionConfigurationError = null,
+                        boardActionError = null,
+                    )
+                }
+            } catch (exception: IllegalArgumentException) {
+                _state.update {
+                    it.copy(questionConfigurationError = exception.message ?: "Question configuration could not be saved.")
+                }
+            } catch (exception: Exception) {
+                _state.update {
+                    it.copy(
+                        questionConfigurationError = "Question configuration update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
+                    )
+                }
+            }
+        }
+    }
+
     fun requestScrollToPosition(committeeId: String, positionId: String) {
         _state.update { it.copy(boardScrollRequest = BoardScrollRequest(committeeId = committeeId, positionId = positionId)) }
     }
@@ -459,4 +527,6 @@ data class MainUiState(
     val selectedDelegateId: String? = null,
     val delegateListOpen: Boolean = false,
     val delegateListControls: DelegateListControlsUiState = DelegateListControlsUiState(),
+    val questionConfigurationOpen: Boolean = false,
+    val questionConfigurationError: String? = null,
 )

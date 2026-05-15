@@ -123,6 +123,7 @@ class ConferenceGraphMapperTest {
                     handlingTypeId = "expected_typed_answer",
                     visibleInDelegateDetail = true,
                     organizerLabel = null,
+                    displayOrder = 0,
                 ),
             ),
             questionRules = emptyList(),

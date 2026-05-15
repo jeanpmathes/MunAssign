@@ -1,6 +1,7 @@
 package org.munika.assignment.domain.repository
 
 import org.munika.assignment.domain.model.Conference
+import org.munika.assignment.domain.model.QuestionConfiguration
 
 /**
  * Persistence boundary for conference aggregates.
@@ -80,6 +81,27 @@ interface ConferenceRepository {
      * Deletes an organizer-managed delegate note.
      */
     suspend fun deleteDelegateComment(conferenceId: String, commentId: String): Conference
+
+    /**
+     * Updates organizer-managed handling for one imported MyMUN question.
+     *
+     * Implementations must preserve the imported question text and answers. Only local
+     * configuration such as role, handling, visibility, label, rules, and typed mappings changes.
+     */
+    suspend fun updateQuestionConfiguration(
+        conferenceId: String,
+        configuration: QuestionConfiguration,
+    ): Conference
+
+    /**
+     * Replaces the display order for imported questions in one conference.
+     *
+     * The provided list must contain every question in that conference exactly once.
+     */
+    suspend fun reorderQuestionConfigurations(
+        conferenceId: String,
+        questionIdsInDisplayOrder: List<String>,
+    ): Conference
 
     suspend fun getConference(conferenceId: String): Conference?
 }

@@ -64,10 +64,21 @@ During an update:
 Questions are stable imported objects with editable local configuration:
 
 - expected role, such as experience level, high-schooler status, or language level;
-- handling type, such as default, committee-choice explanation, visa support, or delegation membership;
+- internal handling type, such as default, committee-choice explanation, visa support, or delegation membership;
 - display visibility and organizer label;
+- organizer-managed display order for general questions in delegate detail;
 - answer rules;
 - role-specific raw-answer mappings.
+
+Questions with an expected role are special profile fields. They are shown in the typed profile area
+of delegate detail, not in the general answer overview, and are pinned above reorderable general
+questions in the question editor.
+
+General questions can opt into handling archetypes. The visa archetype raises a notice only for
+meaningful affirmative answers, while blank values, dashes, and explicit no-style answers are
+ignored. The committee-choice explanation archetype warns when the answer has fewer than three
+sentences. Role-backed special questions use their role handling and do not expose these general
+handling archetypes.
 
 Role-specific mapping tables are intentionally separate so language-level values cannot be mapped into experience-level values, or similar.
 
