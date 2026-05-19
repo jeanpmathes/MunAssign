@@ -5,7 +5,6 @@ import org.munika.assignment.domain.model.AnswerIssueSeverity
 import org.munika.assignment.domain.model.AssignmentStatus
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.Delegate
-import org.munika.assignment.domain.model.HighSchoolerStatus
 import org.munika.assignment.domain.model.LanguageLevel
 import org.munika.assignment.domain.model.MunExperienceLevel
 import org.munika.assignment.domain.model.PaymentStatus
@@ -34,6 +33,7 @@ data class DelegateDetailUiState(
     val canDeactivate: Boolean,
     val preferences: List<DelegatePreferenceUiState>,
     val answers: List<DelegateAnswerUiState>,
+    val profileIssues: List<DelegateAnswerIssueUiState>,
     val answerWarningCount: Int,
     val answerNoticeCount: Int,
     val comments: List<DelegateCommentUiState>,
@@ -146,6 +146,13 @@ fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiSta
                 },
             )
         }
+    val profileIssues = delegate.profileIssues().map { issue ->
+        DelegateAnswerIssueUiState(
+            message = issue.message,
+            severity = issue.severity.name,
+            isWarning = issue.severity == AnswerIssueSeverity.Warning,
+        )
+    }
     return DelegateDetailUiState(
         id = delegate.id.value,
         name = delegate.displayName,
@@ -167,7 +174,7 @@ fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiSta
                 tooltip = "This delegate is hidden from assignment views until reactivated.",
             )
         },
-        highSchooler = delegate.highSchoolerStatus == HighSchoolerStatus.Yes,
+        highSchooler = delegate.isHighSchooler,
         isHeadDelegate = delegate.isHeadDelegate,
         email = delegate.email?.takeIf { it.isNotBlank() },
         phone = delegate.profile.phone?.takeIf { it.isNotBlank() },
@@ -207,8 +214,11 @@ fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiSta
             .sortedBy { it.rank }
             .map { preference -> preference.toUiState(currentSlot?.position) },
         answers = displayAnswers,
-        answerWarningCount = displayAnswers.sumOf { answer -> answer.issues.count { it.isWarning } },
-        answerNoticeCount = displayAnswers.sumOf { answer -> answer.issues.count { !it.isWarning } },
+        profileIssues = profileIssues,
+        answerWarningCount = displayAnswers.sumOf { answer -> answer.issues.count { it.isWarning } } +
+            profileIssues.count { it.isWarning },
+        answerNoticeCount = displayAnswers.sumOf { answer -> answer.issues.count { !it.isWarning } } +
+            profileIssues.count { !it.isWarning },
         comments = delegate.comments
             .sortedWith(compareBy<org.munika.assignment.domain.model.DelegateComment> { it.createdAt }.thenBy { it.id.value })
             .map { comment ->

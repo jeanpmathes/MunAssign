@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Checkbox
@@ -61,6 +62,7 @@ import org.munika.assignment.ui.viewmodel.DelegateListAssignmentStatus
 import org.munika.assignment.ui.viewmodel.DelegateListControlsUiState
 import org.munika.assignment.ui.viewmodel.DelegateListPreset
 import org.munika.assignment.ui.viewmodel.DelegateListRowUiState
+import org.munika.assignment.ui.viewmodel.DelegateListSchoolLevel
 import org.munika.assignment.ui.viewmodel.DelegateListSort
 import org.munika.assignment.ui.viewmodel.DelegateListUiState
 import org.munika.assignment.ui.viewmodel.DelegateStatusTone
@@ -256,6 +258,22 @@ private fun FilterMenu(
                 )
             }
             HorizontalDivider()
+            Text("School level", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+            DelegateListSchoolLevel.entries.forEach { level ->
+                CheckboxMenuItem(
+                    label = level.label,
+                    checked = level in controls.includedSchoolLevels,
+                    onCheckedChange = { checked ->
+                        val levels = if (checked) {
+                            controls.includedSchoolLevels + level
+                        } else {
+                            controls.includedSchoolLevels - level
+                        }
+                        onControlsChange(controls.copy(includedSchoolLevels = levels))
+                    },
+                )
+            }
+            HorizontalDivider()
             DropdownMenuItem(
                 text = { Text("Any committee") },
                 onClick = { onControlsChange(controls.copy(committeeId = null)) },
@@ -319,7 +337,23 @@ private fun DelegateRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(row.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1.35f))
+        Row(
+            modifier = Modifier.weight(1.35f),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Text(row.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            if (row.isHighSchooler) {
+                BoardTooltip("High school delegate.") {
+                    Icon(
+                        Icons.Filled.School,
+                        contentDescription = "High school delegate",
+                        tint = Color(0xFF8E24AA),
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+        }
         StatusPill(row.assignmentStatusLabel, row.assignmentStatus.tone, Modifier.weight(0.8f))
         StatusPill(row.paymentActiveLabel, row.paymentActiveTone, Modifier.weight(0.8f))
         IssueCell(row.warningCount, row.noticeCount, Modifier.weight(0.84f))
@@ -402,6 +436,12 @@ private val DelegateListAssignmentStatus.label: String
         DelegateListAssignmentStatus.Unassigned -> "Unassigned"
         DelegateListAssignmentStatus.Pending -> "Pending"
         DelegateListAssignmentStatus.Confirmed -> "Confirmed"
+    }
+
+private val DelegateListSchoolLevel.label: String
+    get() = when (this) {
+        DelegateListSchoolLevel.HighSchool -> "High schoolers"
+        DelegateListSchoolLevel.University -> "University level"
     }
 
 private val DelegateListAssignmentStatus.tone: DelegateStatusTone

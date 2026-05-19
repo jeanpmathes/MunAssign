@@ -440,9 +440,26 @@ private fun PreferenceRow(
 
 @Composable
 private fun AnswersContent(detail: DelegateDetailUiState) {
-    if (detail.answers.isEmpty()) {
+    if (detail.answers.isEmpty() && detail.profileIssues.isEmpty()) {
         Text("No configured answers", color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
+    }
+    if (detail.profileIssues.isNotEmpty()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f), RoundedCornerShape(8.dp))
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+                .padding(9.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Text(
+                "Profile checks",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            detail.profileIssues.forEach { issue -> AnswerIssuePill(issue) }
+        }
     }
     detail.answers.forEach { answer ->
         Column(

@@ -68,6 +68,7 @@ object ConferenceGraphMapper {
                 mymunName = row.mymunName,
                 alias = row.alias,
                 slotsPerPosition = row.slotsPerPosition,
+                isHighSchoolCommittee = row.isHighSchoolCommittee,
             )
             conference.committees += committee
             row.id to committee

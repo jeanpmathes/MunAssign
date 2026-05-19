@@ -24,6 +24,7 @@ fun App(viewModel: MainViewModel, onOpenWorkbook: () -> Unit) {
                 onDeleteConference = viewModel::deleteConference,
                 onReorderConferences = viewModel::reorderConferences,
                 onSetCommitteeSlotsPerPosition = viewModel::setCommitteeSlotsPerPosition,
+                onSetCommitteeHighSchoolStatus = viewModel::setCommitteeHighSchoolStatus,
                 onAssignDelegateToSlot = viewModel::assignDelegateToSlot,
                 onClearPendingSlot = viewModel::clearPendingSlot,
                 onOpenDelegateList = viewModel::openDelegateList,

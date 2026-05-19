@@ -6,4 +6,5 @@ data class CommitteeRow(
     val mymunName: String,
     val alias: String?,
     val slotsPerPosition: Int,
+    val isHighSchoolCommittee: Boolean,
 )

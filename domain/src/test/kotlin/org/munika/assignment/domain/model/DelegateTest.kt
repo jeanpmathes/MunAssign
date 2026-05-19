@@ -1,8 +1,10 @@
 package org.munika.assignment.domain.model
 
 import java.time.Instant
+import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class DelegateTest {
     @Test
@@ -31,5 +33,66 @@ class DelegateTest {
         )
 
         assertEquals(LanguageLevel.BeginnerA1A2, delegate.languageLevel)
+    }
+
+    @Test
+    fun `profile issues warn when high school status does not match age`() {
+        assertTrue(delegateWithAgeAndHighSchoolStatus(17, HighSchoolerStatus.Yes).profileIssues(Today).isEmpty())
+        assertTrue(delegateWithAgeAndHighSchoolStatus(18, HighSchoolerStatus.Yes).profileIssues(Today).isEmpty())
+        assertEquals(
+            listOf(AnswerIssue("Delegate is marked as a high schooler but is 19 years old.", AnswerIssueSeverity.Warning)),
+            delegateWithAgeAndHighSchoolStatus(19, HighSchoolerStatus.Yes).profileIssues(Today),
+        )
+        assertEquals(
+            listOf(AnswerIssue("Delegate is 17 years old but is not marked as a high schooler.", AnswerIssueSeverity.Warning)),
+            delegateWithAgeAndHighSchoolStatus(17, HighSchoolerStatus.No).profileIssues(Today),
+        )
+        assertEquals(
+            listOf(AnswerIssue("Delegate is 17 years old but is not marked as a high schooler.", AnswerIssueSeverity.Warning)),
+            delegateWithAgeAndHighSchoolStatus(17, null).profileIssues(Today),
+        )
+        assertTrue(delegateWithAgeAndHighSchoolStatus(null, HighSchoolerStatus.Yes).profileIssues(Today).isEmpty())
+    }
+
+    private fun delegateWithAgeAndHighSchoolStatus(age: Int?, status: HighSchoolerStatus?): Delegate {
+        val conference = Conference(ConferenceId("conference-$age-$status"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val delegate = Delegate(
+            id = DelegateId("delegate-$age-$status"),
+            conference = conference,
+            name = PersonName("Ada", "Lovelace"),
+            email = "ada@example.test",
+            profile = DelegateProfile(
+                country = null,
+                city = null,
+                streetAddress = null,
+                zipCode = null,
+                diet = null,
+                phone = null,
+                nationality = null,
+                dateOfBirth = age?.let { Today.minusYears(it.toLong()) },
+                delegationNameFromMymun = null,
+                applicationStatus = null,
+            ),
+            paymentStatus = PaymentStatus.Paid,
+            isHeadDelegate = false,
+        )
+        val mappedStatus = status ?: return delegate
+        val question = Question(
+            id = QuestionId("question-hs-$age-$status"),
+            questionText = "High schooler",
+            role = StandardQuestionRoles.HighSchoolerStatus,
+            mappings = TypedAnswerMappings(highSchooler = listOf(HighSchoolerAnswerMapping("Answer", mappedStatus))),
+        )
+        delegate.answers += QuestionAnswer(
+            id = QuestionAnswerId("answer-hs-$age-$status"),
+            delegate = delegate,
+            question = question,
+            rawAnswer = "Answer",
+        )
+        return delegate
+    }
+
+    private companion object {
+        val Today: LocalDate = LocalDate.of(2026, 5, 15)
     }
 }

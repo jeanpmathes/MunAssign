@@ -66,8 +66,24 @@ class Delegate(
             answer.question.mapHighSchoolerStatus(answer.rawAnswer)
         }
 
+    val isHighSchooler: Boolean
+        get() = highSchoolerStatus == HighSchoolerStatus.Yes
+
     val languageLevel: LanguageLevel?
         get() = answers.firstNotNullOfOrNull { answer ->
             answer.question.mapLanguageLevel(answer.rawAnswer)
         }
+
+    fun profileIssues(today: LocalDate = LocalDate.now()): List<AnswerIssue> {
+        val age = age(today) ?: return emptyList()
+        return when {
+            isHighSchooler && age >= 19 -> listOf(
+                AnswerIssue("Delegate is marked as a high schooler but is $age years old.", AnswerIssueSeverity.Warning),
+            )
+            !isHighSchooler && age <= 17 -> listOf(
+                AnswerIssue("Delegate is $age years old but is not marked as a high schooler.", AnswerIssueSeverity.Warning),
+            )
+            else -> emptyList()
+        }
+    }
 }

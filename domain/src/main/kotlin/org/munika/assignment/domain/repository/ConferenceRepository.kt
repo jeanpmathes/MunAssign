@@ -32,6 +32,18 @@ interface ConferenceRepository {
     ): Conference
 
     /**
+     * Marks whether one committee is intended for high-school delegates.
+     *
+     * This organizer-managed status is assignment guidance and must be preserved across MyMUN
+     * updates for retained committees.
+     */
+    suspend fun setCommitteeHighSchoolStatus(
+        conferenceId: String,
+        committeeId: String,
+        isHighSchoolCommittee: Boolean,
+    ): Conference
+
+    /**
      * Creates or replaces a pending MunAssign assignment for one slot.
      *
      * Implementations must never overwrite MyMUN-confirmed assignments. If the chosen delegate

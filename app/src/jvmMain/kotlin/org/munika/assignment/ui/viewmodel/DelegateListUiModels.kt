@@ -1,6 +1,7 @@
 package org.munika.assignment.ui.viewmodel
 
 import java.time.Instant
+import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import org.munika.assignment.domain.model.AnswerIssueSeverity
 import org.munika.assignment.domain.model.AssignmentStatus
@@ -15,6 +16,7 @@ data class DelegateListControlsUiState(
     val includeDeactivated: Boolean = false,
     val issuesOnly: Boolean = false,
     val includedAssignmentStatuses: Set<DelegateListAssignmentStatus> = DelegateListAssignmentStatus.entries.toSet(),
+    val includedSchoolLevels: Set<DelegateListSchoolLevel> = DelegateListSchoolLevel.entries.toSet(),
     val committeeId: String? = null,
     val sort: DelegateListSort = DelegateListSort.ApplicationSubmitted,
 )
@@ -41,6 +43,11 @@ enum class DelegateListAssignmentStatus {
     Confirmed,
 }
 
+enum class DelegateListSchoolLevel {
+    HighSchool,
+    University,
+}
+
 data class DelegateListUiState(
     val rows: List<DelegateListRowUiState>,
     val committees: List<DelegateListCommitteeFilterUiState>,
@@ -54,6 +61,7 @@ data class DelegateListCommitteeFilterUiState(
 data class DelegateListRowUiState(
     val id: String,
     val name: String,
+    val isHighSchooler: Boolean,
     val assignmentStatus: DelegateListAssignmentStatus,
     val assignmentStatusLabel: String,
     val paymentActiveLabel: String,
@@ -77,9 +85,10 @@ fun Conference.toDelegateListUiState(
     now: Instant = Instant.now(),
 ): DelegateListUiState {
     val difficultyScores = delegateDifficultyScores()
+    val today = now.atZone(ZoneId.systemDefault()).toLocalDate()
     val rows = delegates
-        .filter { it.matchesControls(controls) }
-        .map { delegate -> delegate.toDelegateListRowUiState(now) }
+        .filter { it.matchesControls(controls, today) }
+        .map { delegate -> delegate.toDelegateListRowUiState(now, today) }
         .sortedWith(delegateListComparator(controls.sort, difficultyScores))
     return DelegateListUiState(
         rows = rows,
@@ -113,23 +122,25 @@ fun DelegateListControlsUiState.applyPreset(preset: DelegateListPreset): Delegat
         )
     }
 
-private fun Delegate.matchesControls(controls: DelegateListControlsUiState): Boolean {
+private fun Delegate.matchesControls(controls: DelegateListControlsUiState, today: java.time.LocalDate): Boolean {
     if (!controls.includeUnpaid && paymentStatus != PaymentStatus.Paid) return false
     if (!controls.includeDeactivated && !active) return false
     if (toDelegateListAssignmentStatus() !in controls.includedAssignmentStatuses) return false
+    if (toDelegateListSchoolLevel() !in controls.includedSchoolLevels) return false
     if (controls.searchQuery.isNotBlank() && !displayName.contains(controls.searchQuery.trim(), ignoreCase = true)) return false
     val committeeId = controls.committeeId
     if (committeeId != null && preferences.none { it.position.committee.id.value == committeeId }) return false
-    if (controls.issuesOnly && issueCount() == 0) return false
+    if (controls.issuesOnly && issueCount(today) == 0) return false
     return true
 }
 
-private fun Delegate.toDelegateListRowUiState(now: Instant): DelegateListRowUiState {
+private fun Delegate.toDelegateListRowUiState(now: Instant, today: java.time.LocalDate): DelegateListRowUiState {
     val currentSlot = currentSlot
     val assignmentStatus = toDelegateListAssignmentStatus()
     return DelegateListRowUiState(
         id = id.value,
         name = displayName,
+        isHighSchooler = isHighSchooler,
         assignmentStatus = assignmentStatus,
         assignmentStatusLabel = when (assignmentStatus) {
             DelegateListAssignmentStatus.Unassigned -> "Unassigned"
@@ -138,8 +149,8 @@ private fun Delegate.toDelegateListRowUiState(now: Instant): DelegateListRowUiSt
         },
         paymentActiveLabel = paymentActiveLabel(),
         paymentActiveTone = paymentActiveTone(),
-        warningCount = warningCount(),
-        noticeCount = noticeCount(),
+        warningCount = warningCount(today),
+        noticeCount = noticeCount(today),
         applicationAgeLabel = applicationAgeLabel(now),
         submittedAt = submittedAt,
         delegationName = delegation?.displayLabel,
@@ -160,6 +171,9 @@ private fun Delegate.toDelegateListAssignmentStatus(): DelegateListAssignmentSta
         AssignmentStatus.Assigned -> DelegateListAssignmentStatus.Confirmed
     }
 
+private fun Delegate.toDelegateListSchoolLevel(): DelegateListSchoolLevel =
+    if (isHighSchooler) DelegateListSchoolLevel.HighSchool else DelegateListSchoolLevel.University
+
 private fun Delegate.paymentActiveLabel(): String =
     when {
         !active && paymentStatus == PaymentStatus.Unpaid -> "Inactive unpaid"
@@ -175,13 +189,15 @@ private fun Delegate.paymentActiveTone(): DelegateStatusTone =
         else -> DelegateStatusTone.Green
     }
 
-private fun Delegate.warningCount(): Int =
-    answers.sumOf { answer -> answer.issues.count { it.severity == AnswerIssueSeverity.Warning } }
+private fun Delegate.warningCount(today: java.time.LocalDate): Int =
+    answers.sumOf { answer -> answer.issues.count { it.severity == AnswerIssueSeverity.Warning } } +
+        profileIssues(today).count { it.severity == AnswerIssueSeverity.Warning }
 
-private fun Delegate.noticeCount(): Int =
-    answers.sumOf { answer -> answer.issues.count { it.severity == AnswerIssueSeverity.Notice } }
+private fun Delegate.noticeCount(today: java.time.LocalDate): Int =
+    answers.sumOf { answer -> answer.issues.count { it.severity == AnswerIssueSeverity.Notice } } +
+        profileIssues(today).count { it.severity == AnswerIssueSeverity.Notice }
 
-private fun Delegate.issueCount(): Int = warningCount() + noticeCount()
+private fun Delegate.issueCount(today: java.time.LocalDate): Int = warningCount(today) + noticeCount(today)
 
 private fun Delegate.applicationAgeLabel(now: Instant): String {
     val submitted = submittedAt ?: return "No submission"

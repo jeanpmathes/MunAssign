@@ -126,6 +126,9 @@ object DatabaseFactory {
                 TransactionManager.current().exec("UPDATE delegate_questions SET display_order = $index WHERE id = '$id'")
             }
         },
+        SchemaMigration(version = 5, name = "add_committee_high_school_status") {
+            addColumnIfMissing("committees", "is_high_school_committee", "BOOLEAN NOT NULL DEFAULT FALSE")
+        },
     )
 
     private fun addColumnIfMissing(tableName: String, columnName: String, definition: String) {

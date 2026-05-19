@@ -5,7 +5,7 @@ This document records persistence and update rules that are not obvious from the
 ## Ownership Boundaries
 
 - `Conference` owns all assignment data and stores organizer-managed display order.
-- `Committee` owns positions and the uniform `slotsPerPosition` value.
+- `Committee` owns positions, the uniform `slotsPerPosition` value, and the organizer-managed high-school committee flag.
 - `Position` represents one assignable country or role from `Countries.Member Name`.
 - `Slot` stores the current delegate reference and assignment source.
 - `Delegate` stores MyMUN profile data plus organizer-managed active/inactive state.
@@ -104,6 +104,7 @@ MyMUN updates preserve where the referenced objects still exist:
 - delegate active/inactive state;
 - pending app assignments not contradicted by confirmed MyMUN assignments;
 - committee aliases;
+- committee high-school status;
 - question handling configuration.
 
 MyMUN updates remove delegates, preferences, assignments, and answers that no longer exist in the workbook source.

@@ -31,6 +31,7 @@ class ConferenceGraphMapperTest {
         val assignedSlot = position.slots.single { it.id.value == "slot-2" }
 
         assertSame(conference, committee.conference)
+        assertEquals(true, committee.isHighSchoolCommittee)
         assertSame(committee, position.committee)
         assertSame(position, pendingSlot.position)
         assertSame(delegateAda, pendingSlot.delegate)
@@ -61,6 +62,7 @@ class ConferenceGraphMapperTest {
                     mymunName = "Security Council",
                     alias = "UNSC",
                     slotsPerPosition = 2,
+                    isHighSchoolCommittee = true,
                 ),
             ),
             positions = listOf(

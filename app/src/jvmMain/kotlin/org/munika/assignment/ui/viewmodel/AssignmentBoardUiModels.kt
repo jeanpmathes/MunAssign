@@ -17,9 +17,12 @@ data class CommitteeBoardUiState(
     val id: String,
     val name: String,
     val slotsPerPosition: Int,
+    val isHighSchoolCommittee: Boolean,
     val openSlotCount: Int,
     val pendingSlotCount: Int,
     val assignedSlotCount: Int,
+    val highSchoolerAssignedCount: Int,
+    val universityAssignedCount: Int,
     val positions: List<PositionBoardUiState>,
 )
 
@@ -65,6 +68,7 @@ data class AssignmentDelegateCandidateUiState(
     val preferenceRank: Int?,
     val pendingAssignmentLabel: String?,
     val confirmedAssignmentLabel: String?,
+    val isHighSchooler: Boolean,
     val warningCount: Int,
     val noticeCount: Int,
 ) {
@@ -92,9 +96,12 @@ fun Conference.toAssignmentBoardUiState(): AssignmentBoardUiState =
                 id = committee.id.value,
                 name = committee.displayName,
                 slotsPerPosition = committee.slotsPerPosition,
+                isHighSchoolCommittee = committee.isHighSchoolCommittee,
                 openSlotCount = committee.openSlotCount,
                 pendingSlotCount = committee.pendingSlotCount,
                 assignedSlotCount = committee.assignedSlotCount,
+                highSchoolerAssignedCount = committee.slots.count { it.delegate?.isHighSchooler == true },
+                universityAssignedCount = committee.slots.count { it.delegate != null && it.delegate?.isHighSchooler != true },
                 positions = committee.positions.map { it.toBoardUiState() },
             )
         },
@@ -112,7 +119,7 @@ private fun Position.toBoardUiState(): PositionBoardUiState =
                 InterestedDelegateUiState(
                     id = delegate.id.value,
                     name = delegate.displayName,
-                    isHighSchooler = delegate.isHighSchooler(),
+                    isHighSchooler = delegate.isHighSchooler,
                     preferenceRank = rank,
                     pendingAssignmentLabel = delegate.pendingAssignmentLabel(),
                     pendingAssignmentSlotId = delegate.pendingAssignmentSlotId(),
@@ -131,12 +138,14 @@ private fun Position.toBoardUiState(): PositionBoardUiState =
                     preferenceRank = delegate.preferences.firstOrNull { it.position === this }?.rank,
                     pendingAssignmentLabel = delegate.pendingAssignmentLabel(),
                     confirmedAssignmentLabel = delegate.confirmedAssignmentLabel(),
+                    isHighSchooler = delegate.isHighSchooler,
                     warningCount = delegate.warningCount(),
                     noticeCount = delegate.noticeCount(),
                 )
             }
             .sortedWith(
                 compareBy<AssignmentDelegateCandidateUiState> { it.assignmentSortRank }
+                    .thenBy { it.highSchoolFitSortRank(committee.isHighSchoolCommittee) }
                     .thenBy { it.preferenceRank ?: Int.MAX_VALUE }
                     .thenBy { it.name },
             ),
@@ -153,16 +162,13 @@ private fun Slot.toBoardUiState(): SlotBoardUiState =
         },
         delegateName = delegate?.displayName,
         delegateId = delegate?.id?.value,
-        delegateIsHighSchooler = delegate?.isHighSchooler() == true,
+        delegateIsHighSchooler = delegate?.isHighSchooler == true,
         matchesDelegatePreference = matchesDelegatePreference,
         positionName = position.name,
     )
 
 private fun Delegate.visibleOnAssignmentBoard(): Boolean =
     active && paymentStatus == PaymentStatus.Paid
-
-private fun Delegate.isHighSchooler(): Boolean =
-    highSchoolerStatus == org.munika.assignment.domain.model.HighSchoolerStatus.Yes
 
 private fun Delegate.confirmedAssignmentLabel(): String? {
     val assignedPosition = currentPosition ?: return null
@@ -183,14 +189,23 @@ private fun Delegate.pendingAssignmentSlotId(): String? =
     currentSlot?.takeIf { it.isPending }?.id?.value
 
 private fun Delegate.warningCount(): Int =
-    answers.sumOf { answer -> answer.issues.count { it.severity == AnswerIssueSeverity.Warning } }
+    answers.sumOf { answer -> answer.issues.count { it.severity == AnswerIssueSeverity.Warning } } +
+        profileIssues().count { it.severity == AnswerIssueSeverity.Warning }
 
 private fun Delegate.noticeCount(): Int =
-    answers.sumOf { answer -> answer.issues.count { it.severity == AnswerIssueSeverity.Notice } }
+    answers.sumOf { answer -> answer.issues.count { it.severity == AnswerIssueSeverity.Notice } } +
+        profileIssues().count { it.severity == AnswerIssueSeverity.Notice }
 
 private val AssignmentDelegateCandidateUiState.assignmentSortRank: Int
     get() = when {
         confirmedAssignmentLabel != null -> 2
         pendingAssignmentLabel != null -> 1
         else -> 0
+    }
+
+private fun AssignmentDelegateCandidateUiState.highSchoolFitSortRank(isHighSchoolCommittee: Boolean): Int =
+    when {
+        isHighSchoolCommittee && isHighSchooler -> 0
+        !isHighSchoolCommittee && !isHighSchooler -> 0
+        else -> 1
     }

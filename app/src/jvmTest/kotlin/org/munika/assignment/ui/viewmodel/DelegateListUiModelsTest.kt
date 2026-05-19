@@ -16,6 +16,8 @@ import org.munika.assignment.domain.model.DelegateId
 import org.munika.assignment.domain.model.DelegateProfile
 import org.munika.assignment.domain.model.Delegation
 import org.munika.assignment.domain.model.DelegationId
+import org.munika.assignment.domain.model.HighSchoolerAnswerMapping
+import org.munika.assignment.domain.model.HighSchoolerStatus
 import org.munika.assignment.domain.model.NoticeWhenNonBlank
 import org.munika.assignment.domain.model.PaymentStatus
 import org.munika.assignment.domain.model.PersonName
@@ -30,6 +32,8 @@ import org.munika.assignment.domain.model.QuestionId
 import org.munika.assignment.domain.model.RequiredAnswer
 import org.munika.assignment.domain.model.Slot
 import org.munika.assignment.domain.model.SlotId
+import org.munika.assignment.domain.model.StandardQuestionRoles
+import org.munika.assignment.domain.model.TypedAnswerMappings
 
 class DelegateListUiModelsTest {
     @Test
@@ -87,6 +91,31 @@ class DelegateListUiModelsTest {
         val list = board.conference.toDelegateListUiState(controls, Now)
 
         assertEquals(listOf("Contested Delegate", "Easy Delegate", "Inactive Delegate", "Unpaid Delegate"), list.rows.map { it.name })
+    }
+
+    @Test
+    fun `filters support high school and university level delegates`() {
+        val board = board()
+        val rows = board.conference.toDelegateListUiState(
+            DelegateListControlsUiState(
+                includedSchoolLevels = setOf(DelegateListSchoolLevel.HighSchool),
+                sort = DelegateListSort.Name,
+            ),
+            Now,
+        ).rows
+
+        assertEquals(listOf("Contested Delegate"), rows.map { it.name })
+        assertEquals(true, rows.single().isHighSchooler)
+
+        val universityRows = board.conference.toDelegateListUiState(
+            DelegateListControlsUiState(
+                includedSchoolLevels = setOf(DelegateListSchoolLevel.University),
+                sort = DelegateListSort.Name,
+            ),
+            Now,
+        ).rows
+
+        assertEquals(listOf("Assigned Delegate", "Easy Delegate", "Pending Delegate"), universityRows.map { it.name })
     }
 
     @Test
@@ -169,8 +198,15 @@ class DelegateListUiModelsTest {
 
         val warningQuestion = Question(QuestionId("warning"), "Warning", rules = listOf(RequiredAnswer("Missing")))
         val noticeQuestion = Question(QuestionId("notice"), "Notice", rules = listOf(NoticeWhenNonBlank("Check")))
-        conference.questions += listOf(warningQuestion, noticeQuestion)
+        val highSchoolerQuestion = Question(
+            QuestionId("high-schooler"),
+            "High schooler",
+            role = StandardQuestionRoles.HighSchoolerStatus,
+            mappings = TypedAnswerMappings(highSchooler = listOf(HighSchoolerAnswerMapping("Yes", HighSchoolerStatus.Yes))),
+        )
+        conference.questions += listOf(warningQuestion, noticeQuestion, highSchoolerQuestion)
         contested.answers += QuestionAnswer(QuestionAnswerId("contested-warning"), contested, warningQuestion, null)
+        contested.answers += QuestionAnswer(QuestionAnswerId("contested-high-schooler"), contested, highSchoolerQuestion, "Yes")
         pending.answers += QuestionAnswer(QuestionAnswerId("pending-notice"), pending, noticeQuestion, "yes")
 
         return Board(conference, special)

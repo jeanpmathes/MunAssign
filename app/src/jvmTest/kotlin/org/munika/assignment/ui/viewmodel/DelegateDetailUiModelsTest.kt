@@ -79,8 +79,9 @@ class DelegateDetailUiModelsTest {
         assertEquals(listOf("Motivation", "Visa"), detail.answers.map { it.label })
         assertEquals("No answer", detail.answers.single { it.label == "Motivation" }.answer)
         assertEquals("Yes", detail.answers.single { it.label == "Visa" }.answer)
-        assertEquals(1, detail.answerWarningCount)
+        assertEquals(2, detail.answerWarningCount)
         assertEquals(1, detail.answerNoticeCount)
+        assertEquals(listOf("Delegate is marked as a high schooler but is 21 years old."), detail.profileIssues.map { it.message })
         assertEquals(listOf("First note"), detail.comments.map { it.body })
         assertEquals("Delegation A - Finland", detail.delegation?.label)
     }

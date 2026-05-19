@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
@@ -33,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -46,6 +48,7 @@ fun CommitteeColumn(
     loading: Boolean,
     listState: LazyListState,
     onSetSlotsPerPosition: (String, Int) -> Unit,
+    onSetHighSchoolStatus: (String, Boolean) -> Unit,
     onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
     onClearPendingSlot: (slotId: String) -> Unit,
     onOpenDelegateDetail: (String) -> Unit,
@@ -63,6 +66,7 @@ fun CommitteeColumn(
             CommitteeHeader(
                 committee = committee,
                 loading = loading,
+                onToggleHighSchool = { onSetHighSchoolStatus(committee.id, !committee.isHighSchoolCommittee) },
                 onIncrease = { onSetSlotsPerPosition(committee.id, committee.slotsPerPosition + 1) },
                 onDecrease = {
                     val target = committee.slotsPerPosition - 1
@@ -113,12 +117,19 @@ fun CommitteeColumn(
 private fun CommitteeHeader(
     committee: CommitteeBoardUiState,
     loading: Boolean,
+    onToggleHighSchool: () -> Unit,
     onIncrease: () -> Unit,
     onDecrease: () -> Unit,
 ) {
+    val highSchoolColor = Color(0xFF8E24AA)
+    val headerColor = if (committee.isHighSchoolCommittee) {
+        highSchoolColor.copy(alpha = 0.14f)
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+    }
     Column(
         modifier = Modifier.fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+            .background(headerColor)
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -137,6 +148,30 @@ private fun CommitteeHeader(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            BoardTooltip(
+                if (committee.isHighSchoolCommittee) {
+                    "This committee is marked as a high-school committee."
+                } else {
+                    "Mark this committee as a high-school committee."
+                },
+            ) {
+                IconButton(
+                    onClick = onToggleHighSchool,
+                    enabled = !loading,
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.School,
+                        contentDescription = if (committee.isHighSchoolCommittee) {
+                            "Unset high-school committee"
+                        } else {
+                            "Set high-school committee"
+                        },
+                        tint = if (committee.isHighSchoolCommittee) highSchoolColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
             SlotCountStepper(
                 value = committee.slotsPerPosition,
                 enabled = !loading,
@@ -148,6 +183,21 @@ private fun CommitteeHeader(
             CommitteeMetric(label = "Open", value = committee.openSlotCount, tooltip = "Empty slots in this committee.")
             CommitteeMetric(label = "Pending", value = committee.pendingSlotCount, tooltip = "Slots assigned in MunAssign but not yet confirmed by a MyMUN update.")
             CommitteeMetric(label = "Assigned", value = committee.assignedSlotCount, tooltip = "Slots confirmed by MyMUN update data.")
+            if (committee.isHighSchoolCommittee && committee.universityAssignedCount > 0) {
+                CommitteeMetric(
+                    label = "Uni",
+                    value = committee.universityAssignedCount,
+                    tooltip = "University-level delegates assigned in this high-school committee.",
+                    warning = true,
+                )
+            } else if (!committee.isHighSchoolCommittee && committee.highSchoolerAssignedCount > 0) {
+                CommitteeMetric(
+                    label = "HS",
+                    value = committee.highSchoolerAssignedCount,
+                    tooltip = "High-school delegates assigned in this non-high-school committee.",
+                    warning = true,
+                )
+            }
         }
     }
 }
@@ -194,7 +244,9 @@ private fun SlotCountStepper(
 }
 
 @Composable
-private fun CommitteeMetric(label: String, value: Int, tooltip: String) {
+private fun CommitteeMetric(label: String, value: Int, tooltip: String, warning: Boolean = false) {
+    val valueColor = if (warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+    val labelColor = if (warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
     BoardTooltip(tooltip) {
         Column(
             modifier = Modifier.width(70.dp).padding(vertical = 2.dp),
@@ -204,12 +256,12 @@ private fun CommitteeMetric(label: String, value: Int, tooltip: String) {
                 text = value.toString(),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = valueColor,
             )
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = labelColor,
             )
         }
     }

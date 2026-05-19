@@ -1,6 +1,7 @@
 package org.munika.assignment.ui.viewmodel
 
 import java.time.Instant
+import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -14,6 +15,8 @@ import org.munika.assignment.domain.model.ConferenceId
 import org.munika.assignment.domain.model.Delegate
 import org.munika.assignment.domain.model.DelegateId
 import org.munika.assignment.domain.model.DelegateProfile
+import org.munika.assignment.domain.model.HighSchoolerAnswerMapping
+import org.munika.assignment.domain.model.HighSchoolerStatus
 import org.munika.assignment.domain.model.PaymentStatus
 import org.munika.assignment.domain.model.PersonName
 import org.munika.assignment.domain.model.Position
@@ -27,6 +30,8 @@ import org.munika.assignment.domain.model.QuestionId
 import org.munika.assignment.domain.model.RequiredAnswer
 import org.munika.assignment.domain.model.Slot
 import org.munika.assignment.domain.model.SlotId
+import org.munika.assignment.domain.model.StandardQuestionRoles
+import org.munika.assignment.domain.model.TypedAnswerMappings
 
 class AssignmentBoardUiModelsTest {
     @Test
@@ -125,9 +130,54 @@ class AssignmentBoardUiModelsTest {
         assertEquals(1, candidate.noticeCount)
     }
 
-    private fun board(slotCount: Int = 1): Board {
+    @Test
+    fun `committee state exposes high school mismatch counts`() {
+        val board = board()
+        board.germanySlot.assign(board.available, AssignmentSource.Application, Instant.EPOCH)
+        markHighSchooler(board.available)
+
+        val committee = board.conference.toAssignmentBoardUiState().committees.single()
+
+        assertEquals(false, committee.isHighSchoolCommittee)
+        assertEquals(1, committee.highSchoolerAssignedCount)
+        assertEquals(0, committee.universityAssignedCount)
+    }
+
+    @Test
+    fun `assignment candidates sort matching school level before non matching school level`() {
+        val highSchoolBoard = board(isHighSchoolCommittee = true)
+        markHighSchooler(highSchoolBoard.available)
+        highSchoolBoard.france.slots.single().assign(highSchoolBoard.confirmedElsewhere, AssignmentSource.Mymun, Instant.EPOCH)
+
+        val highSchoolCandidates = highSchoolBoard.conference.toAssignmentBoardUiState()
+            .committees.single()
+            .positions.single { it.name == "Germany" }
+            .assignmentCandidates
+
+        assertEquals(listOf("Available Delegate", "Neutral Delegate"), highSchoolCandidates.map { it.name })
+        assertEquals(true, highSchoolCandidates.first().isHighSchooler)
+
+        val universityBoard = board(isHighSchoolCommittee = false)
+        markHighSchooler(universityBoard.available)
+        universityBoard.france.slots.single().assign(universityBoard.confirmedElsewhere, AssignmentSource.Mymun, Instant.EPOCH)
+
+        val universityCandidates = universityBoard.conference.toAssignmentBoardUiState()
+            .committees.single()
+            .positions.single { it.name == "Germany" }
+            .assignmentCandidates
+
+        assertEquals(listOf("Neutral Delegate", "Available Delegate"), universityCandidates.map { it.name })
+    }
+
+    private fun board(slotCount: Int = 1, isHighSchoolCommittee: Boolean = false): Board {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
-        val committee = Committee(CommitteeId("committee"), conference, "GA", slotsPerPosition = slotCount)
+        val committee = Committee(
+            CommitteeId("committee"),
+            conference,
+            "GA",
+            slotsPerPosition = slotCount,
+            isHighSchoolCommittee = isHighSchoolCommittee,
+        )
         val france = Position(PositionId("france"), committee, "France")
         val germany = Position(PositionId("germany"), committee, "Germany")
         val available = delegate(conference, "available", "Available", "Delegate", PaymentStatus.Paid, active = true)
@@ -167,11 +217,21 @@ class AssignmentBoardUiModelsTest {
             conference = conference,
             name = PersonName(firstName, lastName),
             email = "$id@example.test",
-            profile = DelegateProfile(null, null, null, null, null, null, null, null, null, null),
+            profile = DelegateProfile(null, null, null, null, null, null, null, LocalDate.of(2007, 5, 15), null, null),
             paymentStatus = paymentStatus,
             active = active,
             isHeadDelegate = false,
         )
+
+    private fun markHighSchooler(delegate: Delegate) {
+        val question = Question(
+            QuestionId("high-schooler-${delegate.id.value}"),
+            "High schooler",
+            role = StandardQuestionRoles.HighSchoolerStatus,
+            mappings = TypedAnswerMappings(highSchooler = listOf(HighSchoolerAnswerMapping("Yes", HighSchoolerStatus.Yes))),
+        )
+        delegate.answers += QuestionAnswer(QuestionAnswerId("high-schooler-answer-${delegate.id.value}"), delegate, question, "Yes")
+    }
 
     private data class Board(
         val conference: Conference,

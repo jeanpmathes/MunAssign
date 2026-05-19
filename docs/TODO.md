@@ -2,9 +2,10 @@
 
 ## Later - Transfer And Polish
 
-- Improve HS handling.
 - Emojis for countries.
-- Fix all warnings.
+- In the assignment workflow, the 1W has the wrong color.
+- Warning and issue handling to mark them as resolved with justification, also global warning counter.
+- Fix all warnings of code.
 - Improve upload experience (no weird message) and the UI when conference is empty.
 - Polish question configuration keyboard/focus handling after regular use.
 - Implement `.munassign` SQLite export for a single conference.

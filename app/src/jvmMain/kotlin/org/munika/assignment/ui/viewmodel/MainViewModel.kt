@@ -218,6 +218,37 @@ class MainViewModel(
         }
     }
 
+    fun setCommitteeHighSchoolStatus(committeeId: String, isHighSchoolCommittee: Boolean) {
+        val selectedId = selectedIdOrNull() ?: return
+        scope.launch {
+            _state.update { it.copy(loading = true, boardActionError = null) }
+            try {
+                val conference = repository.setCommitteeHighSchoolStatus(selectedId, committeeId, isHighSchoolCommittee)
+                _state.update {
+                    it.copy(
+                        selectedConference = conference,
+                        loading = false,
+                        boardActionError = null,
+                    )
+                }
+            } catch (exception: IllegalArgumentException) {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        boardActionError = exception.message ?: "Committee high-school status could not be changed.",
+                    )
+                }
+            } catch (exception: Exception) {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        boardActionError = "Committee high-school status update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
+                    )
+                }
+            }
+        }
+    }
+
     fun assignDelegateToSlot(slotId: String, delegateId: String, moveExistingPending: Boolean) {
         val selectedId = selectedIdOrNull() ?: return
         scope.launch {

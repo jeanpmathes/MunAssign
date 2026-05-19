@@ -10,6 +10,7 @@ object CommitteeTable : Table("committees") {
     val normalizedMymunName = varchar("normalized_mymun_name", 255)
     val alias = varchar("alias", 255).nullable()
     val slotsPerPosition = integer("slots_per_position")
+    val isHighSchoolCommittee = bool("is_high_school_committee").default(false)
 
     override val primaryKey = PrimaryKey(id)
 

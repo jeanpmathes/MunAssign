@@ -218,6 +218,23 @@ class ConferenceRepositoryImpl(
         loadConferenceGraph(conferenceId)
     }
 
+    override suspend fun setCommitteeHighSchoolStatus(
+        conferenceId: String,
+        committeeId: String,
+        isHighSchoolCommittee: Boolean,
+    ): Conference = db {
+        val updated = CommitteeTable.update({
+            (CommitteeTable.id eq committeeId) and (CommitteeTable.conferenceId eq conferenceId)
+        }) {
+            it[CommitteeTable.isHighSchoolCommittee] = isHighSchoolCommittee
+        }
+        require(updated == 1) { "Committee $committeeId does not belong to conference $conferenceId." }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = Instant.now().toEpochMilli()
+        }
+        loadConferenceGraph(conferenceId)
+    }
+
     override suspend fun getConference(conferenceId: String): Conference? = db {
         if (ConferenceTable.selectAll().where { ConferenceTable.id eq conferenceId }.empty()) {
             return@db null
@@ -656,6 +673,7 @@ class ConferenceRepositoryImpl(
                     it[normalizedMymunName] = committeeNormalized
                     it[alias] = null
                     it[CommitteeTable.slotsPerPosition] = slotsPerPosition
+                    it[CommitteeTable.isHighSchoolCommittee] = false
                 }
                 delta.committeesCreated++
             } else {
@@ -1327,6 +1345,7 @@ class ConferenceRepositoryImpl(
                     mymunName = row[CommitteeTable.mymunName],
                     alias = row[CommitteeTable.alias],
                     slotsPerPosition = row[CommitteeTable.slotsPerPosition],
+                    isHighSchoolCommittee = row[CommitteeTable.isHighSchoolCommittee],
                 )
             },
             positions = PositionTable.selectAll().where { PositionTable.conferenceId eq conferenceId }.map { row ->

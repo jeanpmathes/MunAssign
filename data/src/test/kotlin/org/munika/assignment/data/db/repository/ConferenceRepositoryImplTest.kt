@@ -165,6 +165,24 @@ class ConferenceRepositoryImplTest {
     }
 
     @Test
+    fun `committee high school status is persisted`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-committee-hs").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(confirmedAssignments = emptyList())).success)
+        val committee = requireNotNull(repository.getConference(conference.id.value)).committees.single()
+
+        val updated = repository.setCommitteeHighSchoolStatus(conference.id.value, committee.id.value, true)
+
+        assertTrue(updated.committees.single().isHighSchoolCommittee)
+        transaction(database) {
+            assertTrue(CommitteeTable.selectAll().single()[CommitteeTable.isHighSchoolCommittee])
+        }
+    }
+
+    @Test
     fun `decreasing committee slot count removes only empty trailing slots`() = runBlocking {
         val dbPath = Files.createTempDirectory("munassign-slot-decrease").resolve("data.db")
         val database = DatabaseFactory.connect(dbPath)
@@ -532,6 +550,7 @@ class ConferenceRepositoryImplTest {
             }
             CommitteeTable.update({ CommitteeTable.id eq committee.id.value }) {
                 it[alias] = "Local alias"
+                it[CommitteeTable.isHighSchoolCommittee] = true
             }
             DelegateQuestionTable.update({ DelegateQuestionTable.id eq question.id.value }) {
                 it[visibleInDelegateDetail] = false
@@ -548,6 +567,7 @@ class ConferenceRepositoryImplTest {
         assertFalse(reloadedDelegate.active)
         assertEquals(listOf("Preserve this"), reloadedDelegate.comments.map { it.body })
         assertEquals("Local alias", reloadedCommittee.alias)
+        assertTrue(reloadedCommittee.isHighSchoolCommittee)
         assertFalse(reloadedQuestion.visibleInDelegateDetail)
         assertEquals("Local label", reloadedQuestion.organizerLabel)
     }
