@@ -29,6 +29,8 @@ data class CommitteeBoardUiState(
 data class PositionBoardUiState(
     val id: String,
     val name: String,
+    val displayName: String,
+    val flagAssetName: String?,
     val slots: List<SlotBoardUiState>,
     val interestedDelegates: List<InterestedDelegateUiState>,
     val assignmentCandidates: List<AssignmentDelegateCandidateUiState>,
@@ -111,6 +113,8 @@ private fun Position.toBoardUiState(): PositionBoardUiState =
     PositionBoardUiState(
         id = id.value,
         name = name,
+        displayName = name,
+        flagAssetName = countryFlagAssetName,
         slots = slots.sortedBy { it.index }.map { it.toBoardUiState() },
         interestedDelegates = interestedDelegates
             .filter { it.visibleOnAssignmentBoard() }

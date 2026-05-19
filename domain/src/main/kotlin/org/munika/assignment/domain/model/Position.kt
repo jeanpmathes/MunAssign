@@ -1,5 +1,7 @@
 package org.munika.assignment.domain.model
 
+import org.munika.assignment.domain.display.CountryFlagEmojiResolver
+
 /**
  * Assignable country or role inside a committee.
  *
@@ -18,6 +20,15 @@ class Position(
 
     val conference: Conference
         get() = committee.conference
+
+    val countryFlagEmoji: String?
+        get() = CountryFlagEmojiResolver.emojiFor(name)
+
+    val countryFlagAssetName: String?
+        get() = CountryFlagEmojiResolver.assetNameFor(name)
+
+    val displayName: String
+        get() = CountryFlagEmojiResolver.displayNameFor(name)
 
     val assignedDelegates: List<Delegate>
         get() = slots.mapNotNull { it.delegate }

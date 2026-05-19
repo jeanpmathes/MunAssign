@@ -65,6 +65,19 @@ class AssignmentBoardUiModelsTest {
     }
 
     @Test
+    fun `position state exposes decorated country display name while keeping raw name`() {
+        val board = board()
+
+        val france = board.conference.toAssignmentBoardUiState()
+            .committees.single()
+            .positions.single { it.name == "France" }
+
+        assertEquals("France", france.name)
+        assertEquals("France", france.displayName)
+        assertEquals("1f1eb-1f1f7", france.flagAssetName)
+    }
+
+    @Test
     fun `interested delegates remain visible while a multi slot position has an open slot`() {
         val board = board(slotCount = 2)
         board.france.slots[0].assign(board.available, AssignmentSource.Application, Instant.EPOCH)

@@ -283,6 +283,7 @@ private fun AssignmentCard(
             } else {
                 ClickableLine(
                     primary = assignment.label,
+                    flagAssetName = assignment.flagAssetName,
                     secondary = assignment.status,
                     tone = assignment.tone,
                     onClick = { onNavigateToPosition(assignment.committeeId, assignment.positionId) },
@@ -421,7 +422,13 @@ private fun PreferenceRow(
                 .padding(horizontal = 7.dp, vertical = 3.dp),
         )
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(preference.label, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            FlagAwareText(
+                text = preference.label,
+                flagAssetName = preference.flagAssetName,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             preference.status.detail?.let {
                 Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -655,6 +662,7 @@ private fun LabelValue(label: String, value: String) {
 @Composable
 private fun ClickableLine(
     primary: String,
+    flagAssetName: String?,
     secondary: String?,
     tone: DelegateStatusTone = DelegateStatusTone.Blue,
     onClick: () -> Unit,
@@ -668,7 +676,13 @@ private fun ClickableLine(
             .padding(9.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        Text(primary, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        FlagAwareText(
+            text = primary,
+            flagAssetName = flagAssetName,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
         secondary?.let {
             Text(it, style = MaterialTheme.typography.labelSmall, color = tone.contentColor())
         }

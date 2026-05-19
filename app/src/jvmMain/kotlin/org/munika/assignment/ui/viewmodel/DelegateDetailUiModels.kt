@@ -74,6 +74,7 @@ data class DelegateLanguageUiState(
 data class DelegateAssignmentUiState(
     val status: String,
     val label: String,
+    val flagAssetName: String?,
     val committeeId: String,
     val positionId: String,
     val tone: DelegateStatusTone,
@@ -82,6 +83,7 @@ data class DelegateAssignmentUiState(
 data class DelegatePreferenceUiState(
     val rank: Int,
     val label: String,
+    val flagAssetName: String?,
     val committeeId: String,
     val positionId: String,
     val isCurrentAssignment: Boolean,
@@ -200,6 +202,7 @@ fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiSta
                     AssignmentStatus.Assigned -> "Confirmed"
                 },
                 label = "${slot.position.committee.displayName} (${slot.position.name}) slot ${slot.index}",
+                flagAssetName = slot.position.countryFlagAssetName,
                 committeeId = slot.position.committee.id.value,
                 positionId = slot.position.id.value,
                 tone = when (delegate.assignmentStatus) {
@@ -296,6 +299,7 @@ private fun Preference.toUiState(currentPosition: Position?): DelegatePreference
     DelegatePreferenceUiState(
         rank = rank,
         label = "${position.committee.displayName} (${position.name})",
+        flagAssetName = position.countryFlagAssetName,
         committeeId = position.committee.id.value,
         positionId = position.id.value,
         isCurrentAssignment = position === currentPosition,

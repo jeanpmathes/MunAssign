@@ -39,6 +39,7 @@ There is no stable MyMUN delegate ID. Matching should use:
 Email is useful but not authoritative by itself. Duplicate delegates with the same full matching identity are blocking validation errors.
 
 Committee and position matching use normalized workbook names. Committee aliases are display-only and never replace the MyMUN name for update matching.
+Position flags are display-only derived data. They are resolved from bundled Unicode emoji flag names and conservative matching rules at runtime, rendered with bundled Twemoji image assets where available, and are never persisted or used for MyMUN update matching.
 
 ## Assignment Rules
 
