@@ -2,7 +2,6 @@
 
 ## Later - Transfer And Polish
 
-- In the assignment workflow, the 1W has the wrong color.
 - Warning and issue handling to mark them as resolved with justification, also global warning counter.
 - Fix all warnings of code.
 - Improve upload experience (no weird message) and the UI when conference is empty.

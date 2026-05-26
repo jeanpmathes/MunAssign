@@ -1,5 +1,6 @@
 package org.munika.assignment.ui.screen.dialog
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.AlertDialog
@@ -30,6 +32,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import org.munika.assignment.ui.screen.component.contentColor
+import org.munika.assignment.ui.screen.component.containerColor
 import org.munika.assignment.ui.viewmodel.AssignmentDelegateCandidateUiState
 import org.munika.assignment.ui.viewmodel.SlotBoardUiState
 
@@ -153,10 +157,10 @@ private fun DelegateCandidateRow(
                     Text("Preference #$rank", style = MaterialTheme.typography.labelMedium)
                 }
                 if (candidate.warningCount > 0) {
-                    Text("${candidate.warningCount} W", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                    AssignmentCandidateIssueBadge(assignmentCandidateIssueBadge(candidate.warningCount, isWarning = true))
                 }
                 if (candidate.noticeCount > 0) {
-                    Text("${candidate.noticeCount} N", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    AssignmentCandidateIssueBadge(assignmentCandidateIssueBadge(candidate.noticeCount, isWarning = false))
                 }
             }
             val detail = if (alreadyInSlot) {
@@ -176,4 +180,17 @@ private fun DelegateCandidateRow(
             HorizontalDivider(modifier = Modifier.padding(top = 6.dp))
         }
     }
+}
+
+@Composable
+private fun AssignmentCandidateIssueBadge(badge: AssignmentCandidateIssueBadgeUiState) {
+    Text(
+        badge.label,
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = badge.tone.contentColor(),
+        modifier = Modifier
+            .background(badge.tone.containerColor(), RoundedCornerShape(6.dp))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    )
 }
