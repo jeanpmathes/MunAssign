@@ -24,6 +24,7 @@ val MunAssignTables: Array<Table> = arrayOf(
     HighSchoolerAnswerMappingTable,
     LanguageLevelAnswerMappingTable,
     DelegateQuestionAnswerTable,
+    AnswerIssueResolutionTable,
     MymunUpdateRunTable,
     MymunUpdateIssueTable,
 )

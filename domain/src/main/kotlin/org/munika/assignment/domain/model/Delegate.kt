@@ -25,6 +25,7 @@ class Delegate(
     val preferences: MutableList<Preference> = mutableListOf(),
     val comments: MutableList<DelegateComment> = mutableListOf(),
     val answers: MutableList<QuestionAnswer> = mutableListOf(),
+    val issueResolutions: MutableList<AnswerIssueResolution> = mutableListOf(),
     val createdAtFromMymun: Instant? = null,
     val submittedAt: Instant? = null,
 ) : DomainObject<DelegateId> {
@@ -56,6 +57,11 @@ class Delegate(
         return "Application submitted $days days ago"
     }
 
+    fun resolutionFor(questionId: QuestionId?, issue: AnswerIssue): AnswerIssueResolution? =
+        issueResolutions.firstOrNull { resolution ->
+            resolution.questionId == questionId && resolution.issueKey == issue.key
+        }
+
     val experienceLevel: MunExperienceLevel?
         get() = answers.firstNotNullOfOrNull { answer ->
             answer.question.mapMunExperience(answer.rawAnswer)
@@ -78,12 +84,33 @@ class Delegate(
         val age = age(today) ?: return emptyList()
         return when {
             isHighSchooler && age >= 19 -> listOf(
-                AnswerIssue("Delegate is marked as a high schooler but is $age years old.", AnswerIssueSeverity.Warning),
+                AnswerIssue(
+                    message = "Delegate is marked as a high schooler but is $age years old.",
+                    severity = AnswerIssueSeverity.Warning,
+                    key = ProfileHighSchoolerOverAgeIssueKey,
+                ),
             )
             !isHighSchooler && age <= 17 -> listOf(
-                AnswerIssue("Delegate is $age years old but is not marked as a high schooler.", AnswerIssueSeverity.Warning),
+                AnswerIssue(
+                    message = "Delegate is $age years old but is not marked as a high schooler.",
+                    severity = AnswerIssueSeverity.Warning,
+                    key = ProfileMinorNotHighSchoolerIssueKey,
+                ),
             )
             else -> emptyList()
         }
+    }
+
+    fun openProfileIssues(today: LocalDate = LocalDate.now()): List<AnswerIssue> =
+        profileIssues(today).filterNot { issue -> resolutionFor(questionId = null, issue) != null }
+
+    fun resolvedProfileIssues(today: LocalDate = LocalDate.now()): List<ResolvedAnswerIssue> =
+        profileIssues(today).mapNotNull { issue ->
+            resolutionFor(questionId = null, issue)?.let { resolution -> ResolvedAnswerIssue(issue, resolution) }
+        }
+
+    private companion object {
+        const val ProfileHighSchoolerOverAgeIssueKey = "Warning:profile_high_schooler_over_age"
+        const val ProfileMinorNotHighSchoolerIssueKey = "Warning:profile_minor_not_high_schooler"
     }
 }

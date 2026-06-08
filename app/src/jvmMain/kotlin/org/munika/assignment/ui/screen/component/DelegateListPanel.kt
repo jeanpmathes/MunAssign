@@ -399,7 +399,7 @@ private fun IssueCell(warningCount: Int, noticeCount: Int, modifier: Modifier) {
                 IssuePill(warningCount.toString(), DelegateStatusTone.Yellow, "$warningCount warning${if (warningCount == 1) "" else "s"}.")
             }
             if (noticeCount > 0) {
-                IssuePill(noticeCount.toString(), DelegateStatusTone.Neutral, "$noticeCount notice${if (noticeCount == 1) "" else "s"}.")
+                IssuePill(noticeCount.toString(), DelegateStatusTone.Notice, "$noticeCount notice${if (noticeCount == 1) "" else "s"}.")
             }
         }
     }

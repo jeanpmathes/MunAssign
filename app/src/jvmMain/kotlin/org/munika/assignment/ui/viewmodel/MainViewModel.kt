@@ -159,6 +159,33 @@ class MainViewModel(
         _state.update { it.copy(delegateListOpen = false) }
     }
 
+    fun openNoticeManager(): Unit {
+        _state.update {
+            it.copy(
+                noticeManagerOpen = true,
+                noticeManagerDelegateId = null,
+            )
+        }
+    }
+
+    fun openDelegateNoticeManager(delegateId: String): Unit {
+        _state.update {
+            it.copy(
+                noticeManagerOpen = true,
+                noticeManagerDelegateId = delegateId,
+            )
+        }
+    }
+
+    fun closeNoticeManager(): Unit {
+        _state.update {
+            it.copy(
+                noticeManagerOpen = false,
+                noticeManagerDelegateId = null,
+            )
+        }
+    }
+
     fun openQuestionConfiguration(): Unit {
         _state.update { it.copy(questionConfigurationOpen = true, questionConfigurationError = null) }
     }
@@ -414,6 +441,57 @@ class MainViewModel(
         }
     }
 
+    fun resolveAnswerIssue(
+        delegateId: String,
+        questionId: String?,
+        issueKey: String,
+        justification: String?,
+    ) {
+        val selectedId = selectedIdOrNull() ?: return
+        scope.launch {
+            try {
+                val conference = repository.resolveAnswerIssue(
+                    conferenceId = selectedId,
+                    delegateId = delegateId,
+                    questionId = questionId,
+                    issueKey = issueKey,
+                    justification = justification,
+                )
+                _state.update { it.copy(selectedConference = conference, boardActionError = null) }
+            } catch (exception: IllegalArgumentException) {
+                _state.update { it.copy(boardActionError = exception.message ?: "Issue could not be resolved.") }
+            }
+        }
+    }
+
+    fun updateAnswerIssueResolutionJustification(resolutionId: String, justification: String?) {
+        val selectedId = selectedIdOrNull() ?: return
+        scope.launch {
+            try {
+                val conference = repository.updateAnswerIssueResolutionJustification(
+                    conferenceId = selectedId,
+                    resolutionId = resolutionId,
+                    justification = justification,
+                )
+                _state.update { it.copy(selectedConference = conference, boardActionError = null) }
+            } catch (exception: IllegalArgumentException) {
+                _state.update { it.copy(boardActionError = exception.message ?: "Issue justification could not be updated.") }
+            }
+        }
+    }
+
+    fun unresolveAnswerIssue(resolutionId: String) {
+        val selectedId = selectedIdOrNull() ?: return
+        scope.launch {
+            try {
+                val conference = repository.unresolveAnswerIssue(selectedId, resolutionId)
+                _state.update { it.copy(selectedConference = conference, boardActionError = null) }
+            } catch (exception: IllegalArgumentException) {
+                _state.update { it.copy(boardActionError = exception.message ?: "Issue could not be reopened.") }
+            }
+        }
+    }
+
     fun updateQuestionConfiguration(configuration: QuestionConfiguration) {
         val selectedId = selectedIdOrNull() ?: return
         scope.launch {
@@ -558,6 +636,8 @@ data class MainUiState(
     val selectedDelegateId: String? = null,
     val delegateListOpen: Boolean = false,
     val delegateListControls: DelegateListControlsUiState = DelegateListControlsUiState(),
+    val noticeManagerOpen: Boolean = false,
+    val noticeManagerDelegateId: String? = null,
     val questionConfigurationOpen: Boolean = false,
     val questionConfigurationError: String? = null,
 )

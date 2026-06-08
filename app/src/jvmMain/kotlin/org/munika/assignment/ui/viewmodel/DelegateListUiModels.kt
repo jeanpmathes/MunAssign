@@ -190,12 +190,12 @@ private fun Delegate.paymentActiveTone(): DelegateStatusTone =
     }
 
 private fun Delegate.warningCount(today: java.time.LocalDate): Int =
-    answers.sumOf { answer -> answer.issues.count { it.severity == AnswerIssueSeverity.Warning } } +
-        profileIssues(today).count { it.severity == AnswerIssueSeverity.Warning }
+    answers.sumOf { answer -> answer.openIssues.count { it.severity == AnswerIssueSeverity.Warning } } +
+        openProfileIssues(today).count { it.severity == AnswerIssueSeverity.Warning }
 
 private fun Delegate.noticeCount(today: java.time.LocalDate): Int =
-    answers.sumOf { answer -> answer.issues.count { it.severity == AnswerIssueSeverity.Notice } } +
-        profileIssues(today).count { it.severity == AnswerIssueSeverity.Notice }
+    answers.sumOf { answer -> answer.openIssues.count { it.severity == AnswerIssueSeverity.Notice } } +
+        openProfileIssues(today).count { it.severity == AnswerIssueSeverity.Notice }
 
 private fun Delegate.issueCount(today: java.time.LocalDate): Int = warningCount(today) + noticeCount(today)
 

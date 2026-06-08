@@ -147,6 +147,7 @@ class ConferenceGraphMapperTest {
                     answer = "A1/A2 (Beginner)",
                 ),
             ),
+            issueResolutions = emptyList(),
         )
 
     private fun delegateRow(id: String, firstName: String, lastName: String, delegationId: String, isHeadDelegate: Boolean): DelegateRow =

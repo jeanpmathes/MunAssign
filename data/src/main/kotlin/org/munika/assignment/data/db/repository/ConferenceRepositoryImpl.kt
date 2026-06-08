@@ -21,6 +21,7 @@ import org.jetbrains.exposed.v1.jdbc.transactions.experimental.newSuspendedTrans
 import org.jetbrains.exposed.v1.jdbc.update
 import org.munika.assignment.data.db.DatabaseFactory
 import org.munika.assignment.data.db.mapper.ConferenceGraphMapper
+import org.munika.assignment.data.db.model.AnswerIssueResolutionRow
 import org.munika.assignment.data.db.model.CommitteeRow
 import org.munika.assignment.data.db.model.ConferenceGraphRows
 import org.munika.assignment.data.db.model.ConferenceRow
@@ -36,6 +37,7 @@ import org.munika.assignment.data.db.model.MunExperienceAnswerMappingRow
 import org.munika.assignment.data.db.model.PositionRow
 import org.munika.assignment.data.db.model.PreferenceRow
 import org.munika.assignment.data.db.model.SlotRow
+import org.munika.assignment.data.db.tables.AnswerIssueResolutionTable
 import org.munika.assignment.data.db.tables.CommitteeTable
 import org.munika.assignment.data.db.tables.ConferenceTable
 import org.munika.assignment.data.db.tables.DelegateCommentTable
@@ -111,6 +113,7 @@ class ConferenceRepositoryImpl(
                         highSchoolerMappings = emptyList(),
                         languageLevelMappings = emptyList(),
                         answers = emptyList(),
+                        issueResolutions = emptyList(),
                     ),
                 )
             }
@@ -467,6 +470,88 @@ class ConferenceRepositoryImpl(
         }
         ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
             it[updatedAtEpochMillis] = now
+        }
+        loadConferenceGraph(conferenceId)
+    }
+
+    override suspend fun resolveAnswerIssue(
+        conferenceId: String,
+        delegateId: String,
+        questionId: String?,
+        issueKey: String,
+        justification: String?,
+    ): Conference = db {
+        val conference = loadConferenceGraph(conferenceId)
+        val delegate = requireNotNull(conference.delegates.firstOrNull { it.id.value == delegateId }) {
+            "Delegate $delegateId does not belong to conference $conferenceId."
+        }
+        val currentIssue = if (questionId == null) {
+            delegate.profileIssues().firstOrNull { it.key == issueKey }
+        } else {
+            delegate.answers
+                .firstOrNull { it.question.id.value == questionId }
+                ?.issues
+                ?.firstOrNull { it.key == issueKey }
+        }
+        requireNotNull(currentIssue) { "Issue is no longer present for this delegate." }
+
+        val trimmedJustification = justification?.trim()?.takeIf { it.isNotBlank() }
+        val now = Instant.now().toEpochMilli()
+        val existing = AnswerIssueResolutionTable.selectAll().where {
+            (AnswerIssueResolutionTable.conferenceId eq conferenceId) and
+                (AnswerIssueResolutionTable.delegateId eq delegateId) and
+                (AnswerIssueResolutionTable.issueKey eq issueKey)
+        }.firstOrNull { row -> row[AnswerIssueResolutionTable.questionId] == questionId }
+
+        if (existing == null) {
+            AnswerIssueResolutionTable.insert {
+                it[id] = UUID.randomUUID().toString()
+                it[AnswerIssueResolutionTable.conferenceId] = conferenceId
+                it[AnswerIssueResolutionTable.delegateId] = delegateId
+                it[AnswerIssueResolutionTable.questionId] = questionId
+                it[AnswerIssueResolutionTable.issueKey] = issueKey
+                it[issueMessage] = currentIssue.message
+                it[severity] = currentIssue.severity.name
+                it[AnswerIssueResolutionTable.justification] = trimmedJustification
+                it[resolvedAtEpochMillis] = now
+            }
+        } else {
+            AnswerIssueResolutionTable.update({ AnswerIssueResolutionTable.id eq existing[AnswerIssueResolutionTable.id] }) {
+                it[issueMessage] = currentIssue.message
+                it[severity] = currentIssue.severity.name
+                it[AnswerIssueResolutionTable.justification] = trimmedJustification
+                it[resolvedAtEpochMillis] = now
+            }
+        }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = now
+        }
+        loadConferenceGraph(conferenceId)
+    }
+
+    override suspend fun updateAnswerIssueResolutionJustification(
+        conferenceId: String,
+        resolutionId: String,
+        justification: String?,
+    ): Conference = db {
+        requireAnswerIssueResolutionInConference(conferenceId, resolutionId)
+        val trimmedJustification = justification?.trim()?.takeIf { it.isNotBlank() }
+        val now = Instant.now().toEpochMilli()
+        AnswerIssueResolutionTable.update({ AnswerIssueResolutionTable.id eq resolutionId }) {
+            it[AnswerIssueResolutionTable.justification] = trimmedJustification
+            it[resolvedAtEpochMillis] = now
+        }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = now
+        }
+        loadConferenceGraph(conferenceId)
+    }
+
+    override suspend fun unresolveAnswerIssue(conferenceId: String, resolutionId: String): Conference = db {
+        requireAnswerIssueResolutionInConference(conferenceId, resolutionId)
+        AnswerIssueResolutionTable.deleteWhere { id eq resolutionId }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = Instant.now().toEpochMilli()
         }
         loadConferenceGraph(conferenceId)
     }
@@ -969,6 +1054,13 @@ class ConferenceRepositoryImpl(
         requireDelegateInConference(conferenceId, comment[DelegateCommentTable.delegateId])
         return comment
     }
+
+    private fun requireAnswerIssueResolutionInConference(conferenceId: String, resolutionId: String): ResultRow =
+        requireNotNull(
+            AnswerIssueResolutionTable.selectAll()
+                .where { (AnswerIssueResolutionTable.id eq resolutionId) and (AnswerIssueResolutionTable.conferenceId eq conferenceId) }
+                .singleOrNull(),
+        ) { "Issue resolution $resolutionId does not belong to conference $conferenceId." }
 
     private fun clearSlotAssignment(slotId: String, updatedAt: Long) {
         SlotTable.update({ SlotTable.id eq slotId }) {
@@ -1487,6 +1579,21 @@ class ConferenceRepositoryImpl(
                     delegateId = row[DelegateQuestionAnswerTable.delegateId],
                     questionId = row[DelegateQuestionAnswerTable.questionId],
                     answer = row[DelegateQuestionAnswerTable.answer],
+                )
+            },
+            issueResolutions = AnswerIssueResolutionTable.selectAll().where {
+                AnswerIssueResolutionTable.conferenceId eq conferenceId
+            }.map { row ->
+                AnswerIssueResolutionRow(
+                    id = row[AnswerIssueResolutionTable.id],
+                    conferenceId = row[AnswerIssueResolutionTable.conferenceId],
+                    delegateId = row[AnswerIssueResolutionTable.delegateId],
+                    questionId = row[AnswerIssueResolutionTable.questionId],
+                    issueKey = row[AnswerIssueResolutionTable.issueKey],
+                    issueMessage = row[AnswerIssueResolutionTable.issueMessage],
+                    severity = row[AnswerIssueResolutionTable.severity],
+                    justification = row[AnswerIssueResolutionTable.justification],
+                    resolvedAtEpochMillis = row[AnswerIssueResolutionTable.resolvedAtEpochMillis],
                 )
             },
         )

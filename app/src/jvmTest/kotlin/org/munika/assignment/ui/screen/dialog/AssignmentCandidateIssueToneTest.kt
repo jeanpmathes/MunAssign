@@ -19,7 +19,7 @@ class AssignmentCandidateIssueToneTest {
         val badge = assignmentCandidateIssueBadge(count = 2, isWarning = false)
 
         assertEquals("2 N", badge.label)
-        assertEquals(DelegateStatusTone.Neutral, badge.tone)
+        assertEquals(DelegateStatusTone.Notice, badge.tone)
         assertEquals(true, badge.filled)
     }
 }

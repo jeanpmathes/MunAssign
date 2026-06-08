@@ -115,5 +115,33 @@ interface ConferenceRepository {
         questionIdsInDisplayOrder: List<String>,
     ): Conference
 
+    /**
+     * Marks one currently derived delegate answer or profile issue as resolved.
+     *
+     * Passing `null` for [questionId] resolves a profile-level issue. Blank justification is stored
+     * as absent text.
+     */
+    suspend fun resolveAnswerIssue(
+        conferenceId: String,
+        delegateId: String,
+        questionId: String?,
+        issueKey: String,
+        justification: String?,
+    ): Conference
+
+    /**
+     * Updates the organizer justification on an existing resolved answer or profile issue.
+     */
+    suspend fun updateAnswerIssueResolutionJustification(
+        conferenceId: String,
+        resolutionId: String,
+        justification: String?,
+    ): Conference
+
+    /**
+     * Reopens a previously resolved answer or profile issue by deleting its resolution row.
+     */
+    suspend fun unresolveAnswerIssue(conferenceId: String, resolutionId: String): Conference
+
     suspend fun getConference(conferenceId: String): Conference?
 }

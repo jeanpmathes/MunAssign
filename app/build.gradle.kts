@@ -34,6 +34,11 @@ kotlin {
             implementation(libs.kotlinx.coroutinesSwing)
             runtimeOnly(libs.slf4j.simple)
         }
+        jvmTest.dependencies {
+            implementation(libs.exposed.jdbc)
+            runtimeOnly(libs.sqlite.jdbc)
+            runtimeOnly(libs.slf4j.simple)
+        }
     }
 }
 

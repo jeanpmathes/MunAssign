@@ -11,6 +11,6 @@ internal data class AssignmentCandidateIssueBadgeUiState(
 internal fun assignmentCandidateIssueBadge(count: Int, isWarning: Boolean): AssignmentCandidateIssueBadgeUiState =
     AssignmentCandidateIssueBadgeUiState(
         label = "$count ${if (isWarning) "W" else "N"}",
-        tone = if (isWarning) DelegateStatusTone.Yellow else DelegateStatusTone.Neutral,
+        tone = if (isWarning) DelegateStatusTone.Yellow else DelegateStatusTone.Notice,
         filled = true,
     )

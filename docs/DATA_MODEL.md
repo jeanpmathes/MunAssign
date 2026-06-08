@@ -83,10 +83,12 @@ handling archetypes.
 
 Role-specific mapping tables are intentionally separate so language-level values cannot be mapped into experience-level values, or similar.
 
-Answer issues are either:
+Answer issues are derived from current profile/question rules and are either:
 
 - `Warning`, meaning the answer may justify follow-up or affect assignment;
 - `Notice`, meaning the answer needs operational attention but is not a rejection problem.
+
+Resolved answer issues are organizer-managed state. A resolution stores the delegate, optional question, stable issue key, original issue text/severity, resolution time, and optional justification. Open issue counters and warning markers ignore resolved issues. The issue manager shows open issues first and resolved issues last. MyMUN updates preserve resolutions where the delegate and question still exist; cascade deletion removes resolutions for deleted conferences, delegates, or questions.
 
 ## MyMUN-Managed vs Organizer-Managed Data
 
@@ -126,6 +128,7 @@ Core tables:
 - `delegate_comments`
 - `delegate_questions`
 - `delegate_question_answers`
+- `answer_issue_resolutions`
 
 Question configuration tables:
 

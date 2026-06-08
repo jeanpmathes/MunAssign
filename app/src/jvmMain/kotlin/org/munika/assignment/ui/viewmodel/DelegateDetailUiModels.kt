@@ -10,6 +10,7 @@ import org.munika.assignment.domain.model.MunExperienceLevel
 import org.munika.assignment.domain.model.PaymentStatus
 import org.munika.assignment.domain.model.Position
 import org.munika.assignment.domain.model.Preference
+import org.munika.assignment.domain.model.ResolvedAnswerIssue
 import org.munika.assignment.domain.model.StandardQuestionRoles
 
 data class DelegateDetailUiState(
@@ -34,8 +35,13 @@ data class DelegateDetailUiState(
     val preferences: List<DelegatePreferenceUiState>,
     val answers: List<DelegateAnswerUiState>,
     val profileIssues: List<DelegateAnswerIssueUiState>,
+    val resolvedProfileIssues: List<DelegateResolvedIssueUiState>,
+    val profileWarningCount: Int,
+    val profileNoticeCount: Int,
+    val resolvedProfileIssueCount: Int,
     val answerWarningCount: Int,
     val answerNoticeCount: Int,
+    val resolvedAnswerIssueCount: Int,
     val comments: List<DelegateCommentUiState>,
     val delegation: DelegateDelegationUiState?,
 )
@@ -51,6 +57,7 @@ enum class DelegateStatusTone {
     Red,
     Blue,
     Yellow,
+    Notice,
     Neutral,
 }
 
@@ -101,12 +108,25 @@ data class DelegateAnswerUiState(
     val label: String,
     val answer: String,
     val issues: List<DelegateAnswerIssueUiState>,
+    val resolvedIssues: List<DelegateResolvedIssueUiState>,
 )
 
 data class DelegateAnswerIssueUiState(
+    val questionId: String?,
+    val issueKey: String,
     val message: String,
     val severity: String,
     val isWarning: Boolean,
+)
+
+data class DelegateResolvedIssueUiState(
+    val questionId: String?,
+    val resolutionId: String,
+    val issueKey: String,
+    val message: String,
+    val severity: String,
+    val isWarning: Boolean,
+    val justification: String?,
 )
 
 data class DelegateCommentUiState(
@@ -114,6 +134,8 @@ data class DelegateCommentUiState(
     val body: String,
     val createdAt: String,
     val updatedAt: String,
+    val readOnly: Boolean = false,
+    val issueResolutionId: String? = null,
 )
 
 data class DelegateDelegationUiState(
@@ -139,22 +161,54 @@ fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiSta
             DelegateAnswerUiState(
                 label = answer.question.displayLabel,
                 answer = answer.rawAnswer?.takeIf { it.isNotBlank() } ?: "No answer",
-                issues = answer.issues.map { issue ->
+                issues = answer.openIssues.map { issue ->
                     DelegateAnswerIssueUiState(
+                        questionId = answer.question.id.value,
+                        issueKey = issue.key,
                         message = issue.message,
                         severity = issue.severity.name,
                         isWarning = issue.severity == AnswerIssueSeverity.Warning,
                     )
                 },
+                resolvedIssues = answer.resolvedIssues.map { resolved ->
+                    resolved.toDelegateResolvedIssueUiState(answer.question.id.value)
+                },
             )
         }
-    val profileIssues = delegate.profileIssues().map { issue ->
+    val profileIssues = delegate.openProfileIssues().map { issue ->
         DelegateAnswerIssueUiState(
+            questionId = null,
+            issueKey = issue.key,
             message = issue.message,
             severity = issue.severity.name,
             isWarning = issue.severity == AnswerIssueSeverity.Warning,
         )
     }
+    val resolvedProfileIssues = delegate.resolvedProfileIssues().map { resolved ->
+        resolved.toDelegateResolvedIssueUiState(questionId = null)
+    }
+    val commentRows = delegate.comments
+        .sortedWith(compareBy<org.munika.assignment.domain.model.DelegateComment> { it.createdAt }.thenBy { it.id.value })
+        .map { comment ->
+            DelegateCommentUiState(
+                id = comment.id.value,
+                body = comment.body,
+                createdAt = comment.createdAt.toString(),
+                updatedAt = comment.updatedAt.toString(),
+            )
+        } + delegate.issueResolutions
+        .filter { resolution -> resolution.justification != null }
+        .sortedWith(compareBy { it.resolvedAt })
+        .map { resolution ->
+            DelegateCommentUiState(
+                id = "issue-resolution-${resolution.id.value}",
+                body = resolution.commentBody(),
+                createdAt = resolution.resolvedAt.toString(),
+                updatedAt = resolution.resolvedAt.toString(),
+                readOnly = true,
+                issueResolutionId = resolution.id.value,
+            )
+        }
     return DelegateDetailUiState(
         id = delegate.id.value,
         name = delegate.displayName,
@@ -218,20 +272,14 @@ fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiSta
             .map { preference -> preference.toUiState(currentSlot?.position) },
         answers = displayAnswers,
         profileIssues = profileIssues,
-        answerWarningCount = displayAnswers.sumOf { answer -> answer.issues.count { it.isWarning } } +
-            profileIssues.count { it.isWarning },
-        answerNoticeCount = displayAnswers.sumOf { answer -> answer.issues.count { !it.isWarning } } +
-            profileIssues.count { !it.isWarning },
-        comments = delegate.comments
-            .sortedWith(compareBy<org.munika.assignment.domain.model.DelegateComment> { it.createdAt }.thenBy { it.id.value })
-            .map { comment ->
-                DelegateCommentUiState(
-                    id = comment.id.value,
-                    body = comment.body,
-                    createdAt = comment.createdAt.toString(),
-                    updatedAt = comment.updatedAt.toString(),
-                )
-            },
+        resolvedProfileIssues = resolvedProfileIssues,
+        profileWarningCount = profileIssues.count { it.isWarning },
+        profileNoticeCount = profileIssues.count { !it.isWarning },
+        resolvedProfileIssueCount = resolvedProfileIssues.size,
+        answerWarningCount = displayAnswers.sumOf { answer -> answer.issues.count { it.isWarning } },
+        answerNoticeCount = displayAnswers.sumOf { answer -> answer.issues.count { !it.isWarning } },
+        resolvedAnswerIssueCount = displayAnswers.sumOf { answer -> answer.resolvedIssues.size },
+        comments = commentRows,
         delegation = delegate.delegation?.let { delegation ->
             DelegateDelegationUiState(
                 label = delegation.displayLabel,
@@ -240,6 +288,29 @@ fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiSta
         },
     )
 }
+
+private fun ResolvedAnswerIssue.toDelegateResolvedIssueUiState(questionId: String?): DelegateResolvedIssueUiState =
+    DelegateResolvedIssueUiState(
+        questionId = questionId,
+        resolutionId = resolution.id.value,
+        issueKey = issue.key,
+        message = issue.message,
+        severity = issue.severity.name,
+        isWarning = issue.severity == AnswerIssueSeverity.Warning,
+        justification = resolution.justification,
+    )
+
+private fun org.munika.assignment.domain.model.AnswerIssueResolution.commentBody(): String =
+    buildString {
+        append("Resolved ")
+        append("\"")
+        append(issueMessage.trimEnd('.', '!', '?'))
+        append("\"")
+        justification?.takeIf { it.isNotBlank() }?.let { text ->
+            append(". Justification: ")
+            append(text)
+        }
+    }
 
 private fun MunExperienceLevel.toUiState(): DelegateExperienceUiState =
     DelegateExperienceUiState(

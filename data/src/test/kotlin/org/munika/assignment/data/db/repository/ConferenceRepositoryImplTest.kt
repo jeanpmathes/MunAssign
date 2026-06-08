@@ -15,6 +15,7 @@ import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
 import org.munika.assignment.data.db.DatabaseFactory
+import org.munika.assignment.data.db.tables.AnswerIssueResolutionTable
 import org.munika.assignment.data.db.tables.AnswerRuleTypeTable
 import org.munika.assignment.data.db.tables.CommitteeTable
 import org.munika.assignment.data.db.tables.ConferenceTable
@@ -822,6 +823,80 @@ class ConferenceRepositoryImplTest {
     }
 
     @Test
+    fun `answer issue resolution persists and survives repeated update for retained delegate and question`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-issue-resolution").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithQuestion()).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val delegate = loaded.delegates.single()
+        val question = loaded.questions.single()
+        val issue = delegate.answers.single().issues.single()
+
+        val resolved = repository.resolveAnswerIssue(
+            conferenceId = conference.id.value,
+            delegateId = delegate.id.value,
+            questionId = question.id.value,
+            issueKey = issue.key,
+            justification = "Reviewed and acceptable.",
+        )
+
+        assertTrue(resolved.delegates.single().answers.single().openIssues.isEmpty())
+        assertEquals(
+            "Reviewed and acceptable.",
+            resolved.delegates.single().answers.single().resolvedIssues.single().resolution.justification,
+        )
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithQuestion()).success)
+        val afterUpdate = requireNotNull(repository.getConference(conference.id.value))
+        assertTrue(afterUpdate.delegates.single().answers.single().openIssues.isEmpty())
+        assertEquals(
+            "Reviewed and acceptable.",
+            afterUpdate.delegates.single().answers.single().resolvedIssues.single().resolution.justification,
+        )
+    }
+
+    @Test
+    fun `answer issue resolution justification can be edited and undone`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-issue-resolution-edit").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithQuestion()).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val delegate = loaded.delegates.single()
+        val question = loaded.questions.single()
+        val issue = delegate.answers.single().issues.single()
+        val resolved = repository.resolveAnswerIssue(
+            conferenceId = conference.id.value,
+            delegateId = delegate.id.value,
+            questionId = question.id.value,
+            issueKey = issue.key,
+            justification = "Initial.",
+        )
+        val resolutionId = resolved.delegates.single().answers.single().resolvedIssues.single().resolution.id.value
+
+        val edited = repository.updateAnswerIssueResolutionJustification(
+            conferenceId = conference.id.value,
+            resolutionId = resolutionId,
+            justification = "Edited.",
+        )
+
+        assertEquals("Edited.", edited.delegates.single().answers.single().resolvedIssues.single().resolution.justification)
+
+        val undone = repository.unresolveAnswerIssue(conferenceId = conference.id.value, resolutionId = resolutionId)
+
+        assertEquals(1, undone.delegates.single().answers.single().openIssues.size)
+        assertTrue(undone.delegates.single().answers.single().resolvedIssues.isEmpty())
+        transaction(database) {
+            assertEquals(0, AnswerIssueResolutionTable.selectAll().count())
+        }
+    }
+
+    @Test
     fun `question configuration update saves local handling label rules and mappings`() = runBlocking {
         val dbPath = Files.createTempDirectory("munassign-question-save").resolve("data.db")
         val database = DatabaseFactory.connect(dbPath)
@@ -1079,7 +1154,7 @@ class ConferenceRepositoryImplTest {
         )
 
     private fun snapshotWithQuestion(): MymunWorkbookSnapshot =
-        snapshotWithQuestions(listOf("Question: MUN experience"))
+        snapshotWithQuestions(listOf("Question: Please explain your choice of comittees."))
 
     private fun snapshotWithQuestions(questionTexts: List<String>): MymunWorkbookSnapshot {
         val questionColumns = questionTexts.mapIndexed { index, questionText ->

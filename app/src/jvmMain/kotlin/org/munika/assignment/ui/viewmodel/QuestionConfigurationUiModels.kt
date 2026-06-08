@@ -109,8 +109,8 @@ fun Conference.toQuestionConfigurationListUiState(): QuestionConfigurationListUi
                 roleLabel = question.role?.name ?: "General",
                 visibleInDelegateDetail = question.role == null && question.visibleInDelegateDetail,
                 displayOrder = question.displayOrder,
-                warningCount = answers.sumOf { answer -> answer.issues.count { it.severity.name == "Warning" } },
-                noticeCount = answers.sumOf { answer -> answer.issues.count { it.severity.name == "Notice" } },
+                warningCount = answers.sumOf { answer -> answer.openIssues.count { it.severity.name == "Warning" } },
+                noticeCount = answers.sumOf { answer -> answer.openIssues.count { it.severity.name == "Notice" } },
             )
         },
     )

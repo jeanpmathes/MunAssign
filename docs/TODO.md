@@ -2,7 +2,8 @@
 
 ## Later - Transfer And Polish
 
-- Warning and issue handling to mark them as resolved with justification, also global warning counter.
+- Handling of delegation reservations, e.g. set N reserved HS and M reserved Uni, UI should show remaining capacity
+- IPC handling, is not HS / Uni specific but has a slot per committee, needs mapping from name to committee, takes HS / Uni from that committee
 - Fix all warnings of code.
 - Improve upload experience (no weird message) and the UI when conference is empty.
 - Polish question configuration keyboard/focus handling after regular use.
@@ -12,6 +13,7 @@
 - Add file picker dialogs and user-facing error states for incompatible transfer files, write failures, and overwrite confirmation.
 - Add keyboard/focus handling for menus, dialogs, drawers, and side panel navigation.
 - Configure native packaging metadata for MSI, DMG, and deb outputs.
+- The text when disabling a delegate is ugly.
 - Add a splash screen and loading indicator.
 - Add a dark mode toggle.
 - Drag and drop of excel files.

@@ -7,6 +7,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import org.munika.assignment.domain.model.AnswerIssueResolution
+import org.munika.assignment.domain.model.AnswerIssueResolutionId
 import org.munika.assignment.domain.model.AssignmentSource
 import org.munika.assignment.domain.model.Committee
 import org.munika.assignment.domain.model.CommitteeId
@@ -141,6 +143,51 @@ class AssignmentBoardUiModelsTest {
 
         assertEquals(1, candidate.warningCount)
         assertEquals(1, candidate.noticeCount)
+    }
+
+    @Test
+    fun `assignment candidates ignore resolved answer and profile issue counts`() {
+        val board = board()
+        val warningQuestion = Question(QuestionId("warning"), "Warning", rules = listOf(RequiredAnswer("Missing")))
+        board.conference.questions += warningQuestion
+        board.available.answers += QuestionAnswer(QuestionAnswerId("warning-answer"), board.available, warningQuestion, null)
+        markHighSchooler(board.available)
+        board.available.issueResolutions += board.available.answers
+            .single { it.id.value == "warning-answer" }
+            .issues
+            .single()
+            .let { issue ->
+                AnswerIssueResolution(
+                    id = AnswerIssueResolutionId("answer-resolution"),
+                    delegate = board.available,
+                    questionId = warningQuestion.id,
+                    issueKey = issue.key,
+                    issueMessage = issue.message,
+                    severity = issue.severity,
+                    justification = "Reviewed.",
+                    resolvedAt = Instant.EPOCH,
+                )
+            }
+        board.available.issueResolutions += board.available.profileIssues().single().let { issue ->
+            AnswerIssueResolution(
+                id = AnswerIssueResolutionId("profile-resolution"),
+                delegate = board.available,
+                questionId = null,
+                issueKey = issue.key,
+                issueMessage = issue.message,
+                severity = issue.severity,
+                justification = null,
+                resolvedAt = Instant.EPOCH,
+            )
+        }
+
+        val germany = board.conference.toAssignmentBoardUiState()
+            .committees.single()
+            .positions.single { it.name == "Germany" }
+        val candidate = germany.assignmentCandidates.single { it.name == "Available Delegate" }
+
+        assertEquals(0, candidate.warningCount)
+        assertEquals(0, candidate.noticeCount)
     }
 
     @Test

@@ -5,6 +5,9 @@ import java.time.LocalDate
 import org.munika.assignment.data.db.model.ConferenceGraphRows
 import org.munika.assignment.data.db.model.DelegateQuestionRuleRow
 import org.munika.assignment.data.db.model.DelegateRow
+import org.munika.assignment.domain.model.AnswerIssueResolution
+import org.munika.assignment.domain.model.AnswerIssueResolutionId
+import org.munika.assignment.domain.model.AnswerIssueSeverity
 import org.munika.assignment.domain.model.AnswerRule
 import org.munika.assignment.domain.model.AssignmentSource
 import org.munika.assignment.domain.model.Committee
@@ -136,6 +139,22 @@ object ConferenceGraphMapper {
                 body = row.body,
                 createdAt = row.createdAtEpochMillis.toInstant(),
                 updatedAt = row.updatedAtEpochMillis.toInstant(),
+            )
+        }
+
+        rows.issueResolutions.forEach { row ->
+            val delegate = requireNotNull(delegatesById[row.delegateId]) {
+                "Issue resolution ${row.id} references missing delegate ${row.delegateId}."
+            }
+            delegate.issueResolutions += AnswerIssueResolution(
+                id = AnswerIssueResolutionId(row.id),
+                delegate = delegate,
+                questionId = row.questionId?.let(::QuestionId),
+                issueKey = row.issueKey,
+                issueMessage = row.issueMessage,
+                severity = AnswerIssueSeverity.valueOf(row.severity),
+                justification = row.justification,
+                resolvedAt = row.resolvedAtEpochMillis.toInstant(),
             )
         }
 

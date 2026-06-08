@@ -12,6 +12,7 @@ internal fun DelegateStatusTone.containerColor(): Color =
         DelegateStatusTone.Red -> MaterialTheme.colorScheme.errorContainer
         DelegateStatusTone.Blue -> MaterialTheme.colorScheme.primaryContainer
         DelegateStatusTone.Yellow -> Color(0xFFFFE2A8)
+        DelegateStatusTone.Notice -> Color(0xFFD8F0F5)
         DelegateStatusTone.Neutral -> MaterialTheme.colorScheme.surfaceVariant
     }
 
@@ -22,5 +23,6 @@ internal fun DelegateStatusTone.contentColor(): Color =
         DelegateStatusTone.Red -> MaterialTheme.colorScheme.onErrorContainer
         DelegateStatusTone.Blue -> MaterialTheme.colorScheme.onPrimaryContainer
         DelegateStatusTone.Yellow -> Color(0xFF4A2B00)
+        DelegateStatusTone.Notice -> Color(0xFF0B4F66)
         DelegateStatusTone.Neutral -> MaterialTheme.colorScheme.onSurfaceVariant
     }

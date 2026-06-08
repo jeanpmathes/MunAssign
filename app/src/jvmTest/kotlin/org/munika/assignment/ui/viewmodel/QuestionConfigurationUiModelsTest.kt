@@ -4,12 +4,24 @@ import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import org.munika.assignment.domain.model.AnswerIssue
+import org.munika.assignment.domain.model.AnswerIssueResolution
+import org.munika.assignment.domain.model.AnswerIssueResolutionId
+import org.munika.assignment.domain.model.AnswerIssueSeverity
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.ConferenceId
+import org.munika.assignment.domain.model.Delegate
+import org.munika.assignment.domain.model.DelegateId
+import org.munika.assignment.domain.model.DelegateProfile
 import org.munika.assignment.domain.model.LanguageLevel
 import org.munika.assignment.domain.model.LanguageLevelAnswerMapping
+import org.munika.assignment.domain.model.PaymentStatus
+import org.munika.assignment.domain.model.PersonName
 import org.munika.assignment.domain.model.Question
+import org.munika.assignment.domain.model.QuestionAnswer
+import org.munika.assignment.domain.model.QuestionAnswerId
 import org.munika.assignment.domain.model.QuestionId
+import org.munika.assignment.domain.model.RequiredAnswer
 import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
 import org.munika.assignment.domain.model.TypedAnswerMappings
@@ -62,6 +74,45 @@ class QuestionConfigurationUiModelsTest {
         val ordered = conference.toEditableQuestionConfigurationUiStates().map { it.questionText }
 
         assertEquals(listOf("Question: A", "Question: B"), ordered)
+    }
+
+    @Test
+    fun `question summary counts only open issues`() {
+        val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val question = Question(
+            id = QuestionId("visa"),
+            questionText = "Question: Visa",
+            rules = listOf(RequiredAnswer("Missing visa info")),
+        )
+        val delegate = Delegate(
+            id = DelegateId("delegate"),
+            conference = conference,
+            name = PersonName("Ada", "Lovelace"),
+            email = "ada@example.test",
+            profile = DelegateProfile(null, null, null, null, null, null, null, null, null, null),
+            paymentStatus = PaymentStatus.Paid,
+            isHeadDelegate = false,
+            submittedAt = Instant.EPOCH,
+        )
+        val issue = AnswerIssue("Missing visa info", AnswerIssueSeverity.Warning)
+        conference.questions += question
+        conference.delegates += delegate
+        delegate.answers += QuestionAnswer(QuestionAnswerId("answer"), delegate, question, null)
+        delegate.issueResolutions += AnswerIssueResolution(
+            id = AnswerIssueResolutionId("resolution"),
+            delegate = delegate,
+            questionId = question.id,
+            issueKey = issue.key,
+            issueMessage = issue.message,
+            severity = issue.severity,
+            justification = "Checked manually",
+            resolvedAt = Instant.EPOCH,
+        )
+
+        val summary = conference.toQuestionConfigurationListUiState().questions.single()
+
+        assertEquals(0, summary.warningCount)
+        assertEquals(0, summary.noticeCount)
     }
 
     private fun conference(): Conference {

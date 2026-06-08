@@ -1,5 +1,6 @@
 package org.munika.assignment.domain.model
 
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -52,5 +53,53 @@ class QuestionTest {
         assertTrue(question.issuesFor("-").isEmpty())
         assertTrue(question.issuesFor("No").isEmpty())
         assertEquals(listOf(AnswerIssue("Visa support requested.", AnswerIssueSeverity.Notice)), question.issuesFor("Yes"))
+    }
+
+    @Test
+    fun `answer issue key is stable for matching severity and message`() {
+        val first = AnswerIssue(" Visa support requested. ", AnswerIssueSeverity.Notice)
+        val second = AnswerIssue("Visa support requested.", AnswerIssueSeverity.Notice)
+
+        assertEquals(second.key, first.key)
+        assertEquals("Notice:Visa support requested.", first.key)
+    }
+
+    @Test
+    fun `question answer separates open and resolved issues`() {
+        val conference = Conference(
+            id = ConferenceId("conference"),
+            name = "KAMUN",
+            createdAt = Instant.EPOCH,
+            updatedAt = Instant.EPOCH,
+        )
+        val delegate = Delegate(
+            id = DelegateId("delegate"),
+            conference = conference,
+            name = PersonName("Alex", "Kim"),
+            email = null,
+            profile = DelegateProfile(null, null, null, null, null, null, null, null, null, null),
+            paymentStatus = PaymentStatus.Paid,
+            isHeadDelegate = false,
+        )
+        val question = Question(
+            id = QuestionId("visa"),
+            questionText = "Visa?",
+            rules = listOf(NoticeWhenNonBlank("Visa support requested.")),
+        )
+        val answer = QuestionAnswer(QuestionAnswerId("answer"), delegate, question, "Yes")
+        delegate.answers += answer
+        delegate.issueResolutions += AnswerIssueResolution(
+            id = AnswerIssueResolutionId("resolution"),
+            delegate = delegate,
+            questionId = question.id,
+            issueKey = answer.issues.single().key,
+            issueMessage = "Visa support requested.",
+            severity = AnswerIssueSeverity.Notice,
+            justification = "Handled by visa team.",
+            resolvedAt = Instant.EPOCH,
+        )
+
+        assertTrue(answer.openIssues.isEmpty())
+        assertEquals("Handled by visa team.", answer.resolvedIssues.single().resolution.justification)
     }
 }

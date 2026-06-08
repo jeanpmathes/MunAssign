@@ -13,4 +13,12 @@ class QuestionAnswer(
 ) : DomainObject<QuestionAnswerId> {
     val issues: List<AnswerIssue>
         get() = question.issuesFor(rawAnswer)
+
+    val openIssues: List<AnswerIssue>
+        get() = issues.filter { issue -> delegate.resolutionFor(question.id, issue) == null }
+
+    val resolvedIssues: List<ResolvedAnswerIssue>
+        get() = issues.mapNotNull { issue ->
+            delegate.resolutionFor(question.id, issue)?.let { resolution -> ResolvedAnswerIssue(issue, resolution) }
+        }
 }

@@ -8,6 +8,10 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import org.munika.assignment.domain.model.AnswerIssue
+import org.munika.assignment.domain.model.AnswerIssueResolution
+import org.munika.assignment.domain.model.AnswerIssueResolutionId
+import org.munika.assignment.domain.model.AnswerIssueSeverity
 import org.munika.assignment.domain.model.AssignmentSource
 import org.munika.assignment.domain.model.Committee
 import org.munika.assignment.domain.model.CommitteeId
@@ -81,11 +85,60 @@ class DelegateDetailUiModelsTest {
         assertEquals(listOf("Motivation", "Visa"), detail.answers.map { it.label })
         assertEquals("No answer", detail.answers.single { it.label == "Motivation" }.answer)
         assertEquals("Yes", detail.answers.single { it.label == "Visa" }.answer)
-        assertEquals(2, detail.answerWarningCount)
+        assertEquals(1, detail.profileWarningCount)
+        assertEquals(0, detail.answerWarningCount)
         assertEquals(1, detail.answerNoticeCount)
+        assertEquals(1, detail.resolvedAnswerIssueCount)
+        assertEquals(0, detail.resolvedProfileIssueCount)
+        assertEquals(listOf("Required"), detail.answers.single { it.label == "Motivation" }.resolvedIssues.map { it.message })
+        assertEquals(listOf("question-visible"), detail.answers.single { it.label == "Motivation" }.resolvedIssues.map { it.questionId })
+        assertEquals(listOf("answer-resolution"), detail.answers.single { it.label == "Motivation" }.resolvedIssues.map { it.resolutionId })
+        assertEquals("Done", detail.answers.single { it.label == "Motivation" }.resolvedIssues.single().justification)
         assertEquals(listOf("Delegate is marked as a high schooler but is 21 years old."), detail.profileIssues.map { it.message })
-        assertEquals(listOf("First note"), detail.comments.map { it.body })
+        assertEquals(
+            listOf("First note", "Resolved \"Required\". Justification: Done"),
+            detail.comments.map { it.body },
+        )
+        assertEquals("answer-resolution", detail.comments.single { it.readOnly }.issueResolutionId)
         assertEquals("Delegation A - Finland", detail.delegation?.label)
+    }
+
+    @Test
+    fun `delegate detail keeps profile validation counts and comments separate from answers`() {
+        val board = board()
+        val profileIssue = board.delegate.profileIssues(LocalDate.of(2026, 1, 1)).single()
+        board.delegate.issueResolutions += AnswerIssueResolution(
+            id = AnswerIssueResolutionId("profile-resolution"),
+            delegate = board.delegate,
+            questionId = null,
+            issueKey = profileIssue.key,
+            issueMessage = profileIssue.message,
+            severity = profileIssue.severity,
+            justification = "School status verified.",
+            resolvedAt = Instant.EPOCH,
+        )
+
+        val detail = requireNotNull(board.conference.toDelegateDetailUiState(board.delegate.id.value))
+
+        assertEquals(0, detail.profileWarningCount)
+        assertEquals(1, detail.resolvedProfileIssueCount)
+        assertEquals(0, detail.answerWarningCount)
+        assertEquals(1, detail.answerNoticeCount)
+        assertEquals(1, detail.resolvedAnswerIssueCount)
+        assertTrue(detail.profileIssues.isEmpty())
+        assertEquals(listOf("School status verified."), detail.resolvedProfileIssues.map { it.justification })
+        assertEquals(listOf(null), detail.resolvedProfileIssues.map { it.questionId })
+        assertEquals(listOf("profile-resolution"), detail.resolvedProfileIssues.map { it.resolutionId })
+        assertTrue(detail.answers.all { answer -> answer.issues.none { it.message.contains("high schooler") } })
+        assertEquals(
+            listOf(
+                "First note",
+                "Resolved \"Required\". Justification: Done",
+                "Resolved \"Delegate is marked as a high schooler but is 21 years old\". Justification: School status verified.",
+            ),
+            detail.comments.map { it.body },
+        )
+        assertTrue(detail.comments.single { it.issueResolutionId == "profile-resolution" }.readOnly)
     }
 
     @Test
@@ -213,6 +266,17 @@ class DelegateDetailUiModelsTest {
         delegate.preferences += Preference(PreferenceId("preference-1"), delegate, france, 1, "GA (France)")
         delegate.preferences += Preference(PreferenceId("preference-2"), delegate, germany, 2, "GA (Germany)")
         delegate.answers += QuestionAnswer(QuestionAnswerId("answer-1"), delegate, visibleQuestion, null)
+        val resolvedIssue = AnswerIssue("Required", AnswerIssueSeverity.Warning)
+        delegate.issueResolutions += AnswerIssueResolution(
+            id = AnswerIssueResolutionId("answer-resolution"),
+            delegate = delegate,
+            questionId = visibleQuestion.id,
+            issueKey = resolvedIssue.key,
+            issueMessage = resolvedIssue.message,
+            severity = resolvedIssue.severity,
+            justification = "Done",
+            resolvedAt = Instant.EPOCH,
+        )
         delegate.answers += QuestionAnswer(QuestionAnswerId("answer-2"), delegate, hiddenQuestion, "Secret")
         delegate.answers += QuestionAnswer(QuestionAnswerId("answer-3"), delegate, visaQuestion, "Yes")
         delegate.answers += QuestionAnswer(QuestionAnswerId("answer-4"), delegate, experienceQuestion, "Some")

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -35,6 +36,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,6 +53,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -58,6 +62,9 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerButton
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -68,6 +75,7 @@ import org.munika.assignment.ui.viewmodel.DelegateAnswerIssueUiState
 import org.munika.assignment.ui.viewmodel.DelegateCommentUiState
 import org.munika.assignment.ui.viewmodel.DelegateDetailUiState
 import org.munika.assignment.ui.viewmodel.DelegatePreferenceUiState
+import org.munika.assignment.ui.viewmodel.DelegateResolvedIssueUiState
 import org.munika.assignment.ui.viewmodel.DelegateStatusChipUiState
 import org.munika.assignment.ui.viewmodel.DelegateStatusTone
 
@@ -82,9 +90,13 @@ fun DelegateSidePanel(
     onAddComment: (delegateId: String, body: String) -> Unit,
     onUpdateComment: (commentId: String, body: String) -> Unit,
     onDeleteComment: (commentId: String) -> Unit,
+    onOpenNotices: (delegateId: String) -> Unit,
+    onResolveIssue: (delegateId: String, questionId: String?, issueKey: String, justification: String?) -> Unit,
+    onUnresolveIssue: (resolutionId: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var deactivateDialogOpen by remember(detail.id) { mutableStateOf(false) }
+    var resolveTarget by remember(detail.id) { mutableStateOf<DelegateAnswerIssueUiState?>(null) }
     val sectionExpanded = remember(detail.id) {
         mutableStateMapOf(
             "Profile" to true,
@@ -119,8 +131,24 @@ fun DelegateSidePanel(
                         title = "Profile",
                         expanded = sectionExpanded["Profile"] == true,
                         onToggle = { sectionExpanded["Profile"] = sectionExpanded["Profile"] != true },
+                        headerContent = {
+                            if (detail.profileWarningCount > 0) {
+                                CountChip("${detail.profileWarningCount} warnings", DelegateStatusTone.Yellow)
+                            }
+                            if (detail.profileNoticeCount > 0) {
+                                CountChip("${detail.profileNoticeCount} notices", DelegateStatusTone.Notice)
+                            }
+                            if (detail.resolvedProfileIssueCount > 0) {
+                                ResolvedCountText("${detail.resolvedProfileIssueCount} resolved")
+                            }
+                        },
                     ) {
-                        ProfileContent(detail)
+                        ProfileContent(
+                            detail = detail,
+                            onOpenIssues = { onOpenNotices(detail.id) },
+                            onResolveIssue = { issue -> resolveTarget = issue },
+                            onUnresolveIssue = onUnresolveIssue,
+                        )
                     }
                 }
                 item {
@@ -133,11 +161,19 @@ fun DelegateSidePanel(
                                 CountChip("${detail.answerWarningCount} warnings", DelegateStatusTone.Yellow)
                             }
                             if (detail.answerNoticeCount > 0) {
-                                CountChip("${detail.answerNoticeCount} notices", DelegateStatusTone.Neutral)
+                                CountChip("${detail.answerNoticeCount} notices", DelegateStatusTone.Notice)
+                            }
+                            if (detail.resolvedAnswerIssueCount > 0) {
+                                ResolvedCountText("${detail.resolvedAnswerIssueCount} resolved")
                             }
                         },
                     ) {
-                        AnswersContent(detail)
+                        AnswersContent(
+                            detail = detail,
+                            onOpenIssues = { onOpenNotices(detail.id) },
+                            onResolveIssue = { issue -> resolveTarget = issue },
+                            onUnresolveIssue = onUnresolveIssue,
+                        )
                     }
                 }
                 item {
@@ -160,6 +196,7 @@ fun DelegateSidePanel(
                             onAddComment = onAddComment,
                             onUpdateComment = onUpdateComment,
                             onDeleteComment = onDeleteComment,
+                            onOpenIssues = { onOpenNotices(detail.id) },
                         )
                     }
                 }
@@ -196,6 +233,17 @@ fun DelegateSidePanel(
                 TextButton(onClick = { deactivateDialogOpen = false }) {
                     Text("Cancel")
                 }
+            },
+        )
+    }
+
+    resolveTarget?.let { target ->
+        ResolveIssueDialog(
+            issue = target,
+            onDismiss = { resolveTarget = null },
+            onConfirm = { justification ->
+                onResolveIssue(detail.id, target.questionId, target.issueKey, justification)
+                resolveTarget = null
             },
         )
     }
@@ -294,7 +342,12 @@ private fun AssignmentCard(
 }
 
 @Composable
-private fun ProfileContent(detail: DelegateDetailUiState) {
+private fun ProfileContent(
+    detail: DelegateDetailUiState,
+    onOpenIssues: () -> Unit,
+    onResolveIssue: (DelegateAnswerIssueUiState) -> Unit,
+    onUnresolveIssue: (String) -> Unit,
+) {
     val uriHandler = LocalUriHandler.current
     if (detail.email == null &&
         detail.phone == null &&
@@ -305,8 +358,10 @@ private fun ProfileContent(detail: DelegateDetailUiState) {
         detail.experience == null &&
         detail.language == null
     ) {
-        Text("No imported profile details", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        return
+        if (detail.profileIssues.isEmpty() && detail.resolvedProfileIssues.isEmpty()) {
+            Text("No imported profile details", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            return
+        }
     }
 
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
@@ -381,6 +436,14 @@ private fun ProfileContent(detail: DelegateDetailUiState) {
             MetricBlock("Address", it, Modifier.fillMaxWidth())
         }
     }
+    ValidationIssueBlock(
+        title = "Validation",
+        issues = detail.profileIssues,
+        resolvedIssues = detail.resolvedProfileIssues,
+        onOpenIssues = onOpenIssues,
+        onResolveIssue = onResolveIssue,
+        onUnresolveIssue = onUnresolveIssue,
+    )
 }
 
 @Composable
@@ -446,27 +509,15 @@ private fun PreferenceRow(
 }
 
 @Composable
-private fun AnswersContent(detail: DelegateDetailUiState) {
-    if (detail.answers.isEmpty() && detail.profileIssues.isEmpty()) {
+private fun AnswersContent(
+    detail: DelegateDetailUiState,
+    onOpenIssues: () -> Unit,
+    onResolveIssue: (DelegateAnswerIssueUiState) -> Unit,
+    onUnresolveIssue: (String) -> Unit,
+) {
+    if (detail.answers.isEmpty()) {
         Text("No configured answers", color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
-    }
-    if (detail.profileIssues.isNotEmpty()) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f), RoundedCornerShape(8.dp))
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
-                .padding(9.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp),
-        ) {
-            Text(
-                "Profile checks",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            detail.profileIssues.forEach { issue -> AnswerIssuePill(issue) }
-        }
     }
     detail.answers.forEach { answer ->
         Column(
@@ -489,9 +540,127 @@ private fun AnswersContent(detail: DelegateDetailUiState) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            answer.issues.forEach { issue -> AnswerIssuePill(issue) }
+            answer.issues.forEach { issue ->
+                AnswerIssuePill(
+                    issue = issue,
+                    onOpenIssues = onOpenIssues,
+                    onResolveIssue = { onResolveIssue(issue) },
+                )
+            }
+            answer.resolvedIssues.forEach { issue -> ResolvedAnswerIssueLine(issue, onOpenIssues, onUnresolveIssue) }
         }
     }
+}
+
+@Composable
+private fun ValidationIssueBlock(
+    title: String,
+    issues: List<DelegateAnswerIssueUiState>,
+    resolvedIssues: List<DelegateResolvedIssueUiState>,
+    onOpenIssues: () -> Unit,
+    onResolveIssue: (DelegateAnswerIssueUiState) -> Unit,
+    onUnresolveIssue: (String) -> Unit,
+) {
+    if (issues.isEmpty() && resolvedIssues.isEmpty()) return
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+            .padding(9.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Text(
+            title,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        issues.forEach { issue ->
+            AnswerIssuePill(
+                issue = issue,
+                onOpenIssues = onOpenIssues,
+                onResolveIssue = { onResolveIssue(issue) },
+            )
+        }
+        resolvedIssues.forEach { issue -> ResolvedAnswerIssueLine(issue, onOpenIssues, onUnresolveIssue) }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalComposeUiApi::class)
+private fun ResolvedAnswerIssueLine(
+    issue: DelegateResolvedIssueUiState,
+    onOpenIssues: () -> Unit,
+    onUnresolveIssue: (String) -> Unit,
+) {
+    var menuOpen by remember(issue.resolutionId) { mutableStateOf(false) }
+    BoardTooltip(issue.justification?.let { "Issue resolved, justification: $it" } ?: "Issue resolved.") {
+        Box {
+            Text(
+                issue.message,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textDecoration = TextDecoration.LineThrough,
+                modifier = Modifier
+                    .pointerInput(issue.resolutionId) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                if (event.type == PointerEventType.Release && event.button == PointerButton.Secondary) {
+                                    event.changes.forEach { it.consume() }
+                                    menuOpen = true
+                                }
+                            }
+                        }
+                    }
+                    .clickable(onClick = onOpenIssues),
+            )
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text("Reopen") },
+                    onClick = {
+                        menuOpen = false
+                        onUnresolveIssue(issue.resolutionId)
+                    },
+                    leadingIcon = { Icon(Icons.Filled.Restore, contentDescription = null) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResolveIssueDialog(
+    issue: DelegateAnswerIssueUiState,
+    onDismiss: () -> Unit,
+    onConfirm: (String?) -> Unit,
+) {
+    var justification by remember(issue.issueKey) { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Resolve issue") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(issue.message)
+                OutlinedTextField(
+                    value = justification,
+                    onValueChange = { justification = it },
+                    label = { Text("Justification") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3,
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(justification.takeIf { it.isNotBlank() }) }) {
+                Text("Resolve")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
 }
 
 @Composable
@@ -500,6 +669,7 @@ private fun CommentsContent(
     onAddComment: (delegateId: String, body: String) -> Unit,
     onUpdateComment: (commentId: String, body: String) -> Unit,
     onDeleteComment: (commentId: String) -> Unit,
+    onOpenIssues: () -> Unit,
 ) {
     var draft by remember(detail.id) { mutableStateOf("") }
     if (detail.comments.isEmpty()) {
@@ -510,6 +680,7 @@ private fun CommentsContent(
                 comment = comment,
                 onUpdateComment = onUpdateComment,
                 onDeleteComment = onDeleteComment,
+                onOpenIssues = onOpenIssues,
             )
         }
     }
@@ -606,6 +777,15 @@ private fun FoldableSection(
 }
 
 @Composable
+private fun ResolvedCountText(label: String) {
+    Text(
+        label,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+@Composable
 private fun CountChip(label: String, tone: DelegateStatusTone) {
     Text(
         label,
@@ -694,6 +874,7 @@ private fun CommentRow(
     comment: DelegateCommentUiState,
     onUpdateComment: (commentId: String, body: String) -> Unit,
     onDeleteComment: (commentId: String) -> Unit,
+    onOpenIssues: () -> Unit,
 ) {
     var editing by remember(comment.id) { mutableStateOf(false) }
     var editBody by remember(comment.id, comment.body) { mutableStateOf(comment.body) }
@@ -723,16 +904,34 @@ private fun CommentRow(
                 }
             } else {
                 Text(comment.body)
-                Text("Updated ${comment.updatedAt}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    BoardTooltip("Edit this organizer note.") {
-                        IconButton(onClick = { editing = true }, modifier = Modifier.size(32.dp)) {
-                            Icon(Icons.Filled.Edit, contentDescription = "Edit note", modifier = Modifier.size(16.dp))
+                Text(
+                    if (comment.readOnly) {
+                        "Resolution justification ${comment.updatedAt}"
+                    } else {
+                        "Updated ${comment.updatedAt}"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (!comment.readOnly) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        BoardTooltip("Edit this organizer note.") {
+                            IconButton(onClick = { editing = true }, modifier = Modifier.size(32.dp)) {
+                                Icon(Icons.Filled.Edit, contentDescription = "Edit note", modifier = Modifier.size(16.dp))
+                            }
+                        }
+                        BoardTooltip("Delete this organizer note.") {
+                            IconButton(onClick = { deleteDialogOpen = true }, modifier = Modifier.size(32.dp)) {
+                                Icon(Icons.Filled.Delete, contentDescription = "Delete note", modifier = Modifier.size(16.dp))
+                            }
                         }
                     }
-                    BoardTooltip("Delete this organizer note.") {
-                        IconButton(onClick = { deleteDialogOpen = true }, modifier = Modifier.size(32.dp)) {
-                            Icon(Icons.Filled.Delete, contentDescription = "Delete note", modifier = Modifier.size(16.dp))
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        BoardTooltip("Open this resolved issue.") {
+                            IconButton(onClick = onOpenIssues, modifier = Modifier.size(32.dp)) {
+                                Icon(Icons.Filled.Link, contentDescription = "Open resolved issue", modifier = Modifier.size(16.dp))
+                            }
                         }
                     }
                 }
@@ -766,12 +965,44 @@ private fun CommentRow(
 }
 
 @Composable
-private fun AnswerIssuePill(issue: DelegateAnswerIssueUiState) {
-    val tone = if (issue.isWarning) DelegateStatusTone.Yellow else DelegateStatusTone.Neutral
-    Text(
-        "${issue.severity}: ${issue.message}",
-        style = MaterialTheme.typography.labelSmall,
-        color = tone.contentColor(),
-        modifier = Modifier.background(tone.containerColor(), RoundedCornerShape(999.dp)).padding(horizontal = 8.dp, vertical = 3.dp),
-    )
+@OptIn(ExperimentalComposeUiApi::class)
+private fun AnswerIssuePill(
+    issue: DelegateAnswerIssueUiState,
+    onOpenIssues: () -> Unit,
+    onResolveIssue: () -> Unit,
+) {
+    val tone = if (issue.isWarning) DelegateStatusTone.Yellow else DelegateStatusTone.Notice
+    var menuOpen by remember(issue.issueKey) { mutableStateOf(false) }
+    Box {
+        Text(
+            "${issue.severity}: ${issue.message}",
+            style = MaterialTheme.typography.labelSmall,
+            color = tone.contentColor(),
+            modifier = Modifier
+                .background(tone.containerColor(), RoundedCornerShape(999.dp))
+                .pointerInput(issue.issueKey) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            if (event.type == PointerEventType.Release && event.button == PointerButton.Secondary) {
+                                event.changes.forEach { it.consume() }
+                                menuOpen = true
+                            }
+                        }
+                    }
+                }
+                .clickable(onClick = onOpenIssues)
+                .padding(horizontal = 8.dp, vertical = 3.dp),
+        )
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenuItem(
+                text = { Text("Resolve") },
+                onClick = {
+                    menuOpen = false
+                    onResolveIssue()
+                },
+                leadingIcon = { Icon(Icons.Filled.Check, contentDescription = null) },
+            )
+        }
+    }
 }

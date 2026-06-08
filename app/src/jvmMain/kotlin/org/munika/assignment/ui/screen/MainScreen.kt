@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ManageAccounts
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
@@ -78,13 +80,18 @@ import org.munika.assignment.domain.model.QuestionConfiguration
 import org.munika.assignment.domain.repository.UpdateIssue
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
 import org.munika.assignment.domain.repository.UpdateSummary
+import org.munika.assignment.ui.screen.dialog.IssueManagerPanel
 import org.munika.assignment.ui.screen.dialog.QuestionConfigurationDialog
 import org.munika.assignment.ui.screen.component.AssignmentBoard
 import org.munika.assignment.ui.screen.component.DelegateListPanel
 import org.munika.assignment.ui.screen.component.DelegateSidePanel
+import org.munika.assignment.ui.screen.component.containerColor
+import org.munika.assignment.ui.screen.component.contentColor
 import org.munika.assignment.ui.viewmodel.DelegateListControlsUiState
 import org.munika.assignment.ui.viewmodel.DelegateListPreset
+import org.munika.assignment.ui.viewmodel.DelegateStatusTone
 import org.munika.assignment.ui.viewmodel.MainUiState
+import org.munika.assignment.ui.viewmodel.toIssueManagerUiState
 import org.munika.assignment.ui.viewmodel.toQuestionConfigurationListUiState
 import org.munika.assignment.ui.viewmodel.toDelegateListUiState
 import org.munika.assignment.ui.viewmodel.toDelegateDetailUiState
@@ -104,6 +111,12 @@ fun MainScreen(
     onClearPendingSlot: (slotId: String) -> Unit,
     onOpenDelegateList: () -> Unit,
     onCloseDelegateList: () -> Unit,
+    onOpenNoticeManager: () -> Unit,
+    onOpenDelegateNoticeManager: (delegateId: String) -> Unit,
+    onCloseNoticeManager: () -> Unit,
+    onResolveAnswerIssue: (delegateId: String, questionId: String?, issueKey: String, justification: String?) -> Unit,
+    onUpdateAnswerIssueResolutionJustification: (resolutionId: String, justification: String?) -> Unit,
+    onUnresolveAnswerIssue: (resolutionId: String) -> Unit,
     onOpenQuestionConfiguration: () -> Unit,
     onCloseQuestionConfiguration: () -> Unit,
     onUpdateQuestionConfigurations: (List<QuestionConfiguration>) -> Unit,
@@ -144,6 +157,7 @@ fun MainScreen(
                     managementOpen = true
                 },
                 onOpenDelegateList = onOpenDelegateList,
+                onOpenNoticeManager = onOpenNoticeManager,
                 onOpenQuestionConfiguration = onOpenQuestionConfiguration,
                 onOpenWorkbook = onOpenWorkbook,
             )
@@ -172,6 +186,10 @@ fun MainScreen(
                         boardScrollRequest = state.boardScrollRequest,
                         selectedDelegateId = state.selectedDelegateId,
                         delegateListOpen = state.delegateListOpen,
+                        noticeManagerOpen = state.noticeManagerOpen,
+                        issueManager = selectedConference.toIssueManagerUiState(
+                            delegateId = state.noticeManagerDelegateId,
+                        ),
                         delegateListControls = state.delegateListControls,
                         onSetCommitteeSlotsPerPosition = onSetCommitteeSlotsPerPosition,
                         onSetCommitteeHighSchoolStatus = onSetCommitteeHighSchoolStatus,
@@ -188,6 +206,12 @@ fun MainScreen(
                         onAddDelegateComment = onAddDelegateComment,
                         onUpdateDelegateComment = onUpdateDelegateComment,
                         onDeleteDelegateComment = onDeleteDelegateComment,
+                        onOpenDelegateNoticeManager = onOpenDelegateNoticeManager,
+                        onOpenNoticeManager = onOpenNoticeManager,
+                        onCloseNoticeManager = onCloseNoticeManager,
+                        onResolveAnswerIssue = onResolveAnswerIssue,
+                        onUpdateAnswerIssueResolutionJustification = onUpdateAnswerIssueResolutionJustification,
+                        onUnresolveAnswerIssue = onUnresolveAnswerIssue,
                         onClearBoardActionError = onClearBoardActionError,
                     )
                 }
@@ -255,6 +279,7 @@ fun MainScreen(
             onSave = onUpdateQuestionConfigurations,
         )
     }
+
 }
 
 @Composable
@@ -265,6 +290,7 @@ private fun TopBar(
     onOpenRename: (Conference) -> Unit,
     onOpenManagement: () -> Unit,
     onOpenDelegateList: () -> Unit,
+    onOpenNoticeManager: () -> Unit,
     onOpenQuestionConfiguration: () -> Unit,
     onOpenWorkbook: (() -> Unit)? = null,
 ) {
@@ -274,7 +300,7 @@ private fun TopBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(0.82f),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -294,8 +320,11 @@ private fun TopBar(
                 )
             }
 
-            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier.weight(0.72f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 WithTooltip("Select a MyMUN Excel workbook to update the selected conference.") {
                     Button(
                         onClick = { onOpenWorkbook?.invoke() },
@@ -306,24 +335,32 @@ private fun TopBar(
                         Text("Update")
                     }
                 }
-                    WithTooltip("Configure imported MyMUN questions.") {
-                        OutlinedButton(
-                            onClick = onOpenQuestionConfiguration,
-                            enabled = !state.loading && state.selectedConference?.questions?.isNotEmpty() == true,
-                        ) {
-                            Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Questions")
-                        }
+                WithTooltip("Configure imported MyMUN questions.") {
+                    OutlinedButton(
+                        onClick = onOpenQuestionConfiguration,
+                        enabled = !state.loading && state.selectedConference?.questions?.isNotEmpty() == true,
+                    ) {
+                        Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Questions")
                     }
                 }
             }
 
             Row(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1.56f),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.End,
             ) {
+                val issueManager = state.selectedConference?.toIssueManagerUiState()
+                val openIssueCount = (issueManager?.openWarningCount ?: 0) + (issueManager?.openNoticeCount ?: 0)
+                NoticeIconButton(
+                    tooltip = "Open issues ($openIssueCount open)",
+                    warningCount = issueManager?.openWarningCount ?: 0,
+                    noticeCount = issueManager?.openNoticeCount ?: 0,
+                    onClick = onOpenNoticeManager,
+                    enabled = !state.loading && state.selectedConference != null,
+                )
                 TooltipIconButton(
                     tooltip = "Open delegate list",
                     icon = Icons.Filled.People,
@@ -488,6 +525,70 @@ private fun TooltipIconButton(
 }
 
 @Composable
+private fun NoticeIconButton(
+    tooltip: String,
+    warningCount: Int,
+    noticeCount: Int,
+    onClick: () -> Unit,
+    enabled: Boolean,
+) {
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        tooltip = { PlainTooltip { Text(tooltip) } },
+        state = rememberTooltipState(),
+    ) {
+        Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+            IconButton(onClick = onClick, enabled = enabled) {
+                Icon(
+                    Icons.Filled.Notifications,
+                    contentDescription = tooltip,
+                    tint = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+                )
+            }
+            NoticeBadgeRow(
+                warningCount = warningCount,
+                noticeCount = noticeCount,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(top = 27.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun NoticeBadgeRow(warningCount: Int, noticeCount: Int, modifier: Modifier = Modifier) {
+    if (warningCount == 0 && noticeCount == 0) return
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (warningCount > 0) {
+            NoticeCountBadge(warningCount, DelegateStatusTone.Yellow)
+        }
+        if (noticeCount > 0) {
+            NoticeCountBadge(noticeCount, DelegateStatusTone.Notice)
+        }
+    }
+}
+
+@Composable
+private fun NoticeCountBadge(count: Int, tone: DelegateStatusTone) {
+    Surface(
+        color = tone.containerColor(),
+        contentColor = tone.contentColor(),
+        shape = RoundedCornerShape(5.dp),
+        shadowElevation = 1.dp,
+    ) {
+        Text(
+            text = count.toString(),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.widthIn(min = 14.dp).padding(horizontal = 3.dp, vertical = 1.dp),
+        )
+    }
+}
+
+@Composable
 private fun WithTooltip(tooltip: String, content: @Composable () -> Unit) {
     TooltipBox(
         positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
@@ -557,6 +658,8 @@ private fun ConferenceWorkspace(
     boardScrollRequest: org.munika.assignment.ui.viewmodel.BoardScrollRequest?,
     selectedDelegateId: String?,
     delegateListOpen: Boolean,
+    noticeManagerOpen: Boolean,
+    issueManager: org.munika.assignment.ui.viewmodel.IssueManagerUiState,
     delegateListControls: DelegateListControlsUiState,
     onSetCommitteeSlotsPerPosition: (String, Int) -> Unit,
     onSetCommitteeHighSchoolStatus: (String, Boolean) -> Unit,
@@ -573,6 +676,12 @@ private fun ConferenceWorkspace(
     onAddDelegateComment: (delegateId: String, body: String) -> Unit,
     onUpdateDelegateComment: (commentId: String, body: String) -> Unit,
     onDeleteDelegateComment: (commentId: String) -> Unit,
+    onOpenDelegateNoticeManager: (delegateId: String) -> Unit,
+    onOpenNoticeManager: () -> Unit,
+    onCloseNoticeManager: () -> Unit,
+    onResolveAnswerIssue: (delegateId: String, questionId: String?, issueKey: String, justification: String?) -> Unit,
+    onUpdateAnswerIssueResolutionJustification: (resolutionId: String, justification: String?) -> Unit,
+    onUnresolveAnswerIssue: (resolutionId: String) -> Unit,
     onClearBoardActionError: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -602,6 +711,17 @@ private fun ConferenceWorkspace(
                     onClose = onCloseDelegateList,
                 )
             }
+            if (noticeManagerOpen) {
+                IssueManagerPanel(
+                    manager = issueManager,
+                    onClose = onCloseNoticeManager,
+                    onResolve = onResolveAnswerIssue,
+                    onUpdateJustification = onUpdateAnswerIssueResolutionJustification,
+                    onUnresolve = onUnresolveAnswerIssue,
+                    onOpenDelegate = onOpenDelegateDetail,
+                    onClearFilter = onOpenNoticeManager,
+                )
+            }
             conference.toDelegateDetailUiState(selectedDelegateId)?.let { detail ->
                 DelegateSidePanel(
                     detail = detail,
@@ -613,6 +733,9 @@ private fun ConferenceWorkspace(
                     onAddComment = onAddDelegateComment,
                     onUpdateComment = onUpdateDelegateComment,
                     onDeleteComment = onDeleteDelegateComment,
+                    onOpenNotices = onOpenDelegateNoticeManager,
+                    onResolveIssue = onResolveAnswerIssue,
+                    onUnresolveIssue = onUnresolveAnswerIssue,
                 )
             }
         }

@@ -6,6 +6,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import org.munika.assignment.domain.model.AnswerIssue
+import org.munika.assignment.domain.model.AnswerIssueResolution
+import org.munika.assignment.domain.model.AnswerIssueResolutionId
+import org.munika.assignment.domain.model.AnswerIssueSeverity
 import org.munika.assignment.domain.model.AssignmentSource
 import org.munika.assignment.domain.model.Committee
 import org.munika.assignment.domain.model.CommitteeId
@@ -68,7 +72,7 @@ class DelegateListUiModelsTest {
         )
 
         assertEquals(listOf("Easy Delegate", "Contested Delegate"), assignment.rows.map { it.name })
-        assertEquals(listOf("Contested Delegate", "Pending Delegate"), issues.rows.map { it.name })
+        assertEquals(listOf("Pending Delegate"), issues.rows.map { it.name })
         assertEquals(listOf("Assigned Delegate", "Pending Delegate"), assigned.rows.map { it.name })
         assertEquals(
             listOf("Inactive Delegate", "Unpaid Delegate", "Easy Delegate", "Contested Delegate", "Assigned Delegate", "Pending Delegate"),
@@ -131,7 +135,7 @@ class DelegateListUiModelsTest {
             board.conference.toDelegateListUiState(DelegateListControlsUiState(sort = DelegateListSort.AssignmentStatus), Now).rows.map { it.name },
         )
         assertEquals(
-            listOf("Contested Delegate", "Pending Delegate", "Assigned Delegate", "Easy Delegate"),
+            listOf("Pending Delegate", "Assigned Delegate", "Contested Delegate", "Easy Delegate"),
             board.conference.toDelegateListUiState(DelegateListControlsUiState(sort = DelegateListSort.Issues), Now).rows.map { it.name },
         )
         assertEquals(
@@ -206,6 +210,17 @@ class DelegateListUiModelsTest {
         )
         conference.questions += listOf(warningQuestion, noticeQuestion, highSchoolerQuestion)
         contested.answers += QuestionAnswer(QuestionAnswerId("contested-warning"), contested, warningQuestion, null)
+        val contestedWarning = AnswerIssue("Missing", AnswerIssueSeverity.Warning)
+        contested.issueResolutions += AnswerIssueResolution(
+            id = AnswerIssueResolutionId("contested-warning-resolution"),
+            delegate = contested,
+            questionId = warningQuestion.id,
+            issueKey = contestedWarning.key,
+            issueMessage = contestedWarning.message,
+            severity = contestedWarning.severity,
+            justification = "Done",
+            resolvedAt = Instant.EPOCH,
+        )
         contested.answers += QuestionAnswer(QuestionAnswerId("contested-high-schooler"), contested, highSchoolerQuestion, "Yes")
         pending.answers += QuestionAnswer(QuestionAnswerId("pending-notice"), pending, noticeQuestion, "yes")
 

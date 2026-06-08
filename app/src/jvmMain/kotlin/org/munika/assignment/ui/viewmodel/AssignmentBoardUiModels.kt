@@ -193,12 +193,12 @@ private fun Delegate.pendingAssignmentSlotId(): String? =
     currentSlot?.takeIf { it.isPending }?.id?.value
 
 private fun Delegate.warningCount(): Int =
-    answers.sumOf { answer -> answer.issues.count { it.severity == AnswerIssueSeverity.Warning } } +
-        profileIssues().count { it.severity == AnswerIssueSeverity.Warning }
+    answers.sumOf { answer -> answer.openIssues.count { it.severity == AnswerIssueSeverity.Warning } } +
+        openProfileIssues().count { it.severity == AnswerIssueSeverity.Warning }
 
 private fun Delegate.noticeCount(): Int =
-    answers.sumOf { answer -> answer.issues.count { it.severity == AnswerIssueSeverity.Notice } } +
-        profileIssues().count { it.severity == AnswerIssueSeverity.Notice }
+    answers.sumOf { answer -> answer.openIssues.count { it.severity == AnswerIssueSeverity.Notice } } +
+        openProfileIssues().count { it.severity == AnswerIssueSeverity.Notice }
 
 private val AssignmentDelegateCandidateUiState.assignmentSortRank: Int
     get() = when {

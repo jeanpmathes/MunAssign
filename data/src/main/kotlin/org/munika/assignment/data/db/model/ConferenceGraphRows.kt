@@ -15,4 +15,5 @@ data class ConferenceGraphRows(
     val highSchoolerMappings: List<HighSchoolerAnswerMappingRow>,
     val languageLevelMappings: List<LanguageLevelAnswerMappingRow>,
     val answers: List<DelegateQuestionAnswerRow>,
+    val issueResolutions: List<AnswerIssueResolutionRow>,
 )

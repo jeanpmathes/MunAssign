@@ -10,6 +10,7 @@ import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.TransactionManager
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.slf4j.LoggerFactory
+import org.munika.assignment.data.db.tables.AnswerIssueResolutionTable
 import org.munika.assignment.data.db.tables.AnswerRuleTypeTable
 import org.munika.assignment.data.db.tables.MunAssignTables
 import org.munika.assignment.data.db.tables.QuestionHandlingTypeTable
@@ -128,6 +129,9 @@ object DatabaseFactory {
         },
         SchemaMigration(version = 5, name = "add_committee_high_school_status") {
             addColumnIfMissing("committees", "is_high_school_committee", "BOOLEAN NOT NULL DEFAULT FALSE")
+        },
+        SchemaMigration(version = 6, name = "add_answer_issue_resolutions") {
+            SchemaUtils.create(AnswerIssueResolutionTable)
         },
     )
 
