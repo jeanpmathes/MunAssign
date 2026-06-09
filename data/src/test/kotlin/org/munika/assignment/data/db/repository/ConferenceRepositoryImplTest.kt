@@ -1,6 +1,7 @@
 package org.munika.assignment.data.db.repository
 
 import java.nio.file.Files
+import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -35,6 +36,7 @@ import org.munika.assignment.data.excel.CellLocation
 import org.munika.assignment.data.excel.MymunConfirmedAssignmentCandidate
 import org.munika.assignment.data.excel.MymunCountryPositionRow
 import org.munika.assignment.data.excel.MymunDelegateRow
+import org.munika.assignment.data.excel.MymunDelegationRow
 import org.munika.assignment.data.excel.MymunQuestionAnswerCell
 import org.munika.assignment.data.excel.MymunQuestionColumn
 import org.munika.assignment.data.excel.MymunWorkbookSnapshot
@@ -50,6 +52,7 @@ import org.munika.assignment.domain.model.MunExperienceLevel
 import org.munika.assignment.domain.model.NoticeWhenNonBlank
 import org.munika.assignment.domain.model.PaymentStatus
 import org.munika.assignment.domain.model.QuestionConfiguration
+import org.munika.assignment.domain.model.ReservationLinkSource
 import org.munika.assignment.domain.model.RequiredAnswer
 import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
@@ -181,6 +184,266 @@ class ConferenceRepositoryImplTest {
         transaction(database) {
             assertTrue(CommitteeTable.selectAll().single()[CommitteeTable.isHighSchoolCommittee])
         }
+    }
+
+    @Test
+    fun `reservation can be created and loaded`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-reservation-create").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        val updated = repository.createReservation(
+            conferenceId = conference.id.value,
+            name = "Delegation hold",
+            highSchoolCount = 2,
+            universityCount = 1,
+            delegationId = null,
+        )
+
+        val reservation = updated.reservations.single()
+        assertEquals("Delegation hold", reservation.name)
+        assertEquals(2, reservation.highSchoolCount)
+        assertEquals(1, reservation.universityCount)
+        assertNull(reservation.delegation)
+
+        val reloaded = requireNotNull(repository.getConference(conference.id.value))
+        assertEquals(reservation.id, reloaded.reservations.single().id)
+        assertEquals("Delegation hold", reloaded.reservations.single().name)
+    }
+
+    @Test
+    fun `manual reservation link survives reload`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-reservation-manual-reload").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot()).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val delegate = loaded.delegates.single { it.name.firstName == "Alex" }
+        val reservation = repository.createReservation(
+            conferenceId = conference.id.value,
+            name = "Manual hold",
+            highSchoolCount = 1,
+            universityCount = 1,
+            delegationId = null,
+        ).reservations.single()
+
+        repository.assignDelegateReservation(conference.id.value, delegate.id.value, reservation.id.value)
+
+        val reloaded = requireNotNull(repository.getConference(conference.id.value))
+        val link = requireNotNull(reloaded.delegates.single { it.id == delegate.id }.reservationLink)
+        assertEquals(reservation.id, link.reservation.id)
+        assertEquals(ReservationLinkSource.Manual, link.source)
+        assertEquals(link.id, reloaded.reservations.single().delegateLinks.single().id)
+    }
+
+    @Test
+    fun `delegation linked reservation auto-links active paid accepted delegates by submission date`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-reservation-auto").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val delegates = listOf(
+            reservationDelegate(rowNumber = 2, firstName = "Late", email = "late@example.test", submittedAt = LocalDate.parse("2026-01-05")),
+            reservationDelegate(rowNumber = 3, firstName = "Early", email = "early@example.test", submittedAt = LocalDate.parse("2026-01-02")),
+            reservationDelegate(rowNumber = 4, firstName = "Unpaid", email = "unpaid@example.test", feePaid = false, submittedAt = LocalDate.parse("2026-01-01")),
+            reservationDelegate(rowNumber = 5, firstName = "Pending", email = "pending@example.test", applicationStatus = "Pending", submittedAt = LocalDate.parse("2026-01-01")),
+        )
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot(delegates = delegates)).success)
+        val delegation = requireNotNull(repository.getConference(conference.id.value)).delegations.single()
+
+        val updated = repository.createReservation(
+            conferenceId = conference.id.value,
+            name = "School allocation",
+            highSchoolCount = 2,
+            universityCount = 0,
+            delegationId = delegation.id.value,
+        )
+
+        val linkedNames = updated.reservations.single().delegateLinks.map { it.delegate.name.firstName }
+        assertEquals(listOf("Early", "Late"), linkedNames)
+        assertTrue(updated.reservations.single().delegateLinks.all { it.source == ReservationLinkSource.DelegationAuto })
+    }
+
+    @Test
+    fun `manual linked delegate is skipped by auto fill`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-reservation-manual-skips-auto").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val delegates = listOf(
+            reservationDelegate(rowNumber = 2, firstName = "Early", email = "early@example.test", submittedAt = LocalDate.parse("2026-01-01")),
+            reservationDelegate(rowNumber = 3, firstName = "Late", email = "late@example.test", submittedAt = LocalDate.parse("2026-01-02")),
+        )
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot(delegates = delegates)).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val delegation = loaded.delegations.single()
+        val manualDelegate = loaded.delegates.single { it.name.firstName == "Early" }
+        val manualReservation = repository.createReservation(
+            conferenceId = conference.id.value,
+            name = "Manual hold",
+            highSchoolCount = 1,
+            universityCount = 0,
+            delegationId = null,
+        ).reservations.single()
+        repository.assignDelegateReservation(conference.id.value, manualDelegate.id.value, manualReservation.id.value)
+
+        val updated = repository.createReservation(
+            conferenceId = conference.id.value,
+            name = "Delegation hold",
+            highSchoolCount = 1,
+            universityCount = 0,
+            delegationId = delegation.id.value,
+        )
+
+        val manualLink = requireNotNull(updated.delegates.single { it.id == manualDelegate.id }.reservationLink)
+        assertEquals(manualReservation.id, manualLink.reservation.id)
+        val autoReservation = updated.reservations.single { it.name == "Delegation hold" }
+        assertEquals(listOf("Late"), autoReservation.delegateLinks.map { it.delegate.name.firstName })
+    }
+
+    @Test
+    fun `deactivating delegate removes reservation link`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-reservation-deactivate").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot()).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val delegate = loaded.delegates.single { it.name.firstName == "Alex" }
+        val reservation = repository.createReservation(
+            conferenceId = conference.id.value,
+            name = "Manual hold",
+            highSchoolCount = 1,
+            universityCount = 0,
+            delegationId = null,
+        ).reservations.single()
+        repository.assignDelegateReservation(conference.id.value, delegate.id.value, reservation.id.value)
+
+        val deactivated = repository.deactivateDelegate(conference.id.value, delegate.id.value)
+
+        assertNull(deactivated.delegates.single { it.id == delegate.id }.reservationLink)
+        assertTrue(deactivated.reservations.single().delegateLinks.isEmpty())
+    }
+
+    @Test
+    fun `reducing reservation below manual usage is rejected`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-reservation-reduce-manual-block").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot()).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val delegate = loaded.delegates.single { it.name.firstName == "Alex" }
+        val reservation = repository.createReservation(
+            conferenceId = conference.id.value,
+            name = "Manual hold",
+            highSchoolCount = 1,
+            universityCount = 0,
+            delegationId = null,
+        ).reservations.single()
+        repository.assignDelegateReservation(conference.id.value, delegate.id.value, reservation.id.value)
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            repository.updateReservation(
+                conferenceId = conference.id.value,
+                reservationId = reservation.id.value,
+                name = "Manual hold",
+                highSchoolCount = 0,
+                universityCount = 1,
+                delegationId = null,
+            )
+        }
+
+        assertTrue(error.message.orEmpty().contains("manual", ignoreCase = true))
+        assertTrue(error.message.orEmpty().contains("high-school", ignoreCase = true))
+    }
+
+    @Test
+    fun `valid reduction trims auto links`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-reservation-reduce-auto").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val delegates = listOf(
+            reservationDelegate(rowNumber = 2, firstName = "First", email = "first@example.test", submittedAt = LocalDate.parse("2026-01-01")),
+            reservationDelegate(rowNumber = 3, firstName = "Second", email = "second@example.test", submittedAt = LocalDate.parse("2026-01-02")),
+        )
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot(delegates = delegates)).success)
+        val delegation = requireNotNull(repository.getConference(conference.id.value)).delegations.single()
+        val reservation = repository.createReservation(
+            conferenceId = conference.id.value,
+            name = "Delegation hold",
+            highSchoolCount = 2,
+            universityCount = 0,
+            delegationId = delegation.id.value,
+        ).reservations.single()
+
+        val reduced = repository.updateReservation(
+            conferenceId = conference.id.value,
+            reservationId = reservation.id.value,
+            name = "Delegation hold",
+            highSchoolCount = 1,
+            universityCount = 0,
+            delegationId = delegation.id.value,
+        )
+
+        assertEquals(listOf("First"), reduced.reservations.single().delegateLinks.map { it.delegate.name.firstName })
+    }
+
+    @Test
+    fun `MyMUN update preserves reservation and rebuilds auto links`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-reservation-update-reconcile").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot()).success)
+        val delegation = requireNotNull(repository.getConference(conference.id.value)).delegations.single()
+        val reservation = repository.createReservation(
+            conferenceId = conference.id.value,
+            name = "Delegation hold",
+            highSchoolCount = 1,
+            universityCount = 0,
+            delegationId = delegation.id.value,
+        ).reservations.single()
+
+        val replacementDelegate = reservationDelegate(
+            rowNumber = 2,
+            firstName = "Blake",
+            email = "blake@example.test",
+            submittedAt = LocalDate.parse("2026-01-01"),
+        )
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot(delegates = listOf(replacementDelegate))).success)
+
+        val updated = requireNotNull(repository.getConference(conference.id.value))
+        val updatedReservation = updated.reservations.single { it.id == reservation.id }
+        assertEquals("Delegation hold", updatedReservation.name)
+        assertEquals(listOf("Blake"), updatedReservation.delegateLinks.map { it.delegate.name.firstName })
+    }
+
+    @Test
+    fun `disappeared linked delegation clears reservation delegation link but keeps reservation`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-reservation-missing-delegation").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot()).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val delegation = loaded.delegations.single()
+        val reservation = repository.createReservation(
+            conferenceId = conference.id.value,
+            name = "Delegation hold",
+            highSchoolCount = 1,
+            universityCount = 0,
+            delegationId = delegation.id.value,
+        ).reservations.single()
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot(delegations = emptyList())).success)
+
+        val updated = requireNotNull(repository.getConference(conference.id.value)).reservations.single { it.id == reservation.id }
+        assertNull(updated.delegation)
+        assertTrue(updated.delegateLinks.isEmpty())
     }
 
     @Test
@@ -1214,11 +1477,86 @@ class ConferenceRepositoryImplTest {
             issues = emptyList(),
         )
 
+    private fun reservationSnapshot(
+        delegates: List<MymunDelegateRow> = listOf(reservationDelegate()),
+        delegations: List<MymunDelegationRow> = listOf(delegation()),
+    ): MymunWorkbookSnapshot {
+        val highSchoolQuestion = MymunQuestionColumn(
+            sheetName = "Delegates",
+            columnNumber = 5,
+            displayOrder = 4,
+            questionText = "Question: Are you a high-schooler?",
+        )
+        return MymunWorkbookSnapshot(
+            workbookName = "reservation.xlsx",
+            delegates = delegates,
+            countryPositions = listOf(
+                MymunCountryPositionRow(
+                    rowNumber = 2,
+                    committeeName = "GA",
+                    memberName = "France",
+                    delegationName = null,
+                    delegatesRaw = null,
+                ),
+            ),
+            delegations = delegations,
+            questionColumns = listOf(highSchoolQuestion),
+            questionAnswers = delegates.map { delegate ->
+                MymunQuestionAnswerCell(
+                    delegateRowNumber = delegate.rowNumber,
+                    questionColumn = highSchoolQuestion,
+                    answer = "Yes",
+                    location = CellLocation("Delegates", delegate.rowNumber, 5, highSchoolQuestion.questionText),
+                )
+            },
+            preferenceCandidates = emptyList(),
+            confirmedAssignmentCandidates = emptyList(),
+            issues = emptyList(),
+        )
+    }
+
+    private fun reservationDelegate(
+        rowNumber: Int = 2,
+        firstName: String = "Alex",
+        lastName: String = "Kim",
+        email: String = "alex@example.test",
+        applicationStatus: String? = "Accepted",
+        submittedAt: LocalDate? = LocalDate.parse("2026-01-01"),
+        feePaid: Boolean = true,
+        delegationName: String? = "School Delegation",
+    ): MymunDelegateRow =
+        delegate(
+            rowNumber = rowNumber,
+            firstName = firstName,
+            lastName = lastName,
+            email = email,
+            applicationStatus = applicationStatus,
+            submittedAt = submittedAt,
+            feePaid = feePaid,
+            delegationName = delegationName,
+        )
+
+    private fun delegation(name: String = "School Delegation"): MymunDelegationRow =
+        MymunDelegationRow(
+            rowNumber = 2,
+            name = name,
+            country = null,
+            currentDelegates = null,
+            expectedDelegates = null,
+            applicationStatus = null,
+            submittedAt = null,
+            createdAt = null,
+        )
+
     private fun delegate(
         rowNumber: Int = 2,
         firstName: String = "Alex",
         lastName: String = "Kim",
         email: String = "alex@example.test",
+        applicationStatus: String? = null,
+        submittedAt: LocalDate? = null,
+        feePaid: Boolean = true,
+        delegationName: String? = null,
     ): MymunDelegateRow =
         MymunDelegateRow(
             rowNumber = rowNumber,
@@ -1226,10 +1564,10 @@ class ConferenceRepositoryImplTest {
             lastName = lastName,
             email = email,
             normalizedEmail = email,
-            applicationStatus = null,
-            submittedAt = null,
+            applicationStatus = applicationStatus,
+            submittedAt = submittedAt,
             createdAt = null,
-            feePaid = true,
+            feePaid = feePaid,
             country = null,
             city = null,
             streetAddress = null,
@@ -1238,7 +1576,7 @@ class ConferenceRepositoryImplTest {
             phone = null,
             nationality = null,
             dateOfBirth = null,
-            delegationName = null,
+            delegationName = delegationName,
             isHeadDelegate = false,
             mymunAssignedPositionName = null,
             mymunAssignedCommitteeName = null,

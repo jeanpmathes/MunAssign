@@ -41,6 +41,11 @@ import org.munika.assignment.domain.model.Question
 import org.munika.assignment.domain.model.QuestionAnswer
 import org.munika.assignment.domain.model.QuestionAnswerId
 import org.munika.assignment.domain.model.QuestionId
+import org.munika.assignment.domain.model.Reservation
+import org.munika.assignment.domain.model.ReservationDelegateLink
+import org.munika.assignment.domain.model.ReservationDelegateLinkId
+import org.munika.assignment.domain.model.ReservationId
+import org.munika.assignment.domain.model.ReservationLinkSource
 import org.munika.assignment.domain.model.RequiredAnswer
 import org.munika.assignment.domain.model.Slot
 import org.munika.assignment.domain.model.SlotId
@@ -111,6 +116,26 @@ object ConferenceGraphMapper {
 
         rows.delegations.forEach { row ->
             delegationsById[row.id]?.setHeadDelegate(row.headDelegateId?.let { delegatesById[it] })
+        }
+
+        val reservationsById = rows.reservations.associate { row ->
+            val delegation = row.delegationId?.let { delegationId ->
+                requireNotNull(delegationsById[delegationId]) {
+                    "Reservation ${row.id} references missing delegation $delegationId."
+                }
+            }
+            val reservation = Reservation(
+                id = ReservationId(row.id),
+                conference = conference,
+                name = row.name,
+                highSchoolCount = row.highSchoolCount,
+                universityCount = row.universityCount,
+                delegation = delegation,
+                createdAt = row.createdAtEpochMillis.toInstant(),
+                updatedAt = row.updatedAtEpochMillis.toInstant(),
+            )
+            conference.reservations += reservation
+            row.id to reservation
         }
 
         rows.preferences.forEach { row ->
@@ -203,6 +228,24 @@ object ConferenceGraphMapper {
                 question = question,
                 rawAnswer = row.answer,
             )
+        }
+
+        rows.reservationLinks.forEach { row ->
+            val reservation = requireNotNull(reservationsById[row.reservationId]) {
+                "Reservation link ${row.id} references missing reservation ${row.reservationId}."
+            }
+            val delegate = requireNotNull(delegatesById[row.delegateId]) {
+                "Reservation link ${row.id} references missing delegate ${row.delegateId}."
+            }
+            val link = ReservationDelegateLink(
+                id = ReservationDelegateLinkId(row.id),
+                reservation = reservation,
+                delegate = delegate,
+                source = ReservationLinkSource.valueOf(row.source),
+                createdAt = row.createdAtEpochMillis.toInstant(),
+                updatedAt = row.updatedAtEpochMillis.toInstant(),
+            )
+            reservation.delegateLinks += link
         }
 
         rows.slots.forEach { row ->

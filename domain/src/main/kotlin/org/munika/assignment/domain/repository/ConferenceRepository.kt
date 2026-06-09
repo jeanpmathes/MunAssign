@@ -80,6 +80,63 @@ interface ConferenceRepository {
     suspend fun reactivateDelegate(conferenceId: String, delegateId: String): Conference
 
     /**
+     * Creates an organizer-managed reservation for high-school and/or university capacity.
+     *
+     * If [delegationId] is present, implementations must verify that the delegation belongs to
+     * the same conference and reconcile automatic delegate links after persisting the reservation.
+     */
+    suspend fun createReservation(
+        conferenceId: String,
+        name: String,
+        highSchoolCount: Int,
+        universityCount: Int,
+        delegationId: String?,
+    ): Conference
+
+    /**
+     * Updates an organizer-managed reservation and reconciles its delegate consumption.
+     *
+     * Implementations must reject reductions below existing manual high-school or university
+     * delegate usage because manual links represent explicit organizer intent.
+     */
+    suspend fun updateReservation(
+        conferenceId: String,
+        reservationId: String,
+        name: String,
+        highSchoolCount: Int,
+        universityCount: Int,
+        delegationId: String?,
+    ): Conference
+
+    /**
+     * Deletes an organizer-managed reservation.
+     *
+     * Persisted delegate links for that reservation should be removed by the data store cascade,
+     * followed by reconciliation of remaining reservations.
+     */
+    suspend fun deleteReservation(conferenceId: String, reservationId: String): Conference
+
+    /**
+     * Manually consumes one reservation for one active delegate.
+     *
+     * Implementations must replace any previous reservation link for the delegate, enforce bucket
+     * capacity for the delegate's high-school/university status, and reconcile automatic links.
+     */
+    suspend fun assignDelegateReservation(
+        conferenceId: String,
+        delegateId: String,
+        reservationId: String,
+    ): Conference
+
+    /**
+     * Removes the current reservation link for one delegate if present.
+     *
+     * Implementations should reconcile automatic links after the manual or automatic link is
+     * removed so delegation-linked reservations can refill available capacity.
+     */
+    suspend fun removeDelegateReservation(conferenceId: String, delegateId: String): Conference
+
+    /**
      * Adds an organizer-managed note to one delegate.
      */
     suspend fun addDelegateComment(conferenceId: String, delegateId: String, body: String): Conference

@@ -128,6 +128,8 @@ class ConferenceGraphMapperTest {
                     displayOrder = 0,
                 ),
             ),
+            reservations = emptyList(),
+            reservationLinks = emptyList(),
             questionRules = emptyList(),
             munExperienceMappings = emptyList(),
             highSchoolerMappings = emptyList(),

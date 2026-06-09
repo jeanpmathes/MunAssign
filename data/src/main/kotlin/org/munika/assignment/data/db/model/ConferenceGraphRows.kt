@@ -7,6 +7,8 @@ data class ConferenceGraphRows(
     val slots: List<SlotRow>,
     val delegations: List<DelegationRow>,
     val delegates: List<DelegateRow>,
+    val reservations: List<ReservationRow>,
+    val reservationLinks: List<ReservationDelegateLinkRow>,
     val preferences: List<PreferenceRow>,
     val comments: List<DelegateCommentRow>,
     val questions: List<DelegateQuestionRow>,

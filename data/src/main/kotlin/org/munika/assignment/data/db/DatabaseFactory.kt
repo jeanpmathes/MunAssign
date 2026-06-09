@@ -15,6 +15,8 @@ import org.munika.assignment.data.db.tables.AnswerRuleTypeTable
 import org.munika.assignment.data.db.tables.MunAssignTables
 import org.munika.assignment.data.db.tables.QuestionHandlingTypeTable
 import org.munika.assignment.data.db.tables.QuestionRoleTable
+import org.munika.assignment.data.db.tables.ReservationDelegateLinkTable
+import org.munika.assignment.data.db.tables.ReservationTable
 import org.munika.assignment.data.db.tables.SchemaMigrationTable
 import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
@@ -132,6 +134,9 @@ object DatabaseFactory {
         },
         SchemaMigration(version = 6, name = "add_answer_issue_resolutions") {
             SchemaUtils.create(AnswerIssueResolutionTable)
+        },
+        SchemaMigration(version = 7, name = "add_reservations") {
+            SchemaUtils.create(ReservationTable, ReservationDelegateLinkTable)
         },
     )
 

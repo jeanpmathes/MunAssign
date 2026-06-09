@@ -36,6 +36,8 @@ import org.munika.assignment.data.db.model.LanguageLevelAnswerMappingRow
 import org.munika.assignment.data.db.model.MunExperienceAnswerMappingRow
 import org.munika.assignment.data.db.model.PositionRow
 import org.munika.assignment.data.db.model.PreferenceRow
+import org.munika.assignment.data.db.model.ReservationDelegateLinkRow
+import org.munika.assignment.data.db.model.ReservationRow
 import org.munika.assignment.data.db.model.SlotRow
 import org.munika.assignment.data.db.tables.AnswerIssueResolutionTable
 import org.munika.assignment.data.db.tables.CommitteeTable
@@ -53,6 +55,8 @@ import org.munika.assignment.data.db.tables.MymunUpdateIssueTable
 import org.munika.assignment.data.db.tables.MymunUpdateRunTable
 import org.munika.assignment.data.db.tables.PositionTable
 import org.munika.assignment.data.db.tables.PreferenceTable
+import org.munika.assignment.data.db.tables.ReservationDelegateLinkTable
+import org.munika.assignment.data.db.tables.ReservationTable
 import org.munika.assignment.data.db.tables.SlotTable
 import org.munika.assignment.data.excel.CellLocation
 import org.munika.assignment.data.excel.MymunConfirmedAssignmentCandidate
@@ -71,6 +75,10 @@ import org.munika.assignment.domain.model.NoticeWhenAffirmative
 import org.munika.assignment.domain.model.NoticeWhenNonBlank
 import org.munika.assignment.domain.model.PaymentStatus
 import org.munika.assignment.domain.model.QuestionConfiguration
+import org.munika.assignment.domain.model.ReservationDelegateLink
+import org.munika.assignment.domain.model.ReservationDelegateLinkId
+import org.munika.assignment.domain.model.ReservationLinkSource
+import org.munika.assignment.domain.model.ReservationReconciler
 import org.munika.assignment.domain.model.RequiredAnswer
 import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
@@ -105,6 +113,8 @@ class ConferenceRepositoryImpl(
                         slots = emptyList(),
                         delegations = emptyList(),
                         delegates = emptyList(),
+                        reservations = emptyList(),
+                        reservationLinks = emptyList(),
                         preferences = emptyList(),
                         comments = emptyList(),
                         questions = emptyList(),
@@ -356,6 +366,7 @@ class ConferenceRepositoryImpl(
         ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
             it[updatedAtEpochMillis] = now
         }
+        reconcileReservations(conferenceId, now)
         logger.info("Deactivated delegate={} conference={} clearedPending={}", delegateId, conferenceId, assignedSlot != null)
         loadConferenceGraph(conferenceId)
     }
@@ -369,7 +380,141 @@ class ConferenceRepositoryImpl(
         ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
             it[updatedAtEpochMillis] = now
         }
+        reconcileReservations(conferenceId, now)
         logger.info("Reactivated delegate={} conference={}", delegateId, conferenceId)
+        loadConferenceGraph(conferenceId)
+    }
+
+    override suspend fun createReservation(
+        conferenceId: String,
+        name: String,
+        highSchoolCount: Int,
+        universityCount: Int,
+        delegationId: String?,
+    ): Conference = db {
+        val trimmed = validateReservationInput(conferenceId, name, highSchoolCount, universityCount, delegationId)
+        val now = Instant.now().toEpochMilli()
+        ReservationTable.insert {
+            it[id] = UUID.randomUUID().toString()
+            it[ReservationTable.conferenceId] = conferenceId
+            it[ReservationTable.name] = trimmed
+            it[ReservationTable.highSchoolCount] = highSchoolCount
+            it[ReservationTable.universityCount] = universityCount
+            it[ReservationTable.delegationId] = delegationId
+            it[createdAtEpochMillis] = now
+            it[updatedAtEpochMillis] = now
+        }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = now
+        }
+        reconcileReservations(conferenceId, now)
+        loadConferenceGraph(conferenceId)
+    }
+
+    override suspend fun updateReservation(
+        conferenceId: String,
+        reservationId: String,
+        name: String,
+        highSchoolCount: Int,
+        universityCount: Int,
+        delegationId: String?,
+    ): Conference = db {
+        val trimmed = validateReservationInput(conferenceId, name, highSchoolCount, universityCount, delegationId)
+        val conference = loadConferenceGraph(conferenceId)
+        val reservation = requireNotNull(conference.reservations.find { it.id.value == reservationId }) {
+            "Reservation $reservationId does not belong to conference $conferenceId."
+        }
+        val manualHighSchoolUsage = reservation.delegateLinks.count {
+            it.source == ReservationLinkSource.Manual && it.delegate.active && it.delegate.isHighSchooler
+        }
+        val manualUniversityUsage = reservation.delegateLinks.count {
+            it.source == ReservationLinkSource.Manual && it.delegate.active && !it.delegate.isHighSchooler
+        }
+        require(highSchoolCount >= manualHighSchoolUsage) {
+            "Reservation cannot be reduced below $manualHighSchoolUsage manually linked high-school delegates."
+        }
+        require(universityCount >= manualUniversityUsage) {
+            "Reservation cannot be reduced below $manualUniversityUsage manually linked university delegates."
+        }
+
+        val now = Instant.now().toEpochMilli()
+        ReservationTable.update({ (ReservationTable.id eq reservationId) and (ReservationTable.conferenceId eq conferenceId) }) {
+            it[ReservationTable.name] = trimmed
+            it[ReservationTable.highSchoolCount] = highSchoolCount
+            it[ReservationTable.universityCount] = universityCount
+            it[ReservationTable.delegationId] = delegationId
+            it[updatedAtEpochMillis] = now
+        }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = now
+        }
+        reconcileReservations(conferenceId, now)
+        loadConferenceGraph(conferenceId)
+    }
+
+    override suspend fun deleteReservation(conferenceId: String, reservationId: String): Conference = db {
+        requireReservationInConference(conferenceId, reservationId)
+        val now = Instant.now().toEpochMilli()
+        ReservationTable.deleteWhere { (ReservationTable.id eq reservationId) and (ReservationTable.conferenceId eq conferenceId) }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = now
+        }
+        reconcileReservations(conferenceId, now)
+        loadConferenceGraph(conferenceId)
+    }
+
+    override suspend fun assignDelegateReservation(
+        conferenceId: String,
+        delegateId: String,
+        reservationId: String,
+    ): Conference = db {
+        requireReservationInConference(conferenceId, reservationId)
+        val delegateRow = requireDelegateInConference(conferenceId, delegateId)
+        require(delegateRow[DelegateTable.active]) { "Inactive delegates cannot consume reservation capacity." }
+
+        val conference = loadConferenceGraph(conferenceId)
+        val delegate = requireNotNull(conference.delegates.find { it.id.value == delegateId }) {
+            "Delegate $delegateId does not belong to conference $conferenceId."
+        }
+        val reservation = requireNotNull(conference.reservations.find { it.id.value == reservationId }) {
+            "Reservation $reservationId does not belong to conference $conferenceId."
+        }
+        val usedInBucket = reservation.delegateLinks.count { link ->
+            link.delegate.active &&
+                link.delegate.id != delegate.id &&
+                link.delegate.isHighSchooler == delegate.isHighSchooler
+        }
+        val capacity = if (delegate.isHighSchooler) reservation.highSchoolCount else reservation.universityCount
+        require(usedInBucket < capacity) {
+            val bucket = if (delegate.isHighSchooler) "high-school" else "university"
+            "Reservation has no remaining $bucket capacity for delegate ${delegate.displayName}."
+        }
+
+        val now = Instant.now().toEpochMilli()
+        ReservationDelegateLinkTable.deleteWhere { ReservationDelegateLinkTable.delegateId eq delegateId }
+        ReservationDelegateLinkTable.insert {
+            it[id] = UUID.randomUUID().toString()
+            it[ReservationDelegateLinkTable.reservationId] = reservationId
+            it[ReservationDelegateLinkTable.delegateId] = delegateId
+            it[linkSource] = ReservationLinkSource.Manual.name
+            it[createdAtEpochMillis] = now
+            it[updatedAtEpochMillis] = now
+        }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = now
+        }
+        reconcileReservations(conferenceId, now)
+        loadConferenceGraph(conferenceId)
+    }
+
+    override suspend fun removeDelegateReservation(conferenceId: String, delegateId: String): Conference = db {
+        requireDelegateInConference(conferenceId, delegateId)
+        val now = Instant.now().toEpochMilli()
+        ReservationDelegateLinkTable.deleteWhere { ReservationDelegateLinkTable.delegateId eq delegateId }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = now
+        }
+        reconcileReservations(conferenceId, now)
         loadConferenceGraph(conferenceId)
     }
 
@@ -928,6 +1073,7 @@ class ConferenceRepositoryImpl(
             it[ConferenceTable.updatedAtEpochMillis] = Instant.now().toEpochMilli()
             it[ConferenceTable.lastMymunUpdateAtEpochMillis] = Instant.now().toEpochMilli()
         }
+        reconcileReservations(conferenceId, Instant.now().toEpochMilli())
 
         MymunUpdateRunTable.update({ MymunUpdateRunTable.id eq updateRunId }) {
             it[MymunUpdateRunTable.completedAtEpochMillis] = Instant.now().toEpochMilli()
@@ -1045,6 +1191,37 @@ class ConferenceRepositoryImpl(
                 .singleOrNull(),
         ) { "Delegate $delegateId does not belong to conference $conferenceId." }
 
+    private fun requireReservationInConference(conferenceId: String, reservationId: String): ResultRow =
+        requireNotNull(
+            ReservationTable.selectAll()
+                .where { (ReservationTable.id eq reservationId) and (ReservationTable.conferenceId eq conferenceId) }
+                .singleOrNull(),
+        ) { "Reservation $reservationId does not belong to conference $conferenceId." }
+
+    private fun validateReservationInput(
+        conferenceId: String,
+        name: String,
+        highSchoolCount: Int,
+        universityCount: Int,
+        delegationId: String?,
+    ): String {
+        val trimmed = name.trim()
+        require(trimmed.isNotBlank()) { "Reservation name must not be blank." }
+        require(highSchoolCount >= 0) { "High-school reservation count must not be negative." }
+        require(universityCount >= 0) { "University reservation count must not be negative." }
+        require(highSchoolCount > 0 || universityCount > 0) {
+            "Reservation must reserve at least one high-school or university delegate."
+        }
+        if (delegationId != null) {
+            require(
+                DelegationTable.selectAll()
+                    .where { (DelegationTable.id eq delegationId) and (DelegationTable.conferenceId eq conferenceId) }
+                    .any(),
+            ) { "Delegation $delegationId does not belong to conference $conferenceId." }
+        }
+        return trimmed
+    }
+
     private fun requireCommentInConference(conferenceId: String, commentId: String): ResultRow {
         val comment = requireNotNull(
             DelegateCommentTable.selectAll()
@@ -1067,6 +1244,46 @@ class ConferenceRepositoryImpl(
             it[assignedDelegateId] = null
             it[assignmentSource] = null
             it[updatedAtEpochMillis] = updatedAt
+        }
+    }
+
+    private fun reconcileReservations(conferenceId: String, nowEpochMillis: Long) {
+        val conference = loadConferenceGraph(conferenceId)
+        val currentLinks = conference.reservations.flatMap { it.delegateLinks }
+        val result = ReservationReconciler.reconcile(
+            conference = conference,
+            existingLinks = currentLinks,
+            now = Instant.ofEpochMilli(nowEpochMillis),
+            idFactory = { ReservationDelegateLinkId(UUID.randomUUID().toString()) },
+        )
+        result.removedLinkIds.forEach { linkId ->
+            ReservationDelegateLinkTable.deleteWhere { ReservationDelegateLinkTable.id eq linkId.value }
+        }
+        result.links.forEach { link ->
+            upsertReservationDelegateLink(link)
+        }
+    }
+
+    private fun upsertReservationDelegateLink(link: ReservationDelegateLink) {
+        val existing = ReservationDelegateLinkTable.selectAll()
+            .where { ReservationDelegateLinkTable.id eq link.id.value }
+            .singleOrNull()
+        if (existing == null) {
+            ReservationDelegateLinkTable.insert {
+                it[id] = link.id.value
+                it[reservationId] = link.reservation.id.value
+                it[delegateId] = link.delegate.id.value
+                it[linkSource] = link.source.name
+                it[createdAtEpochMillis] = link.createdAt.toEpochMilli()
+                it[updatedAtEpochMillis] = link.updatedAt.toEpochMilli()
+            }
+        } else {
+            ReservationDelegateLinkTable.update({ ReservationDelegateLinkTable.id eq link.id.value }) {
+                it[reservationId] = link.reservation.id.value
+                it[delegateId] = link.delegate.id.value
+                it[linkSource] = link.source.name
+                it[updatedAtEpochMillis] = link.updatedAt.toEpochMilli()
+            }
         }
     }
 
@@ -1307,6 +1524,9 @@ class ConferenceRepositoryImpl(
             .map { it[DelegationTable.id] }
             .filterNot { it in retainedDelegationIds }
             .forEach { delegationId ->
+                ReservationTable.update({ ReservationTable.delegationId eq delegationId }) {
+                    it[ReservationTable.delegationId] = null
+                }
                 DelegationTable.deleteWhere { DelegationTable.id eq delegationId }
                 delegations++
             }
@@ -1426,6 +1646,11 @@ class ConferenceRepositoryImpl(
             .single().toConferenceRow()
         val positionIds = PositionTable.selectAll().where { PositionTable.conferenceId eq conferenceId }.map { it[PositionTable.id] }
         val delegateIds = DelegateTable.selectAll().where { DelegateTable.conferenceId eq conferenceId }.map { it[DelegateTable.id] }
+        val reservationRows = ReservationTable.selectAll()
+            .where { ReservationTable.conferenceId eq conferenceId }
+            .orderBy(ReservationTable.createdAtEpochMillis to SortOrder.ASC, ReservationTable.id to SortOrder.ASC)
+            .map { row -> row.toReservationRow() }
+        val reservationIds = reservationRows.map { it.id }
         val questionIds = DelegateQuestionTable.selectAll().where { DelegateQuestionTable.conferenceId eq conferenceId }
             .map { it[DelegateQuestionTable.id] }
         val rows = ConferenceGraphRows(
@@ -1496,6 +1721,12 @@ class ConferenceRepositoryImpl(
                     submittedAtEpochMillis = row[DelegateTable.submittedAtEpochMillis],
                 )
             },
+            reservations = reservationRows,
+            reservationLinks = if (reservationIds.isEmpty()) emptyList() else ReservationDelegateLinkTable.selectAll().where {
+                ReservationDelegateLinkTable.reservationId inList reservationIds
+            }.orderBy(
+                ReservationDelegateLinkTable.createdAtEpochMillis to SortOrder.ASC,
+            ).map { row -> row.toReservationDelegateLinkRow() },
             preferences = if (delegateIds.isEmpty()) emptyList() else PreferenceTable.selectAll().where {
                 PreferenceTable.delegateId inList delegateIds
             }.map { row ->
@@ -1608,6 +1839,28 @@ class ConferenceRepositoryImpl(
             createdAtEpochMillis = this[ConferenceTable.createdAtEpochMillis],
             updatedAtEpochMillis = this[ConferenceTable.updatedAtEpochMillis],
             lastMymunUpdateAtEpochMillis = this[ConferenceTable.lastMymunUpdateAtEpochMillis],
+        )
+
+    private fun ResultRow.toReservationRow(): ReservationRow =
+        ReservationRow(
+            id = this[ReservationTable.id],
+            conferenceId = this[ReservationTable.conferenceId],
+            name = this[ReservationTable.name],
+            highSchoolCount = this[ReservationTable.highSchoolCount],
+            universityCount = this[ReservationTable.universityCount],
+            delegationId = this[ReservationTable.delegationId],
+            createdAtEpochMillis = this[ReservationTable.createdAtEpochMillis],
+            updatedAtEpochMillis = this[ReservationTable.updatedAtEpochMillis],
+        )
+
+    private fun ResultRow.toReservationDelegateLinkRow(): ReservationDelegateLinkRow =
+        ReservationDelegateLinkRow(
+            id = this[ReservationDelegateLinkTable.id],
+            reservationId = this[ReservationDelegateLinkTable.reservationId],
+            delegateId = this[ReservationDelegateLinkTable.delegateId],
+            source = this[ReservationDelegateLinkTable.linkSource],
+            createdAtEpochMillis = this[ReservationDelegateLinkTable.createdAtEpochMillis],
+            updatedAtEpochMillis = this[ReservationDelegateLinkTable.updatedAtEpochMillis],
         )
 
     private fun nextConferenceDisplayOrder(): Int =

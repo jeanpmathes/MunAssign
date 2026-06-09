@@ -20,5 +20,6 @@ class ReservationDelegateLink(
         require(reservation.conference === delegate.conference) {
             "Reservation and delegate must belong to the same conference."
         }
+        delegate.reservationLink = this
     }
 }
