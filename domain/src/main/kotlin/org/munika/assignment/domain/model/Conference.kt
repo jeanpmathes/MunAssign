@@ -17,6 +17,7 @@ class Conference(
     val delegations: MutableList<Delegation> = mutableListOf(),
     val delegates: MutableList<Delegate> = mutableListOf(),
     val questions: MutableList<Question> = mutableListOf(),
+    val reservations: MutableList<Reservation> = mutableListOf(),
     val createdAt: Instant,
     var updatedAt: Instant,
     val lastMymunUpdateAt: Instant? = null,
@@ -51,4 +52,10 @@ class Conference(
 
     val unassignedDelegates: List<Delegate>
         get() = delegates.filterNot { it in occupiedDelegates }
+
+    val remainingHighSchoolReservationCount: Int
+        get() = reservations.sumOf { it.remainingHighSchoolCount }
+
+    val remainingUniversityReservationCount: Int
+        get() = reservations.sumOf { it.remainingUniversityCount }
 }

@@ -32,6 +32,9 @@ class Delegate(
     var delegation: Delegation? = null
         internal set
 
+    var reservationLink: ReservationDelegateLink? = null
+        internal set
+
     init {
         delegation?.addDelegate(this)
     }
