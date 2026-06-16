@@ -42,6 +42,11 @@ import org.munika.assignment.domain.model.QuestionAnswer
 import org.munika.assignment.domain.model.QuestionAnswerId
 import org.munika.assignment.domain.model.QuestionId
 import org.munika.assignment.domain.model.RequiredAnswer
+import org.munika.assignment.domain.model.Reservation
+import org.munika.assignment.domain.model.ReservationDelegateLink
+import org.munika.assignment.domain.model.ReservationDelegateLinkId
+import org.munika.assignment.domain.model.ReservationId
+import org.munika.assignment.domain.model.ReservationLinkSource
 import org.munika.assignment.domain.model.Slot
 import org.munika.assignment.domain.model.SlotId
 import org.munika.assignment.domain.model.StandardQuestionRoles
@@ -160,6 +165,35 @@ class DelegateDetailUiModelsTest {
         val detail = requireNotNull(board.conference.toDelegateDetailUiState(board.delegate.id.value))
 
         assertFalse(detail.canDeactivate)
+    }
+
+    @Test
+    fun `delegate detail shows current reservation with source label`() {
+        val board = board()
+        val reservation = Reservation(
+            id = ReservationId("reservation"),
+            conference = board.conference,
+            name = "Alpha Hold",
+            highSchoolCount = 1,
+            universityCount = 1,
+            createdAt = Instant.EPOCH,
+            updatedAt = Instant.EPOCH,
+        )
+        board.conference.reservations += reservation
+        reservation.delegateLinks += ReservationDelegateLink(
+            id = ReservationDelegateLinkId("reservation-link"),
+            reservation = reservation,
+            delegate = board.delegate,
+            source = ReservationLinkSource.DelegationAuto,
+            createdAt = Instant.EPOCH,
+            updatedAt = Instant.EPOCH,
+        )
+
+        val detail = requireNotNull(board.conference.toDelegateDetailUiState(board.delegate.id.value))
+
+        assertEquals("reservation", detail.reservation?.id)
+        assertEquals("Alpha Hold", detail.reservation?.name)
+        assertEquals("Delegation", detail.reservation?.sourceLabel)
     }
 
     @Test

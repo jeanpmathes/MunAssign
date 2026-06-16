@@ -144,11 +144,11 @@ class MainViewModel(
     }
 
     fun openDelegateDetail(delegateId: String) {
-        _state.update { it.copy(selectedDelegateId = delegateId) }
+        _state.update { it.copy(selectedDelegateId = delegateId, delegateReservationActionError = null) }
     }
 
     fun closeDelegateDetail() {
-        _state.update { it.copy(selectedDelegateId = null) }
+        _state.update { it.copy(selectedDelegateId = null, delegateReservationActionError = null) }
     }
 
     fun openDelegateList(): Unit {
@@ -182,6 +182,44 @@ class MainViewModel(
             it.copy(
                 noticeManagerOpen = false,
                 noticeManagerDelegateId = null,
+            )
+        }
+    }
+
+    fun openDelegationOverview(): Unit {
+        _state.update { it.copy(delegationOverviewOpen = true, delegationOverviewTargetId = null) }
+    }
+
+    fun openDelegationOverviewFor(delegationId: String): Unit {
+        _state.update {
+            it.copy(
+                delegationOverviewOpen = true,
+                delegationOverviewTargetId = delegationId,
+                reservationManagerOpen = false,
+                reservationManagerDelegationId = null,
+                reservationActionError = null,
+            )
+        }
+    }
+
+    fun closeDelegationOverview(): Unit {
+        _state.update { it.copy(delegationOverviewOpen = false, delegationOverviewTargetId = null) }
+    }
+
+    fun openReservationManager(delegationId: String? = null): Unit {
+        _state.update {
+            it.copy(
+                reservationManagerOpen = true,
+                reservationManagerDelegationId = delegationId,
+            )
+        }
+    }
+
+    fun closeReservationManager(): Unit {
+        _state.update {
+            it.copy(
+                reservationManagerOpen = false,
+                reservationManagerDelegationId = null,
             )
         }
     }
@@ -405,6 +443,76 @@ class MainViewModel(
         }
     }
 
+    fun createReservation(
+        conferenceId: String,
+        name: String,
+        highSchoolCount: Int,
+        universityCount: Int,
+        delegationId: String?,
+    ): Unit {
+        updateReservationState(conferenceId) {
+            repository.createReservation(
+                conferenceId = conferenceId,
+                name = name,
+                highSchoolCount = highSchoolCount,
+                universityCount = universityCount,
+                delegationId = delegationId,
+            )
+        }
+    }
+
+    fun updateReservation(
+        conferenceId: String,
+        reservationId: String,
+        name: String,
+        highSchoolCount: Int,
+        universityCount: Int,
+        delegationId: String?,
+    ): Unit {
+        updateReservationState(conferenceId) {
+            repository.updateReservation(
+                conferenceId = conferenceId,
+                reservationId = reservationId,
+                name = name,
+                highSchoolCount = highSchoolCount,
+                universityCount = universityCount,
+                delegationId = delegationId,
+            )
+        }
+    }
+
+    fun deleteReservation(conferenceId: String, reservationId: String): Unit {
+        updateReservationState(conferenceId) {
+            repository.deleteReservation(
+                conferenceId = conferenceId,
+                reservationId = reservationId,
+            )
+        }
+    }
+
+    fun assignDelegateReservation(conferenceId: String, delegateId: String, reservationId: String): Unit {
+        updateReservationState(conferenceId, ReservationActionSurface.DelegateDetail) {
+            repository.assignDelegateReservation(
+                conferenceId = conferenceId,
+                delegateId = delegateId,
+                reservationId = reservationId,
+            )
+        }
+    }
+
+    fun removeDelegateReservation(conferenceId: String, delegateId: String): Unit {
+        updateReservationState(conferenceId, ReservationActionSurface.DelegateDetail) {
+            repository.removeDelegateReservation(
+                conferenceId = conferenceId,
+                delegateId = delegateId,
+            )
+        }
+    }
+
+    fun clearReservationActionError(): Unit {
+        _state.update { it.copy(reservationActionError = null, delegateReservationActionError = null) }
+    }
+
     fun addDelegateComment(delegateId: String, body: String) {
         val selectedId = selectedIdOrNull() ?: return
         scope.launch {
@@ -588,6 +696,45 @@ class MainViewModel(
         }
     }
 
+    private fun updateReservationState(
+        expectedConferenceId: String,
+        surface: ReservationActionSurface = ReservationActionSurface.Manager,
+        action: suspend () -> Conference,
+    ): Unit {
+        scope.launch {
+            _state.update { it.withReservationActionError(surface, null).copy(loading = true) }
+            try {
+                val conference = action()
+                _state.update { current ->
+                    val selectedConference = if (current.selectedConferenceId == expectedConferenceId) {
+                        conference
+                    } else {
+                        current.selectedConference
+                    }
+                    current.copy(
+                        selectedConference = selectedConference,
+                        loading = false,
+                    ).withReservationActionError(surface, null)
+                }
+            } catch (exception: IllegalArgumentException) {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                    ).withReservationActionError(surface, exception.message ?: "Reservation could not be changed.")
+                }
+            } catch (exception: Exception) {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                    ).withReservationActionError(
+                        surface,
+                        "Reservation update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
+                    )
+                }
+            }
+        }
+    }
+
     private fun loadConference(conferenceId: String) {
         scope.launch {
             val conference = repository.getConference(conferenceId)
@@ -638,6 +785,25 @@ data class MainUiState(
     val delegateListControls: DelegateListControlsUiState = DelegateListControlsUiState(),
     val noticeManagerOpen: Boolean = false,
     val noticeManagerDelegateId: String? = null,
+    val delegationOverviewOpen: Boolean = false,
+    val delegationOverviewTargetId: String? = null,
+    val reservationManagerOpen: Boolean = false,
+    val reservationManagerDelegationId: String? = null,
+    val reservationActionError: String? = null,
+    val delegateReservationActionError: String? = null,
     val questionConfigurationOpen: Boolean = false,
     val questionConfigurationError: String? = null,
 )
+
+private enum class ReservationActionSurface {
+    Manager,
+    DelegateDetail,
+}
+
+private fun MainUiState.withReservationActionError(
+    surface: ReservationActionSurface,
+    message: String?,
+): MainUiState = when (surface) {
+    ReservationActionSurface.Manager -> copy(reservationActionError = message)
+    ReservationActionSurface.DelegateDetail -> copy(delegateReservationActionError = message)
+}

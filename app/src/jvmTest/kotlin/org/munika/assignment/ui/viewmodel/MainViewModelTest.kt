@@ -8,6 +8,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import org.munika.assignment.data.db.DatabaseFactory
 import org.munika.assignment.data.db.repository.ConferenceRepositoryImpl
@@ -18,6 +19,148 @@ import org.munika.assignment.domain.model.QuestionConfiguration
 import org.munika.assignment.domain.repository.ConferenceRepository
 
 class MainViewModelTest {
+    @Test
+    fun `delegation overview actions update open state`() {
+        val viewModel = viewModelWith(FakeConferenceRepository())
+
+        viewModel.openDelegationOverview()
+
+        assertTrue(viewModel.state.value.delegationOverviewOpen)
+
+        viewModel.closeDelegationOverview()
+
+        assertFalse(viewModel.state.value.delegationOverviewOpen)
+        viewModel.close()
+    }
+
+    @Test
+    fun `reservation manager actions update scoped state`() {
+        val viewModel = viewModelWith(FakeConferenceRepository())
+
+        viewModel.openReservationManager(delegationId = "delegation")
+
+        assertTrue(viewModel.state.value.reservationManagerOpen)
+        assertEquals("delegation", viewModel.state.value.reservationManagerDelegationId)
+
+        viewModel.closeReservationManager()
+
+        assertFalse(viewModel.state.value.reservationManagerOpen)
+        assertNull(viewModel.state.value.reservationManagerDelegationId)
+        viewModel.close()
+    }
+
+    @Test
+    fun `opening delegation from reservation manager closes manager and targets delegation overview`() {
+        val viewModel = viewModelWith(FakeConferenceRepository())
+        viewModel.openReservationManager(delegationId = "delegation")
+
+        viewModel.openDelegationOverviewFor("delegation")
+
+        assertFalse(viewModel.state.value.reservationManagerOpen)
+        assertNull(viewModel.state.value.reservationManagerDelegationId)
+        assertTrue(viewModel.state.value.delegationOverviewOpen)
+        assertEquals("delegation", viewModel.state.value.delegationOverviewTargetId)
+
+        viewModel.closeDelegationOverview()
+
+        assertFalse(viewModel.state.value.delegationOverviewOpen)
+        assertNull(viewModel.state.value.delegationOverviewTargetId)
+        viewModel.close()
+    }
+
+    @Test
+    fun `create reservation refreshes selected conference`() {
+        val original = Conference(ConferenceId("conference"), "Original", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val reserved = Conference(ConferenceId("conference"), "Reserved", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val repository = FakeConferenceRepository(initialConference = original, createdReservationConference = reserved)
+        val viewModel = viewModelWith(repository)
+
+        viewModel.selectConference("conference")
+        waitUntil { viewModel.state.value.selectedConference === original }
+
+        viewModel.createReservation(
+            conferenceId = "conference",
+            name = "Alpha Hold",
+            highSchoolCount = 2,
+            universityCount = 1,
+            delegationId = "delegation",
+        )
+
+        waitUntil { viewModel.state.value.selectedConference === reserved }
+        assertSame(reserved, viewModel.state.value.selectedConference)
+        assertNull(viewModel.state.value.reservationActionError)
+        assertEquals("conference", repository.createdReservationConferenceId)
+        assertEquals("Alpha Hold", repository.createdReservationName)
+        assertEquals(2, repository.createdReservationHighSchoolCount)
+        assertEquals(1, repository.createdReservationUniversityCount)
+        assertEquals("delegation", repository.createdReservationDelegationId)
+        viewModel.close()
+    }
+
+    @Test
+    fun `delayed reservation update does not overwrite selected conference after selection changes`() {
+        val conferenceA = Conference(ConferenceId("conference-a"), "Conference A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val conferenceB = Conference(ConferenceId("conference-b"), "Conference B", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val updatedA = Conference(ConferenceId("conference-a"), "Updated A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val createStarted = CompletableDeferred<Unit>()
+        val createResult = CompletableDeferred<Conference>()
+        val repository = FakeConferenceRepository(
+            initialConference = conferenceA,
+            conferences = listOf(conferenceA, conferenceB),
+            createdReservationConferenceDeferred = createResult,
+            createReservationStarted = createStarted,
+        )
+        val viewModel = viewModelWith(repository)
+
+        waitUntil { viewModel.state.value.selectedConference === conferenceA }
+
+        viewModel.createReservation(
+            conferenceId = "conference-a",
+            name = "Alpha Hold",
+            highSchoolCount = 1,
+            universityCount = 0,
+            delegationId = null,
+        )
+        runBlocking { createStarted.await() }
+
+        viewModel.selectConference("conference-b")
+        waitUntil {
+            viewModel.state.value.selectedConferenceId == "conference-b" &&
+                viewModel.state.value.selectedConference === conferenceB
+        }
+
+        createResult.complete(updatedA)
+
+        waitUntil { !viewModel.state.value.loading }
+        assertEquals("conference-b", viewModel.state.value.selectedConferenceId)
+        assertSame(conferenceB, viewModel.state.value.selectedConference)
+        assertNull(viewModel.state.value.reservationActionError)
+        viewModel.close()
+    }
+
+    @Test
+    fun `remove delegate reservation stores validation message as delegate reservation error`() {
+        val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val repository = FakeConferenceRepository(
+            initialConference = conference,
+            removeDelegateReservationError = "Automatic reservation links are managed by delegation reconciliation.",
+        )
+        val viewModel = viewModelWith(repository)
+
+        viewModel.selectConference("conference")
+        waitUntil { viewModel.state.value.selectedConference === conference }
+
+        viewModel.removeDelegateReservation(conferenceId = "conference", delegateId = "delegate")
+
+        waitUntil {
+            viewModel.state.value.delegateReservationActionError ==
+                "Automatic reservation links are managed by delegation reconciliation."
+        }
+        assertNull(viewModel.state.value.reservationActionError)
+        assertSame(conference, viewModel.state.value.selectedConference)
+        viewModel.close()
+    }
+
     @Test
     fun `notice manager actions update scoped state`() {
         val viewModel = viewModelWith(FakeConferenceRepository())
@@ -104,8 +247,13 @@ class MainViewModelTest {
 
 private class FakeConferenceRepository(
     private val initialConference: Conference? = null,
+    private val conferences: List<Conference> = listOfNotNull(initialConference),
     private val resolvedConference: Conference? = initialConference,
     private val resolveError: String? = null,
+    private val createdReservationConference: Conference? = initialConference,
+    private val createdReservationConferenceDeferred: CompletableDeferred<Conference>? = null,
+    private val createReservationStarted: CompletableDeferred<Unit>? = null,
+    private val removeDelegateReservationError: String? = null,
 ) : ConferenceRepository {
     var resolvedDelegateId: String? = null
         private set
@@ -115,8 +263,18 @@ private class FakeConferenceRepository(
         private set
     var resolvedJustification: String? = null
         private set
+    var createdReservationConferenceId: String? = null
+        private set
+    var createdReservationName: String? = null
+        private set
+    var createdReservationHighSchoolCount: Int? = null
+        private set
+    var createdReservationUniversityCount: Int? = null
+        private set
+    var createdReservationDelegationId: String? = null
+        private set
 
-    override suspend fun listConferences(): List<Conference> = listOfNotNull(initialConference)
+    override suspend fun listConferences(): List<Conference> = conferences
 
     override suspend fun createConference(name: String): Conference = unsupported()
 
@@ -150,6 +308,45 @@ private class FakeConferenceRepository(
     override suspend fun deactivateDelegate(conferenceId: String, delegateId: String): Conference = unsupported()
 
     override suspend fun reactivateDelegate(conferenceId: String, delegateId: String): Conference = unsupported()
+
+    override suspend fun createReservation(
+        conferenceId: String,
+        name: String,
+        highSchoolCount: Int,
+        universityCount: Int,
+        delegationId: String?,
+    ): Conference {
+        createdReservationConferenceId = conferenceId
+        createdReservationName = name
+        createdReservationHighSchoolCount = highSchoolCount
+        createdReservationUniversityCount = universityCount
+        createdReservationDelegationId = delegationId
+        createReservationStarted?.complete(Unit)
+        createdReservationConferenceDeferred?.let { return it.await() }
+        return requireNotNull(createdReservationConference)
+    }
+
+    override suspend fun updateReservation(
+        conferenceId: String,
+        reservationId: String,
+        name: String,
+        highSchoolCount: Int,
+        universityCount: Int,
+        delegationId: String?,
+    ): Conference = unsupported()
+
+    override suspend fun deleteReservation(conferenceId: String, reservationId: String): Conference = unsupported()
+
+    override suspend fun assignDelegateReservation(
+        conferenceId: String,
+        delegateId: String,
+        reservationId: String,
+    ): Conference = unsupported()
+
+    override suspend fun removeDelegateReservation(conferenceId: String, delegateId: String): Conference {
+        removeDelegateReservationError?.let { throw IllegalArgumentException(it) }
+        return requireNotNull(initialConference)
+    }
 
     override suspend fun addDelegateComment(conferenceId: String, delegateId: String, body: String): Conference = unsupported()
 
@@ -190,7 +387,7 @@ private class FakeConferenceRepository(
 
     override suspend fun unresolveAnswerIssue(conferenceId: String, resolutionId: String): Conference = unsupported()
 
-    override suspend fun getConference(conferenceId: String): Conference? = initialConference
+    override suspend fun getConference(conferenceId: String): Conference? = conferences.firstOrNull { it.id.value == conferenceId }
 
     private fun unsupported(): Nothing = error("Not needed for this test.")
 }

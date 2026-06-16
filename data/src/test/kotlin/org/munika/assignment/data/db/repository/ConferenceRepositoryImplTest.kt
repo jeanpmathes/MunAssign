@@ -239,6 +239,92 @@ class ConferenceRepositoryImplTest {
     }
 
     @Test
+    fun `removing manual reservation link from standalone reservation leaves delegate unlinked`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-reservation-remove-manual").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot()).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val delegate = loaded.delegates.single { it.name.firstName == "Alex" }
+        val reservation = repository.createReservation(
+            conferenceId = conference.id.value,
+            name = "Manual hold",
+            highSchoolCount = 1,
+            universityCount = 0,
+            delegationId = null,
+        ).reservations.single()
+        repository.assignDelegateReservation(conference.id.value, delegate.id.value, reservation.id.value)
+
+        val updated = repository.removeDelegateReservation(conference.id.value, delegate.id.value)
+
+        assertNull(updated.delegates.single { it.id == delegate.id }.reservationLink)
+        assertTrue(updated.reservations.single().delegateLinks.isEmpty())
+    }
+
+    @Test
+    fun `removing automatic reservation link is rejected and leaves link intact`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-reservation-remove-auto-reject").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot()).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val delegate = loaded.delegates.single { it.name.firstName == "Alex" }
+        val delegation = loaded.delegations.single()
+        val reservation = repository.createReservation(
+            conferenceId = conference.id.value,
+            name = "Delegation hold",
+            highSchoolCount = 1,
+            universityCount = 0,
+            delegationId = delegation.id.value,
+        ).reservations.single()
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            repository.removeDelegateReservation(conference.id.value, delegate.id.value)
+        }
+
+        assertTrue(error.message.orEmpty().contains("Automatic reservation links", ignoreCase = true))
+        val reloaded = requireNotNull(repository.getConference(conference.id.value))
+        val link = requireNotNull(reloaded.delegates.single { it.id == delegate.id }.reservationLink)
+        assertEquals(reservation.id, link.reservation.id)
+        assertEquals(ReservationLinkSource.DelegationAuto, link.source)
+    }
+
+    @Test
+    fun `manual assignment replaces automatic reservation link`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-reservation-auto-to-manual").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot()).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val delegate = loaded.delegates.single { it.name.firstName == "Alex" }
+        val delegation = loaded.delegations.single()
+        repository.createReservation(
+            conferenceId = conference.id.value,
+            name = "Delegation hold",
+            highSchoolCount = 1,
+            universityCount = 0,
+            delegationId = delegation.id.value,
+        )
+        val manualReservation = repository.createReservation(
+            conferenceId = conference.id.value,
+            name = "Manual hold",
+            highSchoolCount = 1,
+            universityCount = 0,
+            delegationId = null,
+        ).reservations.single { it.name == "Manual hold" }
+
+        val updated = repository.assignDelegateReservation(conference.id.value, delegate.id.value, manualReservation.id.value)
+
+        val link = requireNotNull(updated.delegates.single { it.id == delegate.id }.reservationLink)
+        assertEquals(manualReservation.id, link.reservation.id)
+        assertEquals(ReservationLinkSource.Manual, link.source)
+        assertTrue(updated.reservations.single { it.name == "Delegation hold" }.delegateLinks.isEmpty())
+    }
+
+    @Test
     fun `delegation linked reservation auto-links active paid accepted delegates by submission date`() = runBlocking {
         val dbPath = Files.createTempDirectory("munassign-reservation-auto").resolve("data.db")
         val database = DatabaseFactory.connect(dbPath)
@@ -691,6 +777,38 @@ class ConferenceRepositoryImplTest {
         }
         assertFailsWith<IllegalArgumentException> {
             repository.assignDelegateToSlot(conference.id.value, slots[1].id.value, inactiveDelegate.id.value, moveExistingPending = false)
+        }
+        Unit
+    }
+
+    @Test
+    fun `manual assignment rejects submitted delegates`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-submitted-delegates").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val delegates = listOf(
+            delegate(
+                rowNumber = 2,
+                firstName = "Delegate",
+                lastName = "H",
+                email = "delegate.h@example.test",
+                applicationStatus = "Submitted",
+            ),
+        )
+
+        assertTrue(
+            repository.applyMymunUpdateSnapshot(
+                conference.id.value,
+                snapshotWithAssignments(delegates = delegates, confirmedAssignments = emptyList()),
+            ).success,
+        )
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val submittedDelegate = loaded.delegates.single { it.name.firstName == "Delegate" }
+        val slot = loaded.openSlots.first()
+
+        assertFailsWith<IllegalArgumentException> {
+            repository.assignDelegateToSlot(conference.id.value, slot.id.value, submittedDelegate.id.value, moveExistingPending = false)
         }
         Unit
     }
@@ -1553,7 +1671,7 @@ class ConferenceRepositoryImplTest {
         firstName: String = "Alex",
         lastName: String = "Kim",
         email: String = "alex@example.test",
-        applicationStatus: String? = null,
+        applicationStatus: String? = "Accepted",
         submittedAt: LocalDate? = null,
         feePaid: Boolean = true,
         delegationName: String? = null,

@@ -85,6 +85,38 @@ class ReservationReconcilerTest {
     }
 
     @Test
+    fun `delegation auto links multiple high school and university delegates in separate buckets`() {
+        val fixture = fixture()
+        val delegation = fixture.delegation()
+        val firstHighSchool = fixture.delegate(id = "hs-1", delegation = delegation, submittedAt = Instant.ofEpochMilli(1))
+        val secondHighSchool = fixture.delegate(id = "hs-2", delegation = delegation, submittedAt = Instant.ofEpochMilli(2))
+        val firstUniversity = fixture.delegate(id = "uni-1", delegation = delegation, highSchooler = false, submittedAt = Instant.ofEpochMilli(3))
+        val secondUniversity = fixture.delegate(id = "uni-2", delegation = delegation, highSchooler = false, submittedAt = Instant.ofEpochMilli(4))
+        val reservation = fixture.reservation(
+            id = "reservation",
+            highSchoolCount = 5,
+            universityCount = 5,
+            delegation = delegation,
+        )
+
+        val result = ReservationReconciler.reconcile(
+            conference = fixture.conference,
+            existingLinks = emptyList(),
+            now = Later,
+            idFactory = fixture.idFactory("auto-"),
+        )
+
+        assertEquals(
+            listOf(firstHighSchool.id, secondHighSchool.id, firstUniversity.id, secondUniversity.id),
+            result.links.map { it.delegate.id },
+        )
+        assertEquals(2, reservation.usedHighSchoolCount)
+        assertEquals(2, reservation.usedUniversityCount)
+        assertEquals(3, reservation.remainingHighSchoolCount)
+        assertEquals(3, reservation.remainingUniversityCount)
+    }
+
+    @Test
     fun `auto fill skips delegate already consuming another reservation`() {
         val fixture = fixture()
         val delegation = fixture.delegation()

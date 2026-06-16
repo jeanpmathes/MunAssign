@@ -3,6 +3,7 @@ package org.munika.assignment.ui.screen.component
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -52,6 +53,7 @@ fun CommitteeColumn(
     onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
     onClearPendingSlot: (slotId: String) -> Unit,
     onOpenDelegateDetail: (String) -> Unit,
+    onOpenReservationManager: () -> Unit,
     highlightedPositionId: String?,
 ) {
     var blockedReductionMessage by remember(committee.id, committee.slotsPerPosition) { mutableStateOf<String?>(null) }
@@ -68,6 +70,7 @@ fun CommitteeColumn(
                 loading = loading,
                 onToggleHighSchool = { onSetHighSchoolStatus(committee.id, !committee.isHighSchoolCommittee) },
                 onIncrease = { onSetSlotsPerPosition(committee.id, committee.slotsPerPosition + 1) },
+                onOpenReservationManager = onOpenReservationManager,
                 onDecrease = {
                     val target = committee.slotsPerPosition - 1
                     val blockedPositions = committee.positions
@@ -120,6 +123,7 @@ private fun CommitteeHeader(
     onToggleHighSchool: () -> Unit,
     onIncrease: () -> Unit,
     onDecrease: () -> Unit,
+    onOpenReservationManager: () -> Unit,
 ) {
     val highSchoolColor = Color(0xFF8E24AA)
     val headerColor = if (committee.isHighSchoolCommittee) {
@@ -196,6 +200,19 @@ private fun CommitteeHeader(
                     value = committee.highSchoolerAssignedCount,
                     tooltip = "High-school delegates assigned in this non-high-school committee.",
                     warning = true,
+                )
+            }
+        }
+        committee.reservationReminder?.let { reminder ->
+            BoardTooltip("Open reservation manager. These reservations reserve acceptance capacity for this committee type, but do not attach to specific slots.") {
+                Text(
+                    text = "${reminder.label}: ${reminder.remainingCount}/${reminder.totalCount} open",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clickable(onClick = onOpenReservationManager)
+                        .padding(vertical = 2.dp),
                 )
             }
         }

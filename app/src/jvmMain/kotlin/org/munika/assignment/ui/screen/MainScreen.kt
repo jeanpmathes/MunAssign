@@ -24,9 +24,11 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.ManageAccounts
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.People
@@ -82,20 +84,25 @@ import org.munika.assignment.domain.repository.UpdateIssueSeverity
 import org.munika.assignment.domain.repository.UpdateSummary
 import org.munika.assignment.ui.screen.dialog.IssueManagerPanel
 import org.munika.assignment.ui.screen.dialog.QuestionConfigurationDialog
+import org.munika.assignment.ui.screen.dialog.ReservationManagerDialog
 import org.munika.assignment.ui.screen.component.AssignmentBoard
 import org.munika.assignment.ui.screen.component.DelegateListPanel
 import org.munika.assignment.ui.screen.component.DelegateSidePanel
+import org.munika.assignment.ui.screen.component.DelegationOverviewPanel
 import org.munika.assignment.ui.screen.component.containerColor
 import org.munika.assignment.ui.screen.component.contentColor
 import org.munika.assignment.ui.viewmodel.DelegateListControlsUiState
 import org.munika.assignment.ui.viewmodel.DelegateListPreset
 import org.munika.assignment.ui.viewmodel.DelegateStatusTone
 import org.munika.assignment.ui.viewmodel.MainUiState
+import org.munika.assignment.ui.viewmodel.ReservationSummaryUiState
 import org.munika.assignment.ui.viewmodel.toIssueManagerUiState
 import org.munika.assignment.ui.viewmodel.toQuestionConfigurationListUiState
 import org.munika.assignment.ui.viewmodel.toDelegateListUiState
 import org.munika.assignment.ui.viewmodel.toDelegateDetailUiState
+import org.munika.assignment.ui.viewmodel.toDelegationOverviewUiState
 import org.munika.assignment.ui.viewmodel.toAssignmentBoardUiState
+import org.munika.assignment.ui.viewmodel.toReservationManagerUiState
 
 @Composable
 fun MainScreen(
@@ -114,6 +121,33 @@ fun MainScreen(
     onOpenNoticeManager: () -> Unit,
     onOpenDelegateNoticeManager: (delegateId: String) -> Unit,
     onCloseNoticeManager: () -> Unit,
+    onOpenDelegationOverview: () -> Unit = {},
+    onOpenDelegationOverviewFor: (delegationId: String) -> Unit = {},
+    onCloseDelegationOverview: () -> Unit = {},
+    onOpenReservationManager: (delegationId: String?) -> Unit = {},
+    onCloseReservationManager: () -> Unit = {},
+    onCreateReservation: (
+        conferenceId: String,
+        name: String,
+        highSchoolCount: Int,
+        universityCount: Int,
+        delegationId: String?,
+    ) -> Unit = { _, _, _, _, _ -> },
+    onUpdateReservation: (
+        conferenceId: String,
+        reservationId: String,
+        name: String,
+        highSchoolCount: Int,
+        universityCount: Int,
+        delegationId: String?,
+    ) -> Unit = { _, _, _, _, _, _ -> },
+    onDeleteReservation: (conferenceId: String, reservationId: String) -> Unit = { _, _ -> },
+    onAssignDelegateReservation: (
+        conferenceId: String,
+        delegateId: String,
+        reservationId: String,
+    ) -> Unit = { _, _, _ -> },
+    onRemoveDelegateReservation: (conferenceId: String, delegateId: String) -> Unit = { _, _ -> },
     onResolveAnswerIssue: (delegateId: String, questionId: String?, issueKey: String, justification: String?) -> Unit,
     onUpdateAnswerIssueResolutionJustification: (resolutionId: String, justification: String?) -> Unit,
     onUnresolveAnswerIssue: (resolutionId: String) -> Unit,
@@ -133,6 +167,7 @@ fun MainScreen(
     onOpenWorkbook: () -> Unit,
     onClearConferenceActionError: () -> Unit,
     onClearBoardActionError: () -> Unit,
+    onClearReservationActionError: () -> Unit = {},
 ) {
     var createDialogOpen by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<Conference?>(null) }
@@ -158,6 +193,8 @@ fun MainScreen(
                 },
                 onOpenDelegateList = onOpenDelegateList,
                 onOpenNoticeManager = onOpenNoticeManager,
+                onOpenDelegationOverview = onOpenDelegationOverview,
+                onOpenReservationManager = { onOpenReservationManager(null) },
                 onOpenQuestionConfiguration = onOpenQuestionConfiguration,
                 onOpenWorkbook = onOpenWorkbook,
             )
@@ -186,16 +223,22 @@ fun MainScreen(
                         boardScrollRequest = state.boardScrollRequest,
                         selectedDelegateId = state.selectedDelegateId,
                         delegateListOpen = state.delegateListOpen,
+                        delegationOverviewOpen = state.delegationOverviewOpen,
+                        delegationOverviewTargetId = state.delegationOverviewTargetId,
                         noticeManagerOpen = state.noticeManagerOpen,
                         issueManager = selectedConference.toIssueManagerUiState(
                             delegateId = state.noticeManagerDelegateId,
                         ),
+                        reservationOptions = selectedConference.toReservationManagerUiState().reservations,
+                        delegateReservationActionError = state.delegateReservationActionError,
                         delegateListControls = state.delegateListControls,
                         onSetCommitteeSlotsPerPosition = onSetCommitteeSlotsPerPosition,
                         onSetCommitteeHighSchoolStatus = onSetCommitteeHighSchoolStatus,
                         onAssignDelegateToSlot = onAssignDelegateToSlot,
                         onClearPendingSlot = onClearPendingSlot,
                         onCloseDelegateList = onCloseDelegateList,
+                        onCloseDelegationOverview = onCloseDelegationOverview,
+                        onOpenReservationManager = onOpenReservationManager,
                         onUpdateDelegateListControls = onUpdateDelegateListControls,
                         onApplyDelegateListPreset = onApplyDelegateListPreset,
                         onOpenDelegateDetail = onOpenDelegateDetail,
@@ -206,6 +249,8 @@ fun MainScreen(
                         onAddDelegateComment = onAddDelegateComment,
                         onUpdateDelegateComment = onUpdateDelegateComment,
                         onDeleteDelegateComment = onDeleteDelegateComment,
+                        onAssignDelegateReservation = onAssignDelegateReservation,
+                        onRemoveDelegateReservation = onRemoveDelegateReservation,
                         onOpenDelegateNoticeManager = onOpenDelegateNoticeManager,
                         onOpenNoticeManager = onOpenNoticeManager,
                         onCloseNoticeManager = onCloseNoticeManager,
@@ -280,6 +325,27 @@ fun MainScreen(
         )
     }
 
+    if (state.reservationManagerOpen && selectedConference != null) {
+        ReservationManagerDialog(
+            manager = selectedConference.toReservationManagerUiState(),
+            initialDelegationId = state.reservationManagerDelegationId,
+            reservationActionError = state.reservationActionError,
+            onCreateReservation = { name, highSchoolCount, universityCount, delegationId ->
+                onCreateReservation(selectedConference.id.value, name, highSchoolCount, universityCount, delegationId)
+            },
+            onUpdateReservation = { reservationId, name, highSchoolCount, universityCount, delegationId ->
+                onUpdateReservation(selectedConference.id.value, reservationId, name, highSchoolCount, universityCount, delegationId)
+            },
+            onDeleteReservation = { reservationId ->
+                onDeleteReservation(selectedConference.id.value, reservationId)
+            },
+            onOpenDelegation = onOpenDelegationOverviewFor,
+            onDismiss = {
+                onCloseReservationManager()
+                onClearReservationActionError()
+            },
+        )
+    }
 }
 
 @Composable
@@ -291,6 +357,8 @@ private fun TopBar(
     onOpenManagement: () -> Unit,
     onOpenDelegateList: () -> Unit,
     onOpenNoticeManager: () -> Unit,
+    onOpenDelegationOverview: () -> Unit,
+    onOpenReservationManager: () -> Unit,
     onOpenQuestionConfiguration: () -> Unit,
     onOpenWorkbook: (() -> Unit)? = null,
 ) {
@@ -365,6 +433,18 @@ private fun TopBar(
                     tooltip = "Open delegate list",
                     icon = Icons.Filled.People,
                     onClick = onOpenDelegateList,
+                    enabled = !state.loading && state.selectedConference != null,
+                )
+                TooltipIconButton(
+                    tooltip = "Open delegation overview",
+                    icon = Icons.Filled.Groups,
+                    onClick = onOpenDelegationOverview,
+                    enabled = !state.loading && state.selectedConference != null,
+                )
+                TooltipIconButton(
+                    tooltip = "Open reservation manager",
+                    icon = Icons.Filled.Bookmark,
+                    onClick = onOpenReservationManager,
                     enabled = !state.loading && state.selectedConference != null,
                 )
                 Spacer(Modifier.width(8.dp))
@@ -456,6 +536,7 @@ private fun ConferenceStats(conference: Conference) {
     val submittedApplications = conference.delegates.count { it.submittedAt != null && !it.hasActionableApplicationStatus() }
     val paidApplications = acceptedApplications.count { it.paymentStatus == PaymentStatus.Paid }
     val unpaidApplications = acceptedApplications.count { it.paymentStatus == PaymentStatus.Unpaid }
+    val acceptanceCapacity = conference.toAcceptanceCapacityUiState()
     val activePaidDelegates = conference.delegates.count { it.active && it.paymentStatus == PaymentStatus.Paid }
     val assignedActivePaidDelegates = conference.delegates.count {
         it.active && it.paymentStatus == PaymentStatus.Paid && it.currentSlot != null
@@ -482,7 +563,32 @@ private fun ConferenceStats(conference: Conference) {
             value = "$filledSlots / $totalSlots filled",
             tooltip = "Slots with pending app assignments or confirmed MyMUN assignments out of all available slots.",
         )
+        CapacityStatGroup(acceptanceCapacity)
     }
+}
+
+internal data class AcceptanceCapacityUiState(
+    val highSchoolCount: Int,
+    val universityCount: Int,
+)
+
+internal fun Conference.toAcceptanceCapacityUiState(): AcceptanceCapacityUiState {
+    val highSchoolSlots = committees
+        .filter { it.isHighSchoolCommittee }
+        .sumOf { it.slots.size }
+    val universitySlots = committees
+        .filterNot { it.isHighSchoolCommittee }
+        .sumOf { it.slots.size }
+    val acceptedPaidActiveDelegates = delegates.filter {
+        it.active && it.paymentStatus == PaymentStatus.Paid && it.hasActionableApplicationStatus()
+    }
+    val acceptedHighSchoolDelegates = acceptedPaidActiveDelegates.count { it.isHighSchooler }
+    val acceptedUniversityDelegates = acceptedPaidActiveDelegates.count { !it.isHighSchooler }
+
+    return AcceptanceCapacityUiState(
+        highSchoolCount = highSchoolSlots - acceptedHighSchoolDelegates - remainingHighSchoolReservationCount,
+        universityCount = universitySlots - acceptedUniversityDelegates - remainingUniversityReservationCount,
+    )
 }
 
 @Composable
@@ -502,6 +608,43 @@ private fun StatGroup(label: String, value: String, tooltip: String) {
             Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
         }
     }
+}
+
+@Composable
+private fun CapacityStatGroup(capacity: AcceptanceCapacityUiState) {
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        tooltip = {
+            PlainTooltip {
+                Text("Acceptance capacity after accepted paid active delegates and remaining reservations are subtracted from high-school and university committee slots.")
+            }
+        },
+        state = rememberTooltipState(),
+    ) {
+        Column(
+            modifier = Modifier
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(6.dp))
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalAlignment = Alignment.Start,
+        ) {
+            Text("Capacity", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                CapacityValue("${capacity.highSchoolCount} HS", capacity.highSchoolCount)
+                Text("·", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                CapacityValue("${capacity.universityCount} Uni", capacity.universityCount)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CapacityValue(text: String, value: Int) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = if (value < 0) CapacityNegativeColor else CapacityPositiveColor,
+    )
 }
 
 @Composable
@@ -588,6 +731,9 @@ private fun NoticeCountBadge(count: Int, tone: DelegateStatusTone) {
     }
 }
 
+private val CapacityPositiveColor = Color(0xFF2E7D32)
+private val CapacityNegativeColor = Color(0xFFC62828)
+
 @Composable
 private fun WithTooltip(tooltip: String, content: @Composable () -> Unit) {
     TooltipBox(
@@ -658,14 +804,20 @@ private fun ConferenceWorkspace(
     boardScrollRequest: org.munika.assignment.ui.viewmodel.BoardScrollRequest?,
     selectedDelegateId: String?,
     delegateListOpen: Boolean,
+    delegationOverviewOpen: Boolean,
+    delegationOverviewTargetId: String?,
     noticeManagerOpen: Boolean,
     issueManager: org.munika.assignment.ui.viewmodel.IssueManagerUiState,
+    reservationOptions: List<ReservationSummaryUiState>,
+    delegateReservationActionError: String?,
     delegateListControls: DelegateListControlsUiState,
     onSetCommitteeSlotsPerPosition: (String, Int) -> Unit,
     onSetCommitteeHighSchoolStatus: (String, Boolean) -> Unit,
     onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
     onClearPendingSlot: (slotId: String) -> Unit,
     onCloseDelegateList: () -> Unit,
+    onCloseDelegationOverview: () -> Unit,
+    onOpenReservationManager: (delegationId: String?) -> Unit,
     onUpdateDelegateListControls: (DelegateListControlsUiState) -> Unit,
     onApplyDelegateListPreset: (DelegateListPreset) -> Unit,
     onOpenDelegateDetail: (String) -> Unit,
@@ -676,6 +828,8 @@ private fun ConferenceWorkspace(
     onAddDelegateComment: (delegateId: String, body: String) -> Unit,
     onUpdateDelegateComment: (commentId: String, body: String) -> Unit,
     onDeleteDelegateComment: (commentId: String) -> Unit,
+    onAssignDelegateReservation: (conferenceId: String, delegateId: String, reservationId: String) -> Unit,
+    onRemoveDelegateReservation: (conferenceId: String, delegateId: String) -> Unit,
     onOpenDelegateNoticeManager: (delegateId: String) -> Unit,
     onOpenNoticeManager: () -> Unit,
     onCloseNoticeManager: () -> Unit,
@@ -697,6 +851,7 @@ private fun ConferenceWorkspace(
                 onAssignDelegateToSlot = onAssignDelegateToSlot,
                 onClearPendingSlot = onClearPendingSlot,
                 onOpenDelegateDetail = onOpenDelegateDetail,
+                onOpenReservationManager = { onOpenReservationManager(null) },
                 onClearActionError = onClearBoardActionError,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
@@ -709,6 +864,15 @@ private fun ConferenceWorkspace(
                     onOpenDelegateDetail = onOpenDelegateDetail,
                     onNavigateToPosition = onNavigateToBoardPosition,
                     onClose = onCloseDelegateList,
+                )
+            }
+            if (delegationOverviewOpen) {
+                DelegationOverviewPanel(
+                    overview = conference.toDelegationOverviewUiState(),
+                    targetDelegationId = delegationOverviewTargetId,
+                    onOpenReservationManager = onOpenReservationManager,
+                    onOpenDelegateDetail = onOpenDelegateDetail,
+                    onClose = onCloseDelegationOverview,
                 )
             }
             if (noticeManagerOpen) {
@@ -733,6 +897,14 @@ private fun ConferenceWorkspace(
                     onAddComment = onAddDelegateComment,
                     onUpdateComment = onUpdateDelegateComment,
                     onDeleteComment = onDeleteDelegateComment,
+                    reservationOptions = reservationOptions,
+                    reservationActionError = delegateReservationActionError,
+                    onAssignDelegateReservation = { delegateId, reservationId ->
+                        onAssignDelegateReservation(conference.id.value, delegateId, reservationId)
+                    },
+                    onRemoveDelegateReservation = { delegateId ->
+                        onRemoveDelegateReservation(conference.id.value, delegateId)
+                    },
                     onOpenNotices = onOpenDelegateNoticeManager,
                     onResolveIssue = onResolveAnswerIssue,
                     onUnresolveIssue = onUnresolveAnswerIssue,

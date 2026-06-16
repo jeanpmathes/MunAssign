@@ -276,6 +276,9 @@ class ConferenceRepositoryImpl(
         require(delegate[DelegateTable.paymentStatus] == PaymentStatus.Paid.name) {
             "Only paid delegates can be manually assigned."
         }
+        require(delegate[DelegateTable.applicationStatus].isAcceptedOrAssigned()) {
+            "Only accepted or assigned delegates can be manually assigned."
+        }
 
         val existingAssignment = SlotTable.selectAll()
             .where { SlotTable.assignedDelegateId eq delegateId }
@@ -509,8 +512,16 @@ class ConferenceRepositoryImpl(
 
     override suspend fun removeDelegateReservation(conferenceId: String, delegateId: String): Conference = db {
         requireDelegateInConference(conferenceId, delegateId)
+        val existingLink = ReservationDelegateLinkTable.selectAll()
+            .where { ReservationDelegateLinkTable.delegateId eq delegateId }
+            .singleOrNull()
+            ?: return@db loadConferenceGraph(conferenceId)
+        require(existingLink[ReservationDelegateLinkTable.linkSource] == ReservationLinkSource.Manual.name) {
+            "Automatic reservation links are maintained by delegation reconciliation."
+        }
+
         val now = Instant.now().toEpochMilli()
-        ReservationDelegateLinkTable.deleteWhere { ReservationDelegateLinkTable.delegateId eq delegateId }
+        ReservationDelegateLinkTable.deleteWhere { ReservationDelegateLinkTable.id eq existingLink[ReservationDelegateLinkTable.id] }
         ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
             it[updatedAtEpochMillis] = now
         }
@@ -2019,5 +2030,11 @@ class ConferenceRepositoryImpl(
                     dateOfBirth = row[DelegateTable.dateOfBirth],
                 )
         }
+    }
+
+    private fun String?.isAcceptedOrAssigned(): Boolean {
+        val normalized = this?.trim() ?: return false
+        return normalized.equals("Accepted", ignoreCase = true) ||
+            normalized.equals("Assigned", ignoreCase = true)
     }
 }

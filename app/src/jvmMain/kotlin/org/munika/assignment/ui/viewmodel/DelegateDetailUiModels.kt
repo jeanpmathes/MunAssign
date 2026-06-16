@@ -44,6 +44,7 @@ data class DelegateDetailUiState(
     val resolvedAnswerIssueCount: Int,
     val comments: List<DelegateCommentUiState>,
     val delegation: DelegateDelegationUiState?,
+    val reservation: DelegateReservationUiState?,
 )
 
 data class DelegateStatusChipUiState(
@@ -141,6 +142,12 @@ data class DelegateCommentUiState(
 data class DelegateDelegationUiState(
     val label: String,
     val tooltip: String,
+)
+
+data class DelegateReservationUiState(
+    val id: String,
+    val name: String,
+    val sourceLabel: String,
 )
 
 fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiState? {
@@ -283,7 +290,14 @@ fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiSta
         delegation = delegate.delegation?.let { delegation ->
             DelegateDelegationUiState(
                 label = delegation.displayLabel,
-                tooltip = "Delegation context from MyMUN. Delegation overview is planned as a later view.",
+                tooltip = "Delegation context from MyMUN.",
+            )
+        },
+        reservation = delegate.reservationLink?.let { link ->
+            DelegateReservationUiState(
+                id = link.reservation.id.value,
+                name = link.reservation.name,
+                sourceLabel = requireNotNull(delegate.reservationSourceLabel()),
             )
         },
     )

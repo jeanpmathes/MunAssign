@@ -12,6 +12,8 @@ This document records persistence and update rules that are not obvious from the
 - `Question` stores dynamic MyMUN question text plus local handling configuration.
 - `Preference` resolves a delegate's ranked MyMUN preference to a position.
 - `Delegation` stores delegation context from MyMUN where available.
+- `Reservation` stores organizer-managed high-school and university capacity holds, with an optional linked delegation.
+- `ReservationDelegateLink` stores current reservation consumption by one delegate, either manual or delegation-automatic.
 
 Domain objects expose derived properties such as slot status, current assignment, display labels, typed answers, and interested delegates. Do not duplicate those derivations in documentation unless the rule affects persistence or updates.
 
@@ -109,8 +111,26 @@ MyMUN updates preserve where the referenced objects still exist:
 - committee aliases;
 - committee high-school status;
 - question handling configuration.
+- organizer-managed reservations;
+- manual reservation links for retained active delegates;
 
 MyMUN updates remove delegates, preferences, assignments, and answers that no longer exist in the workbook source.
+Automatic reservation links are rebuilt after updates. If a reservation's linked delegation no longer exists, the reservation is preserved but its delegation link is cleared.
+
+## Reservations
+
+Reservations reduce accept capacity before delegates have applied. They are owned by one conference and can hold high-school count, university count, or both. Counts must be zero or greater, and at least one count must be greater than zero.
+
+A reservation may link to one MyMUN delegation. The linked delegation identity itself remains MyMUN-managed; organizers do not edit delegation names or contact fields in MunAssign.
+
+Reservation consumption is persisted in `reservation_delegate_links` so the application does not have to infer current usage from scratch at load time. A delegate can have at most one reservation link in a conference:
+
+- `Manual` links are explicit organizer choices from delegate detail and are preserved while the delegate remains active.
+- `DelegationAuto` links are maintained by reconciliation for reservations linked to delegations.
+
+Delegation reconciliation considers active, paid, accepted delegates in submission-date order. It skips delegates that already have any reservation link, fills high-school or university capacity according to the delegate's high-schooler answer, and stops when the relevant reservation bucket is full. Extra eligible delegates do not consume a reservation and are not an error.
+
+Reducing a reservation count below current manual usage is rejected. Reducing below automatic usage is allowed; reconciliation removes excess automatic links while preserving manual links. Deactivating a delegate removes any manual or automatic reservation consumption for that delegate.
 
 ## Tables
 
@@ -124,6 +144,8 @@ Core tables:
 - `slots`
 - `delegations`
 - `delegates`
+- `reservations`
+- `reservation_delegate_links`
 - `preferences`
 - `delegate_comments`
 - `delegate_questions`
@@ -155,6 +177,9 @@ Update metadata tables:
 - `delegate_questions(conference_id, question_text)` unique.
 - `delegate_questions(conference_id, expected_role)` unique when role is not null.
 - Role-specific answer mappings unique by `(question_id, normalized_raw_value)`.
+- `reservations(conference_id, delegation_id)` is indexed for delegation-linked reservation lookup.
+- `reservation_delegate_links(delegate_id)` unique so one delegate can consume at most one reservation.
+- `reservation_delegate_links(reservation_id, delegate_id)` unique.
 - Current slot assignments enforce at most one occupied slot per delegate per conference.
 - Conference-owned foreign keys cascade on delete.
 - `conferences.display_order` stores the organizer-managed order used by the top-bar selector and management screen.

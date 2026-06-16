@@ -129,10 +129,10 @@ interface ConferenceRepository {
     ): Conference
 
     /**
-     * Removes the current reservation link for one delegate if present.
+     * Removes the manual reservation link for one delegate if present.
      *
-     * Implementations should reconcile automatic links after the manual or automatic link is
-     * removed so delegation-linked reservations can refill available capacity.
+     * Automatic delegation links are maintained by reconciliation and should be rejected rather
+     * than deleted directly.
      */
     suspend fun removeDelegateReservation(conferenceId: String, delegateId: String): Conference
 

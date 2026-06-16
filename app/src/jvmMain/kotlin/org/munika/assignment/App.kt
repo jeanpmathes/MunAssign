@@ -32,6 +32,16 @@ fun App(viewModel: MainViewModel, onOpenWorkbook: () -> Unit) {
                 onOpenNoticeManager = viewModel::openNoticeManager,
                 onOpenDelegateNoticeManager = viewModel::openDelegateNoticeManager,
                 onCloseNoticeManager = viewModel::closeNoticeManager,
+                onOpenDelegationOverview = viewModel::openDelegationOverview,
+                onOpenDelegationOverviewFor = viewModel::openDelegationOverviewFor,
+                onCloseDelegationOverview = viewModel::closeDelegationOverview,
+                onOpenReservationManager = viewModel::openReservationManager,
+                onCloseReservationManager = viewModel::closeReservationManager,
+                onCreateReservation = viewModel::createReservation,
+                onUpdateReservation = viewModel::updateReservation,
+                onDeleteReservation = viewModel::deleteReservation,
+                onAssignDelegateReservation = viewModel::assignDelegateReservation,
+                onRemoveDelegateReservation = viewModel::removeDelegateReservation,
                 onResolveAnswerIssue = viewModel::resolveAnswerIssue,
                 onUpdateAnswerIssueResolutionJustification = viewModel::updateAnswerIssueResolutionJustification,
                 onUnresolveAnswerIssue = viewModel::unresolveAnswerIssue,
@@ -51,6 +61,7 @@ fun App(viewModel: MainViewModel, onOpenWorkbook: () -> Unit) {
                 onOpenWorkbook = onOpenWorkbook,
                 onClearConferenceActionError = viewModel::clearConferenceActionError,
                 onClearBoardActionError = viewModel::clearBoardActionError,
+                onClearReservationActionError = viewModel::clearReservationActionError,
             )
         }
     }

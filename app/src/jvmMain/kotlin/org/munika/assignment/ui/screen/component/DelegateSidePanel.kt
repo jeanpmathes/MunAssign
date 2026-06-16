@@ -14,10 +14,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -78,6 +80,9 @@ import org.munika.assignment.ui.viewmodel.DelegatePreferenceUiState
 import org.munika.assignment.ui.viewmodel.DelegateResolvedIssueUiState
 import org.munika.assignment.ui.viewmodel.DelegateStatusChipUiState
 import org.munika.assignment.ui.viewmodel.DelegateStatusTone
+import org.munika.assignment.ui.viewmodel.ReservationSummaryUiState
+
+private const val ManualReservationSourceLabel = "Manual"
 
 @Composable
 fun DelegateSidePanel(
@@ -90,6 +95,10 @@ fun DelegateSidePanel(
     onAddComment: (delegateId: String, body: String) -> Unit,
     onUpdateComment: (commentId: String, body: String) -> Unit,
     onDeleteComment: (commentId: String) -> Unit,
+    reservationOptions: List<ReservationSummaryUiState> = emptyList(),
+    reservationActionError: String? = null,
+    onAssignDelegateReservation: (delegateId: String, reservationId: String) -> Unit = { _, _ -> },
+    onRemoveDelegateReservation: (delegateId: String) -> Unit = {},
     onOpenNotices: (delegateId: String) -> Unit,
     onResolveIssue: (delegateId: String, questionId: String?, issueKey: String, justification: String?) -> Unit,
     onUnresolveIssue: (resolutionId: String) -> Unit,
@@ -125,6 +134,16 @@ fun DelegateSidePanel(
             ) {
                 item {
                     AssignmentCard(detail, onNavigateToPosition)
+                }
+                item {
+                    ReservationCard(
+                        detail = detail,
+                        loading = loading,
+                        options = reservationOptions,
+                        actionError = reservationActionError,
+                        onAssignReservation = { reservationId -> onAssignDelegateReservation(detail.id, reservationId) },
+                        onRemoveReservation = { onRemoveDelegateReservation(detail.id) },
+                    )
                 }
                 item {
                     FoldableSection(
@@ -340,6 +359,178 @@ private fun AssignmentCard(
         }
     }
 }
+
+@Composable
+private fun ReservationCard(
+    detail: DelegateDetailUiState,
+    loading: Boolean,
+    options: List<ReservationSummaryUiState>,
+    actionError: String?,
+    onAssignReservation: (String) -> Unit,
+    onRemoveReservation: () -> Unit,
+) {
+    var selectionDialogOpen by remember(detail.id) { mutableStateOf(false) }
+    val reservation = detail.reservation
+    Card(
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(8.dp),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Reservation", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (reservation == null) {
+                Text("No reservation", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                BoardTooltip("Assign this delegate to an existing reservation.") {
+                    OutlinedButton(
+                        onClick = { selectionDialogOpen = true },
+                        enabled = !loading,
+                    ) {
+                        Text("Assign")
+                    }
+                }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(reservation.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        Text(reservation.sourceLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    BoardTooltip("Choose a different reservation for this delegate.") {
+                        OutlinedButton(
+                            onClick = { selectionDialogOpen = true },
+                            enabled = !loading,
+                        ) {
+                            Text("Change")
+                        }
+                    }
+                    if (reservation.sourceLabel == ManualReservationSourceLabel) {
+                        BoardTooltip("Remove this manual reservation link from the delegate.") {
+                            TextButton(
+                                onClick = onRemoveReservation,
+                                enabled = !loading,
+                            ) {
+                                Text("Remove")
+                            }
+                        }
+                    }
+                }
+            }
+            actionError?.let {
+                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+
+    if (selectionDialogOpen) {
+        DelegateReservationSelectionDialog(
+            options = options,
+            delegateIsHighSchooler = detail.highSchooler,
+            currentReservationId = reservation?.id,
+            actionError = actionError,
+            onDismiss = { selectionDialogOpen = false },
+            onSelect = { reservationId ->
+                onAssignReservation(reservationId)
+                selectionDialogOpen = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun DelegateReservationSelectionDialog(
+    options: List<ReservationSummaryUiState>,
+    delegateIsHighSchooler: Boolean,
+    currentReservationId: String?,
+    actionError: String?,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+) {
+    val sortedOptions = options.sortedWith(
+        compareBy<ReservationSummaryUiState> {
+            it.disabledReasonFor(delegateIsHighSchooler, currentReservationId) != null
+        }.thenBy { it.name },
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Select reservation") },
+        text = {
+            Column(modifier = Modifier.width(520.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                actionError?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error)
+                }
+                if (options.isEmpty()) {
+                    Text("No reservations", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp),
+                    ) {
+                        items(sortedOptions, key = { it.id }) { option ->
+                            val disabledReason = option.disabledReasonFor(delegateIsHighSchooler, currentReservationId)
+                            DelegateReservationOptionRow(
+                                option = option,
+                                disabledReason = disabledReason,
+                                onSelect = { onSelect(option.id) },
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
+}
+
+@Composable
+private fun DelegateReservationOptionRow(
+    option: ReservationSummaryUiState,
+    disabledReason: String?,
+    onSelect: () -> Unit,
+) {
+    BoardTooltip(disabledReason ?: "Assign delegate to ${option.name}.") {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+                .clickable(enabled = disabledReason == null, onClick = onSelect)
+                .padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(option.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text(
+                    option.delegationName ?: "Unlinked reservation",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text(
+                "HS ${option.remainingHighSchoolCount}/${option.highSchoolCount} · Uni ${option.remainingUniversityCount}/${option.universityCount}",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = if (disabledReason == null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            disabledReason?.let {
+                Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+private fun ReservationSummaryUiState.disabledReasonFor(delegateIsHighSchooler: Boolean, currentReservationId: String?): String? =
+    when {
+        id == currentReservationId -> "Already assigned"
+        delegateIsHighSchooler && remainingHighSchoolCount <= 0 -> "No HS capacity"
+        !delegateIsHighSchooler && remainingUniversityCount <= 0 -> "No Uni capacity"
+        else -> null
+    }
 
 @Composable
 private fun ProfileContent(

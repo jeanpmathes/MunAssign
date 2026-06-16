@@ -6,6 +6,7 @@ import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.Delegate
 import org.munika.assignment.domain.model.PaymentStatus
 import org.munika.assignment.domain.model.Position
+import org.munika.assignment.domain.model.Reservation
 import org.munika.assignment.domain.model.Slot
 
 data class AssignmentBoardUiState(
@@ -23,7 +24,14 @@ data class CommitteeBoardUiState(
     val assignedSlotCount: Int,
     val highSchoolerAssignedCount: Int,
     val universityAssignedCount: Int,
+    val reservationReminder: ReservationReminderUiState?,
     val positions: List<PositionBoardUiState>,
+)
+
+data class ReservationReminderUiState(
+    val label: String,
+    val totalCount: Int,
+    val remainingCount: Int,
 )
 
 data class PositionBoardUiState(
@@ -94,6 +102,7 @@ fun Conference.toAssignmentBoardUiState(): AssignmentBoardUiState =
     AssignmentBoardUiState(
         conferenceId = id.value,
         committees = committees.map { committee ->
+            val reservationReminder = reservations.toReservationReminderUiState(committee.isHighSchoolCommittee)
             CommitteeBoardUiState(
                 id = committee.id.value,
                 name = committee.displayName,
@@ -104,10 +113,30 @@ fun Conference.toAssignmentBoardUiState(): AssignmentBoardUiState =
                 assignedSlotCount = committee.assignedSlotCount,
                 highSchoolerAssignedCount = committee.slots.count { it.delegate?.isHighSchooler == true },
                 universityAssignedCount = committee.slots.count { it.delegate != null && it.delegate?.isHighSchooler != true },
+                reservationReminder = reservationReminder,
                 positions = committee.positions.map { it.toBoardUiState() },
             )
         },
     )
+
+private fun List<Reservation>.toReservationReminderUiState(isHighSchoolCommittee: Boolean): ReservationReminderUiState? {
+    val totalCount = if (isHighSchoolCommittee) {
+        sumOf { it.highSchoolCount }
+    } else {
+        sumOf { it.universityCount }
+    }
+    if (totalCount == 0) return null
+
+    return ReservationReminderUiState(
+        label = if (isHighSchoolCommittee) "HS reservations" else "Uni reservations",
+        totalCount = totalCount,
+        remainingCount = if (isHighSchoolCommittee) {
+            sumOf { it.remainingHighSchoolCount }
+        } else {
+            sumOf { it.remainingUniversityCount }
+        },
+    )
+}
 
 private fun Position.toBoardUiState(): PositionBoardUiState =
     PositionBoardUiState(
@@ -172,7 +201,15 @@ private fun Slot.toBoardUiState(): SlotBoardUiState =
     )
 
 private fun Delegate.visibleOnAssignmentBoard(): Boolean =
-    active && paymentStatus == PaymentStatus.Paid
+    active &&
+        paymentStatus == PaymentStatus.Paid &&
+        profile.applicationStatus.isAcceptedOrAssigned()
+
+private fun String?.isAcceptedOrAssigned(): Boolean {
+    val normalized = this?.trim() ?: return false
+    return normalized.equals("Accepted", ignoreCase = true) ||
+        normalized.equals("Assigned", ignoreCase = true)
+}
 
 private fun Delegate.confirmedAssignmentLabel(): String? {
     val assignedPosition = currentPosition ?: return null

@@ -30,6 +30,11 @@ import org.munika.assignment.domain.model.QuestionAnswer
 import org.munika.assignment.domain.model.QuestionAnswerId
 import org.munika.assignment.domain.model.QuestionId
 import org.munika.assignment.domain.model.RequiredAnswer
+import org.munika.assignment.domain.model.Reservation
+import org.munika.assignment.domain.model.ReservationDelegateLink
+import org.munika.assignment.domain.model.ReservationDelegateLinkId
+import org.munika.assignment.domain.model.ReservationId
+import org.munika.assignment.domain.model.ReservationLinkSource
 import org.munika.assignment.domain.model.Slot
 import org.munika.assignment.domain.model.SlotId
 import org.munika.assignment.domain.model.StandardQuestionRoles
@@ -125,6 +130,35 @@ class AssignmentBoardUiModelsTest {
 
         assertEquals(listOf("Neutral Delegate", "Available Delegate"), germany.assignmentCandidates.map { it.name })
         assertEquals("GA (France)", germany.assignmentCandidates.single { it.name == "Available Delegate" }.pendingAssignmentLabel)
+    }
+
+    @Test
+    fun `submitted delegates are not assignment candidates or interested delegates`() {
+        val board = board()
+        val submitted = delegate(
+            conference = board.conference,
+            id = "submitted",
+            firstName = "Submitted",
+            lastName = "Delegate",
+            paymentStatus = PaymentStatus.Paid,
+            active = true,
+            applicationStatus = "Submitted",
+        )
+        board.conference.delegates += submitted
+        submitted.preferences += Preference(
+            id = PreferenceId("preference-submitted"),
+            delegate = submitted,
+            position = board.france,
+            rank = 1,
+            rawPreferenceText = "GA (France)",
+        )
+
+        val ui = board.conference.toAssignmentBoardUiState().committees.single()
+        val france = ui.positions.single { it.name == "France" }
+        val germany = ui.positions.single { it.name == "Germany" }
+
+        assertFalse(france.interestedDelegates.any { it.name == "Submitted Delegate" })
+        assertFalse(germany.assignmentCandidates.any { it.name == "Submitted Delegate" })
     }
 
     @Test
@@ -229,6 +263,51 @@ class AssignmentBoardUiModelsTest {
         assertEquals(listOf("Neutral Delegate", "Available Delegate"), universityCandidates.map { it.name })
     }
 
+    @Test
+    fun `committee state exposes matching reservation reminder for high school committee`() {
+        val board = board(isHighSchoolCommittee = true)
+        val reservation = Reservation(
+            id = ReservationId("reservation"),
+            conference = board.conference,
+            name = "Alpha Hold",
+            highSchoolCount = 2,
+            universityCount = 3,
+            createdAt = Instant.EPOCH,
+            updatedAt = Instant.EPOCH,
+        )
+        markHighSchooler(board.available)
+        board.conference.reservations += reservation
+        link(reservation, board.available)
+
+        val reminder = board.conference.toAssignmentBoardUiState().committees.single().reservationReminder
+
+        assertEquals("HS reservations", reminder?.label)
+        assertEquals(2, reminder?.totalCount)
+        assertEquals(1, reminder?.remainingCount)
+    }
+
+    @Test
+    fun `committee state exposes matching reservation reminder for university committee`() {
+        val board = board(isHighSchoolCommittee = false)
+        val reservation = Reservation(
+            id = ReservationId("reservation"),
+            conference = board.conference,
+            name = "Alpha Hold",
+            highSchoolCount = 2,
+            universityCount = 3,
+            createdAt = Instant.EPOCH,
+            updatedAt = Instant.EPOCH,
+        )
+        board.conference.reservations += reservation
+        link(reservation, board.available)
+
+        val reminder = board.conference.toAssignmentBoardUiState().committees.single().reservationReminder
+
+        assertEquals("Uni reservations", reminder?.label)
+        assertEquals(3, reminder?.totalCount)
+        assertEquals(2, reminder?.remainingCount)
+    }
+
     private fun board(slotCount: Int = 1, isHighSchoolCommittee: Boolean = false): Board {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val committee = Committee(
@@ -271,13 +350,14 @@ class AssignmentBoardUiModelsTest {
         lastName: String,
         paymentStatus: PaymentStatus,
         active: Boolean,
+        applicationStatus: String? = "Accepted",
     ): Delegate =
         Delegate(
             id = DelegateId(id),
             conference = conference,
             name = PersonName(firstName, lastName),
             email = "$id@example.test",
-            profile = DelegateProfile(null, null, null, null, null, null, null, LocalDate.of(2007, 5, 15), null, null),
+            profile = DelegateProfile(null, null, null, null, null, null, null, LocalDate.of(2007, 5, 15), null, applicationStatus),
             paymentStatus = paymentStatus,
             active = active,
             isHeadDelegate = false,
@@ -291,6 +371,17 @@ class AssignmentBoardUiModelsTest {
             mappings = TypedAnswerMappings(highSchooler = listOf(HighSchoolerAnswerMapping("Yes", HighSchoolerStatus.Yes))),
         )
         delegate.answers += QuestionAnswer(QuestionAnswerId("high-schooler-answer-${delegate.id.value}"), delegate, question, "Yes")
+    }
+
+    private fun link(reservation: Reservation, delegate: Delegate) {
+        reservation.delegateLinks += ReservationDelegateLink(
+            id = ReservationDelegateLinkId("${reservation.id.value}-${delegate.id.value}"),
+            reservation = reservation,
+            delegate = delegate,
+            source = ReservationLinkSource.Manual,
+            createdAt = Instant.EPOCH,
+            updatedAt = Instant.EPOCH,
+        )
     }
 
     private data class Board(
