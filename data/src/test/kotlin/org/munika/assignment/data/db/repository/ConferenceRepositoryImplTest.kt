@@ -42,6 +42,7 @@ import org.munika.assignment.data.excel.MymunQuestionColumn
 import org.munika.assignment.data.excel.MymunWorkbookSnapshot
 import org.munika.assignment.data.excel.MymunWorkbookUpdater
 import org.munika.assignment.domain.model.AssignmentSource
+import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.HighSchoolerAnswerMapping
 import org.munika.assignment.domain.model.HighSchoolerStatus
 import org.munika.assignment.domain.model.LanguageLevel
@@ -184,6 +185,81 @@ class ConferenceRepositoryImplTest {
         transaction(database) {
             assertTrue(CommitteeTable.selectAll().single()[CommitteeTable.isHighSchoolCommittee])
         }
+    }
+
+    @Test
+    fun `committee mode and position mapped committee are persisted`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-ipc-persist").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithTwoCommittees()).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val ipc = loaded.committees.single { it.mymunName == "IPC" }
+        val target = loaded.committees.single { it.mymunName == "UNSC" }
+
+        repository.setCommitteeMode(conference.id.value, target.id.value, CommitteeMode.HighSchool)
+        repository.setCommitteeMode(conference.id.value, ipc.id.value, CommitteeMode.Mapped)
+        val mapped = repository.setPositionMappedCommittee(
+            conferenceId = conference.id.value,
+            positionId = ipc.positions.single().id.value,
+            mappedCommitteeId = target.id.value,
+        )
+
+        val mappedPosition = mapped.committees.single { it.mymunName == "IPC" }.positions.single()
+        assertEquals(CommitteeMode.Mapped, mappedPosition.committee.mode)
+        assertEquals(target.id, mappedPosition.mappedCommittee?.id)
+        assertEquals(CommitteeMode.HighSchool, mappedPosition.effectiveCommitteeMode)
+
+        val reloaded = requireNotNull(repository.getConference(conference.id.value))
+        assertEquals(CommitteeMode.Mapped, reloaded.committees.single { it.mymunName == "IPC" }.mode)
+        assertEquals(
+            reloaded.committees.single { it.mymunName == "UNSC" }.id,
+            reloaded.committees.single { it.mymunName == "IPC" }.positions.single().mappedCommittee?.id,
+        )
+    }
+
+    @Test
+    fun `position mapping rejects mapped target and normal owning committee`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-ipc-reject").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithTwoCommittees()).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val ipc = loaded.committees.single { it.mymunName == "IPC" }
+        val target = loaded.committees.single { it.mymunName == "UNSC" }
+
+        assertFailsWith<IllegalArgumentException> {
+            repository.setPositionMappedCommittee(conference.id.value, target.positions.single().id.value, ipc.id.value)
+        }
+
+        repository.setCommitteeMode(conference.id.value, ipc.id.value, CommitteeMode.Mapped)
+        repository.setCommitteeMode(conference.id.value, target.id.value, CommitteeMode.Mapped)
+
+        assertFailsWith<IllegalArgumentException> {
+            repository.setPositionMappedCommittee(conference.id.value, ipc.positions.single().id.value, target.id.value)
+        }
+        Unit
+    }
+
+    @Test
+    fun `switching mapped committee back to normal clears position mappings`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-ipc-clear").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithTwoCommittees()).success)
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val ipc = loaded.committees.single { it.mymunName == "IPC" }
+        val target = loaded.committees.single { it.mymunName == "UNSC" }
+        repository.setCommitteeMode(conference.id.value, target.id.value, CommitteeMode.HighSchool)
+        repository.setCommitteeMode(conference.id.value, ipc.id.value, CommitteeMode.Mapped)
+        repository.setPositionMappedCommittee(conference.id.value, ipc.positions.single().id.value, target.id.value)
+
+        val updated = repository.setCommitteeMode(conference.id.value, ipc.id.value, CommitteeMode.University)
+
+        assertNull(updated.committees.single { it.mymunName == "IPC" }.positions.single().mappedCommittee)
     }
 
     @Test
@@ -933,6 +1009,7 @@ class ConferenceRepositoryImplTest {
             CommitteeTable.update({ CommitteeTable.id eq committee.id.value }) {
                 it[alias] = "Local alias"
                 it[CommitteeTable.isHighSchoolCommittee] = true
+                it[CommitteeTable.mode] = CommitteeMode.HighSchool.name
             }
             DelegateQuestionTable.update({ DelegateQuestionTable.id eq question.id.value }) {
                 it[visibleInDelegateDetail] = false
@@ -1531,6 +1608,34 @@ class ConferenceRepositoryImplTest {
             questionAnswers = emptyList(),
             preferenceCandidates = emptyList(),
             confirmedAssignmentCandidates = confirmedAssignments,
+            issues = emptyList(),
+        )
+
+    private fun snapshotWithTwoCommittees(): MymunWorkbookSnapshot =
+        MymunWorkbookSnapshot(
+            workbookName = "ipc.xlsx",
+            delegates = listOf(delegate()),
+            countryPositions = listOf(
+                MymunCountryPositionRow(
+                    rowNumber = 2,
+                    committeeName = "IPC",
+                    memberName = "UNSC Reporter",
+                    delegationName = null,
+                    delegatesRaw = null,
+                ),
+                MymunCountryPositionRow(
+                    rowNumber = 3,
+                    committeeName = "UNSC",
+                    memberName = "France",
+                    delegationName = null,
+                    delegatesRaw = null,
+                ),
+            ),
+            delegations = emptyList(),
+            questionColumns = emptyList(),
+            questionAnswers = emptyList(),
+            preferenceCandidates = emptyList(),
+            confirmedAssignmentCandidates = emptyList(),
             issues = emptyList(),
         )
 

@@ -15,6 +15,7 @@ import org.munika.assignment.data.db.model.PositionRow
 import org.munika.assignment.data.db.model.PreferenceRow
 import org.munika.assignment.data.db.model.SlotRow
 import org.munika.assignment.domain.model.AssignmentStatus
+import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.LanguageLevel
 
 class ConferenceGraphMapperTest {
@@ -63,6 +64,7 @@ class ConferenceGraphMapperTest {
                     alias = "UNSC",
                     slotsPerPosition = 2,
                     isHighSchoolCommittee = true,
+                    mode = CommitteeMode.HighSchool.name,
                 ),
             ),
             positions = listOf(
@@ -70,6 +72,7 @@ class ConferenceGraphMapperTest {
                     id = "position-france",
                     conferenceId = "conference",
                     committeeId = "committee",
+                    mappedCommitteeId = null,
                     name = "France",
                 ),
             ),

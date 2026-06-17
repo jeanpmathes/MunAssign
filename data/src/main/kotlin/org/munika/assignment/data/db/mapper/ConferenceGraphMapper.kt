@@ -12,6 +12,7 @@ import org.munika.assignment.domain.model.AnswerRule
 import org.munika.assignment.domain.model.AssignmentSource
 import org.munika.assignment.domain.model.Committee
 import org.munika.assignment.domain.model.CommitteeId
+import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.ConferenceId
 import org.munika.assignment.domain.model.Delegate
@@ -76,7 +77,7 @@ object ConferenceGraphMapper {
                 mymunName = row.mymunName,
                 alias = row.alias,
                 slotsPerPosition = row.slotsPerPosition,
-                isHighSchoolCommittee = row.isHighSchoolCommittee,
+                mode = CommitteeMode.valueOf(row.mode),
             )
             conference.committees += committee
             row.id to committee
@@ -93,6 +94,17 @@ object ConferenceGraphMapper {
             )
             committee.positions += position
             row.id to position
+        }
+
+        rows.positions.forEach { row ->
+            val position = requireNotNull(positionsById[row.id]) {
+                "Position ${row.id} was not mapped."
+            }
+            position.mappedCommittee = row.mappedCommitteeId?.let { mappedCommitteeId ->
+                requireNotNull(committeesById[mappedCommitteeId]) {
+                    "Position ${row.id} references missing mapped committee $mappedCommitteeId."
+                }
+            }
         }
 
         val delegationsById = rows.delegations.associate { row ->

@@ -4,5 +4,6 @@ data class PositionRow(
     val id: String,
     val conferenceId: String,
     val committeeId: String,
+    val mappedCommitteeId: String?,
     val name: String,
 )

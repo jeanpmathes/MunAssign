@@ -65,6 +65,7 @@ import org.munika.assignment.data.excel.MymunDelegationRow
 import org.munika.assignment.data.excel.MymunValidationSeverity
 import org.munika.assignment.data.excel.MymunWorkbookSnapshot
 import org.munika.assignment.domain.model.AssignmentSource
+import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.HighSchoolerAnswerMapping
 import org.munika.assignment.domain.model.LanguageLevelAnswerMapping
@@ -235,13 +236,65 @@ class ConferenceRepositoryImpl(
         conferenceId: String,
         committeeId: String,
         isHighSchoolCommittee: Boolean,
+    ): Conference = setCommitteeMode(
+        conferenceId = conferenceId,
+        committeeId = committeeId,
+        mode = if (isHighSchoolCommittee) CommitteeMode.HighSchool else CommitteeMode.University,
+    )
+
+    override suspend fun setCommitteeMode(
+        conferenceId: String,
+        committeeId: String,
+        mode: CommitteeMode,
     ): Conference = db {
+        requireCommitteeInConference(conferenceId, committeeId)
+        if (mode == CommitteeMode.Mapped) {
+            val inboundMapping = PositionTable.selectAll()
+                .where { (PositionTable.conferenceId eq conferenceId) and (PositionTable.mappedCommitteeId eq committeeId) }
+                .firstOrNull()
+            require(inboundMapping == null) {
+                "Committee $committeeId cannot become mapped while positions map to it."
+            }
+        }
         val updated = CommitteeTable.update({
             (CommitteeTable.id eq committeeId) and (CommitteeTable.conferenceId eq conferenceId)
         }) {
-            it[CommitteeTable.isHighSchoolCommittee] = isHighSchoolCommittee
+            it[CommitteeTable.mode] = mode.name
+            it[CommitteeTable.isHighSchoolCommittee] = mode == CommitteeMode.HighSchool
         }
         require(updated == 1) { "Committee $committeeId does not belong to conference $conferenceId." }
+        if (mode != CommitteeMode.Mapped) {
+            PositionTable.update({ PositionTable.committeeId eq committeeId }) {
+                it[PositionTable.mappedCommitteeId] = null
+            }
+        }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = Instant.now().toEpochMilli()
+        }
+        loadConferenceGraph(conferenceId)
+    }
+
+    override suspend fun setPositionMappedCommittee(
+        conferenceId: String,
+        positionId: String,
+        mappedCommitteeId: String?,
+    ): Conference = db {
+        val position = requireNotNull(
+            PositionTable.selectAll()
+                .where { (PositionTable.id eq positionId) and (PositionTable.conferenceId eq conferenceId) }
+                .singleOrNull(),
+        ) { "Position $positionId does not belong to conference $conferenceId." }
+        val owningCommittee = requireCommitteeInConference(conferenceId, position[PositionTable.committeeId])
+        require(CommitteeMode.valueOf(owningCommittee[CommitteeTable.mode]) == CommitteeMode.Mapped) {
+            "Position $positionId belongs to a committee that is not mapped."
+        }
+        val target = mappedCommitteeId?.let { targetId -> requireCommitteeInConference(conferenceId, targetId) }
+        require(target == null || CommitteeMode.valueOf(target[CommitteeTable.mode]) != CommitteeMode.Mapped) {
+            "Position $positionId cannot map to a mapped committee."
+        }
+        PositionTable.update({ PositionTable.id eq positionId }) {
+            it[PositionTable.mappedCommitteeId] = mappedCommitteeId
+        }
         ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
             it[updatedAtEpochMillis] = Instant.now().toEpochMilli()
         }
@@ -915,6 +968,7 @@ class ConferenceRepositoryImpl(
                     it[alias] = null
                     it[CommitteeTable.slotsPerPosition] = slotsPerPosition
                     it[CommitteeTable.isHighSchoolCommittee] = false
+                    it[CommitteeTable.mode] = CommitteeMode.University.name
                 }
                 delta.committeesCreated++
             } else {
@@ -946,6 +1000,7 @@ class ConferenceRepositoryImpl(
                         it[PositionTable.id] = positionId
                         it[PositionTable.conferenceId] = conferenceId
                         it[PositionTable.committeeId] = committeeId
+                        it[PositionTable.mappedCommitteeId] = null
                         it[PositionTable.name] = country.memberName
                         it[PositionTable.normalizedName] = positionName
                     }
@@ -1075,6 +1130,7 @@ class ConferenceRepositoryImpl(
         delta.delegationsRemoved += pruned.delegations
         delta.delegatesRemoved += pruned.delegates
         delta.questionsRemoved += pruned.questions
+        clearInvalidPositionMappings(conferenceId)
 
         val pendingAfterAssignmentReconcile = countPendingAssignmentsForConference(conferenceId)
         delta.pendingAssignmentsPreserved = pendingAfterAssignmentReconcile
@@ -1202,6 +1258,13 @@ class ConferenceRepositoryImpl(
                 .singleOrNull(),
         ) { "Delegate $delegateId does not belong to conference $conferenceId." }
 
+    private fun requireCommitteeInConference(conferenceId: String, committeeId: String): ResultRow =
+        requireNotNull(
+            CommitteeTable.selectAll()
+                .where { (CommitteeTable.id eq committeeId) and (CommitteeTable.conferenceId eq conferenceId) }
+                .singleOrNull(),
+        ) { "Committee $committeeId does not belong to conference $conferenceId." }
+
     private fun requireReservationInConference(conferenceId: String, reservationId: String): ResultRow =
         requireNotNull(
             ReservationTable.selectAll()
@@ -1273,6 +1336,27 @@ class ConferenceRepositoryImpl(
         result.links.forEach { link ->
             upsertReservationDelegateLink(link)
         }
+    }
+
+    private fun clearInvalidPositionMappings(conferenceId: String) {
+        val validMappedTargetIds = CommitteeTable.selectAll()
+            .where {
+                (CommitteeTable.conferenceId eq conferenceId) and
+                    (CommitteeTable.mode neq CommitteeMode.Mapped.name)
+            }
+            .map { it[CommitteeTable.id] }
+            .toSet()
+        PositionTable.selectAll()
+            .where { PositionTable.conferenceId eq conferenceId }
+            .filter { row ->
+                val mappedCommitteeId = row[PositionTable.mappedCommitteeId]
+                mappedCommitteeId != null && !validMappedTargetIds.contains(mappedCommitteeId)
+            }
+            .forEach { row ->
+                PositionTable.update({ PositionTable.id eq row[PositionTable.id] }) {
+                    it[PositionTable.mappedCommitteeId] = null
+                }
+            }
     }
 
     private fun upsertReservationDelegateLink(link: ReservationDelegateLink) {
@@ -1674,6 +1758,7 @@ class ConferenceRepositoryImpl(
                     alias = row[CommitteeTable.alias],
                     slotsPerPosition = row[CommitteeTable.slotsPerPosition],
                     isHighSchoolCommittee = row[CommitteeTable.isHighSchoolCommittee],
+                    mode = row[CommitteeTable.mode],
                 )
             },
             positions = PositionTable.selectAll().where { PositionTable.conferenceId eq conferenceId }.map { row ->
@@ -1681,6 +1766,7 @@ class ConferenceRepositoryImpl(
                     id = row[PositionTable.id],
                     conferenceId = row[PositionTable.conferenceId],
                     committeeId = row[PositionTable.committeeId],
+                    mappedCommitteeId = row[PositionTable.mappedCommitteeId],
                     name = row[PositionTable.name],
                 )
             },

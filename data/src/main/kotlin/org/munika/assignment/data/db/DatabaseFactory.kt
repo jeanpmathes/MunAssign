@@ -138,6 +138,13 @@ object DatabaseFactory {
         SchemaMigration(version = 7, name = "add_reservations") {
             SchemaUtils.create(ReservationTable, ReservationDelegateLinkTable)
         },
+        SchemaMigration(version = 8, name = "add_committee_mode_and_position_mapping") {
+            addColumnIfMissing("committees", "mode", "VARCHAR(32) NOT NULL DEFAULT 'University'")
+            addColumnIfMissing("positions", "mapped_committee_id", "VARCHAR(36) NULL REFERENCES committees(id) ON DELETE SET NULL")
+            TransactionManager.current().exec(
+                "UPDATE committees SET mode = CASE WHEN is_high_school_committee THEN 'HighSchool' ELSE 'University' END",
+            )
+        },
     )
 
     private fun addColumnIfMissing(tableName: String, columnName: String, definition: String) {

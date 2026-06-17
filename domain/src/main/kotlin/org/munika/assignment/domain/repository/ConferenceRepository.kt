@@ -1,6 +1,7 @@
 package org.munika.assignment.domain.repository
 
 import org.munika.assignment.domain.model.Conference
+import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.QuestionConfiguration
 
 /**
@@ -41,6 +42,31 @@ interface ConferenceRepository {
         conferenceId: String,
         committeeId: String,
         isHighSchoolCommittee: Boolean,
+    ): Conference
+
+    /**
+     * Sets the organizer-managed committee assignment mode.
+     *
+     * Switching a committee away from [CommitteeMode.Mapped] clears its position mappings.
+     * Switching a committee to [CommitteeMode.Mapped] must be rejected while other IPC positions
+     * still map to it.
+     */
+    suspend fun setCommitteeMode(
+        conferenceId: String,
+        committeeId: String,
+        mode: CommitteeMode,
+    ): Conference
+
+    /**
+     * Sets or clears the non-mapped committee that an IPC position corresponds to.
+     *
+     * Implementations must reject mappings for positions whose owning committee is not mapped,
+     * mappings to committees from another conference, and mappings to mapped committees.
+     */
+    suspend fun setPositionMappedCommittee(
+        conferenceId: String,
+        positionId: String,
+        mappedCommitteeId: String?,
     ): Conference
 
     /**
