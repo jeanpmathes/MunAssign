@@ -2,6 +2,8 @@ package org.munika.assignment.ui.viewmodel
 
 import org.munika.assignment.domain.model.AnswerIssueSeverity
 import org.munika.assignment.domain.model.AssignmentStatus
+import org.munika.assignment.domain.model.Committee
+import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.Delegate
 import org.munika.assignment.domain.model.PaymentStatus
@@ -18,6 +20,7 @@ data class CommitteeBoardUiState(
     val id: String,
     val name: String,
     val slotsPerPosition: Int,
+    val mode: CommitteeMode,
     val isHighSchoolCommittee: Boolean,
     val openSlotCount: Int,
     val pendingSlotCount: Int,
@@ -39,6 +42,10 @@ data class PositionBoardUiState(
     val name: String,
     val displayName: String,
     val flagAssetName: String?,
+    val effectiveMode: CommitteeMode?,
+    val mappingIncomplete: Boolean,
+    val mappedCommittee: PositionMappedCommitteeUiState?,
+    val mappingOptions: List<CommitteeMappingOptionUiState>,
     val slots: List<SlotBoardUiState>,
     val interestedDelegates: List<InterestedDelegateUiState>,
     val assignmentCandidates: List<AssignmentDelegateCandidateUiState>,
@@ -47,6 +54,18 @@ data class PositionBoardUiState(
     val shouldShowInterestedDelegates: Boolean = slots.any { it.status == SlotBoardStatus.Empty }
     val interestedDelegateCount: Int = interestedDelegates.size
 }
+
+data class CommitteeMappingOptionUiState(
+    val id: String,
+    val name: String,
+    val mode: CommitteeMode,
+)
+
+data class PositionMappedCommitteeUiState(
+    val id: String,
+    val name: String,
+    val mode: CommitteeMode,
+)
 
 data class SlotBoardUiState(
     val id: String,
@@ -107,13 +126,14 @@ fun Conference.toAssignmentBoardUiState(): AssignmentBoardUiState =
                 id = committee.id.value,
                 name = committee.displayName,
                 slotsPerPosition = committee.slotsPerPosition,
+                mode = committee.mode,
                 isHighSchoolCommittee = committee.isHighSchoolCommittee,
                 openSlotCount = committee.openSlotCount,
                 pendingSlotCount = committee.pendingSlotCount,
                 assignedSlotCount = committee.assignedSlotCount,
                 highSchoolerAssignedCount = committee.slots.count { it.delegate?.isHighSchooler == true },
                 universityAssignedCount = committee.slots.count { it.delegate != null && it.delegate?.isHighSchooler != true },
-                reservationReminder = reservationReminder,
+                reservationReminder = if (committee.mode == CommitteeMode.Mapped) null else reservationReminder,
                 positions = committee.positions.map { it.toBoardUiState() },
             )
         },
@@ -144,6 +164,10 @@ private fun Position.toBoardUiState(): PositionBoardUiState =
         name = name,
         displayName = name,
         flagAssetName = countryFlagAssetName,
+        effectiveMode = effectiveCommitteeMode,
+        mappingIncomplete = mappingIncomplete,
+        mappedCommittee = mappedCommittee?.toMappedCommitteeUiState(),
+        mappingOptions = conference.committees.toMappingOptions(owningCommittee = committee),
         slots = slots.sortedBy { it.index }.map { it.toBoardUiState() },
         interestedDelegates = interestedDelegates
             .filter { it.visibleOnAssignmentBoard() }
@@ -178,11 +202,28 @@ private fun Position.toBoardUiState(): PositionBoardUiState =
             }
             .sortedWith(
                 compareBy<AssignmentDelegateCandidateUiState> { it.assignmentSortRank }
-                    .thenBy { it.highSchoolFitSortRank(committee.isHighSchoolCommittee) }
+                    .thenBy { it.highSchoolFitSortRank(effectiveCommitteeMode) }
                     .thenBy { it.preferenceRank ?: Int.MAX_VALUE }
                     .thenBy { it.name },
             ),
     )
+
+private fun Committee.toMappedCommitteeUiState(): PositionMappedCommitteeUiState =
+    PositionMappedCommitteeUiState(
+        id = id.value,
+        name = displayName,
+        mode = mode,
+    )
+
+private fun List<Committee>.toMappingOptions(owningCommittee: Committee): List<CommitteeMappingOptionUiState> =
+    filter { it !== owningCommittee && it.mode != CommitteeMode.Mapped }
+        .map {
+            CommitteeMappingOptionUiState(
+                id = it.id.value,
+                name = it.displayName,
+                mode = it.mode,
+            )
+        }
 
 private fun Slot.toBoardUiState(): SlotBoardUiState =
     SlotBoardUiState(
@@ -244,9 +285,10 @@ private val AssignmentDelegateCandidateUiState.assignmentSortRank: Int
         else -> 0
     }
 
-private fun AssignmentDelegateCandidateUiState.highSchoolFitSortRank(isHighSchoolCommittee: Boolean): Int =
+private fun AssignmentDelegateCandidateUiState.highSchoolFitSortRank(mode: CommitteeMode?): Int =
     when {
-        isHighSchoolCommittee && isHighSchooler -> 0
-        !isHighSchoolCommittee && !isHighSchooler -> 0
+        mode == null -> 0
+        mode == CommitteeMode.HighSchool && isHighSchooler -> 0
+        mode == CommitteeMode.University && !isHighSchooler -> 0
         else -> 1
     }

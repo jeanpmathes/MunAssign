@@ -12,6 +12,7 @@ import org.munika.assignment.domain.model.AnswerIssueResolutionId
 import org.munika.assignment.domain.model.AssignmentSource
 import org.munika.assignment.domain.model.Committee
 import org.munika.assignment.domain.model.CommitteeId
+import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.ConferenceId
 import org.munika.assignment.domain.model.Delegate
@@ -308,6 +309,32 @@ class AssignmentBoardUiModelsTest {
         assertEquals(2, reminder?.remainingCount)
     }
 
+    @Test
+    fun `mapped committee exposes no reservation reminder and position mapping state`() {
+        val board = mappedBoard()
+
+        val ipc = board.conference.toAssignmentBoardUiState().committees.single { it.name == "IPC" }
+
+        assertEquals(CommitteeMode.Mapped, ipc.mode)
+        assertNull(ipc.reservationReminder)
+        assertEquals(listOf("UNSC"), ipc.positions.single().mappingOptions.map { it.name })
+        assertEquals("UNSC", ipc.positions.single().mappedCommittee?.name)
+        assertEquals(CommitteeMode.HighSchool, ipc.positions.single().effectiveMode)
+    }
+
+    @Test
+    fun `mapped position candidate sorting uses mapped target mode`() {
+        val board = mappedBoard()
+        markHighSchooler(board.available)
+
+        val candidates = board.conference.toAssignmentBoardUiState()
+            .committees.single { it.name == "IPC" }
+            .positions.single()
+            .assignmentCandidates
+
+        assertEquals(listOf("Available Delegate", "Neutral Delegate"), candidates.map { it.name })
+    }
+
     private fun board(slotCount: Int = 1, isHighSchoolCommittee: Boolean = false): Board {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val committee = Committee(
@@ -315,7 +342,7 @@ class AssignmentBoardUiModelsTest {
             conference,
             "GA",
             slotsPerPosition = slotCount,
-            isHighSchoolCommittee = isHighSchoolCommittee,
+            mode = if (isHighSchoolCommittee) CommitteeMode.HighSchool else CommitteeMode.University,
         )
         val france = Position(PositionId("france"), committee, "France")
         val germany = Position(PositionId("germany"), committee, "Germany")
@@ -341,6 +368,25 @@ class AssignmentBoardUiModelsTest {
         }
 
         return Board(conference, france, germany.slots.single(), available, confirmedElsewhere)
+    }
+
+    private fun mappedBoard(): Board {
+        val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val ipc = Committee(CommitteeId("ipc"), conference, "IPC", slotsPerPosition = 1, mode = CommitteeMode.Mapped)
+        val target = Committee(CommitteeId("target"), conference, "UNSC", slotsPerPosition = 1, mode = CommitteeMode.HighSchool)
+        val reporter = Position(PositionId("reporter"), ipc, "UNSC Reporter", mappedCommittee = target)
+        val targetPosition = Position(PositionId("target-position"), target, "France")
+        val available = delegate(conference, "available", "Available", "Delegate", PaymentStatus.Paid, active = true)
+        val neutral = delegate(conference, "neutral", "Neutral", "Delegate", PaymentStatus.Paid, active = true)
+
+        conference.committees += listOf(ipc, target)
+        conference.delegates += listOf(available, neutral)
+        ipc.positions += reporter
+        target.positions += targetPosition
+        reporter.slots += Slot(SlotId("reporter-1"), reporter, 1, Instant.EPOCH)
+        targetPosition.slots += Slot(SlotId("target-1"), targetPosition, 1, Instant.EPOCH)
+
+        return Board(conference, reporter, reporter.slots.single(), available, neutral)
     }
 
     private fun delegate(

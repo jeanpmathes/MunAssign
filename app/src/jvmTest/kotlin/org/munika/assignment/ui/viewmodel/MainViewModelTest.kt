@@ -14,6 +14,7 @@ import org.munika.assignment.data.db.DatabaseFactory
 import org.munika.assignment.data.db.repository.ConferenceRepositoryImpl
 import org.munika.assignment.data.excel.MymunWorkbookUpdater
 import org.munika.assignment.domain.model.Conference
+import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.ConferenceId
 import org.munika.assignment.domain.model.QuestionConfiguration
 import org.munika.assignment.domain.repository.ConferenceRepository
@@ -294,6 +295,18 @@ private class FakeConferenceRepository(
         conferenceId: String,
         committeeId: String,
         isHighSchoolCommittee: Boolean,
+    ): Conference = unsupported()
+
+    override suspend fun setCommitteeMode(
+        conferenceId: String,
+        committeeId: String,
+        mode: CommitteeMode,
+    ): Conference = unsupported()
+
+    override suspend fun setPositionMappedCommittee(
+        conferenceId: String,
+        positionId: String,
+        mappedCommitteeId: String?,
     ): Conference = unsupported()
 
     override suspend fun assignDelegateToSlot(

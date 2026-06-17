@@ -76,6 +76,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 import org.munika.assignment.domain.model.Conference
+import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.Delegate
 import org.munika.assignment.domain.model.PaymentStatus
 import org.munika.assignment.domain.model.QuestionConfiguration
@@ -573,11 +574,11 @@ internal data class AcceptanceCapacityUiState(
 )
 
 internal fun Conference.toAcceptanceCapacityUiState(): AcceptanceCapacityUiState {
-    val highSchoolSlots = committees
-        .filter { it.isHighSchoolCommittee }
+    val highSchoolSlots = positions
+        .filter { it.effectiveCommitteeMode == CommitteeMode.HighSchool }
         .sumOf { it.slots.size }
-    val universitySlots = committees
-        .filterNot { it.isHighSchoolCommittee }
+    val universitySlots = positions
+        .filter { it.effectiveCommitteeMode == CommitteeMode.University }
         .sumOf { it.slots.size }
     val acceptedPaidActiveDelegates = delegates.filter {
         it.active && it.paymentStatus == PaymentStatus.Paid && it.hasActionableApplicationStatus()

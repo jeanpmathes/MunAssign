@@ -5,6 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import org.munika.assignment.domain.model.Committee
 import org.munika.assignment.domain.model.CommitteeId
+import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.ConferenceId
 import org.munika.assignment.domain.model.Delegate
@@ -59,18 +60,33 @@ class ConferenceStatsTest {
         assertEquals(0, capacity.universityCount)
     }
 
+    @Test
+    fun `acceptance capacity counts mapped slots by mapped target mode`() {
+        val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val target = committee(conference, "target", isHighSchool = true, positionCount = 1)
+        val ipc = committee(conference, "ipc", isHighSchool = false, positionCount = 1, mode = CommitteeMode.Mapped)
+        ipc.positions.single().mappedCommittee = target
+        conference.committees += listOf(target, ipc)
+
+        val capacity = conference.toAcceptanceCapacityUiState()
+
+        assertEquals(2, capacity.highSchoolCount)
+        assertEquals(0, capacity.universityCount)
+    }
+
     private fun committee(
         conference: Conference,
         id: String,
         isHighSchool: Boolean,
         positionCount: Int,
+        mode: CommitteeMode = if (isHighSchool) CommitteeMode.HighSchool else CommitteeMode.University,
     ): Committee {
         val committee = Committee(
             id = CommitteeId(id),
             conference = conference,
             mymunName = id.uppercase(),
             slotsPerPosition = 1,
-            isHighSchoolCommittee = isHighSchool,
+            mode = mode,
         )
         repeat(positionCount) { index ->
             val position = Position(PositionId("$id-position-$index"), committee, "Position $index")
