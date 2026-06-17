@@ -19,7 +19,10 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
@@ -39,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.ui.screen.dialog.AddDelegateToSlotDialog
 import org.munika.assignment.ui.viewmodel.InterestedDelegateUiState
 import org.munika.assignment.ui.viewmodel.PositionBoardUiState
@@ -51,6 +55,7 @@ fun PositionCard(
     onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
     onClearPendingSlot: (slotId: String) -> Unit,
     onOpenDelegateDetail: (String) -> Unit,
+    onSetPositionMappedCommittee: (positionId: String, mappedCommitteeId: String?) -> Unit,
     highlighted: Boolean,
 ) {
     var menuSlot by remember(position.id) { mutableStateOf<SlotBoardUiState?>(null) }
@@ -92,6 +97,13 @@ fun PositionCard(
                         )
                     }
                 }
+            }
+
+            if (position.showsMappingSelector) {
+                MappedCommitteeSelector(
+                    position = position,
+                    onSetPositionMappedCommittee = onSetPositionMappedCommittee,
+                )
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -193,6 +205,62 @@ fun PositionCard(
                 }
             },
         )
+    }
+}
+
+@Composable
+private fun MappedCommitteeSelector(
+    position: PositionBoardUiState,
+    onSetPositionMappedCommittee: (positionId: String, mappedCommitteeId: String?) -> Unit,
+) {
+    var expanded by remember(position.id) { mutableStateOf(false) }
+    val mappedCommittee = position.mappedCommittee
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Box {
+            BoardTooltip("Choose which regular committee this IPC position corresponds to.") {
+                OutlinedButton(
+                    onClick = { expanded = true },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = mappedCommittee?.let { "${it.name} (${it.mode.label})" } ?: "Select correspondence",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+            ) {
+                position.mappingOptions.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text("${option.name} (${option.mode.label})") },
+                        onClick = {
+                            expanded = false
+                            onSetPositionMappedCommittee(position.id, option.id)
+                        },
+                    )
+                }
+                if (mappedCommittee != null) {
+                    DropdownMenuItem(
+                        text = { Text("Clear correspondence") },
+                        onClick = {
+                            expanded = false
+                            onSetPositionMappedCommittee(position.id, null)
+                        },
+                    )
+                }
+            }
+        }
+        if (position.mappingIncomplete) {
+            Text(
+                text = "Correspondence missing",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
     }
 }
 
@@ -308,3 +376,13 @@ private data class RankBadgeStyle(
     val containerColor: Color,
     val contentColor: Color,
 )
+
+private val PositionBoardUiState.showsMappingSelector: Boolean
+    get() = mappingOptions.isNotEmpty() || mappedCommittee != null || mappingIncomplete
+
+private val CommitteeMode.label: String
+    get() = when (this) {
+        CommitteeMode.HighSchool -> "HS"
+        CommitteeMode.University -> "Uni"
+        CommitteeMode.Mapped -> "Mapped"
+    }

@@ -163,6 +163,48 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `set committee mode refreshes selected conference`() {
+        val original = Conference(ConferenceId("conference"), "Original", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val updated = Conference(ConferenceId("conference"), "Mapped", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val repository = FakeConferenceRepository(initialConference = original, committeeModeConference = updated)
+        val viewModel = viewModelWith(repository)
+
+        viewModel.selectConference("conference")
+        waitUntil { viewModel.state.value.selectedConference === original }
+
+        viewModel.setCommitteeMode("committee", CommitteeMode.Mapped)
+
+        waitUntil { viewModel.state.value.selectedConference === updated }
+        assertSame(updated, viewModel.state.value.selectedConference)
+        assertNull(viewModel.state.value.boardActionError)
+        assertEquals("conference", repository.committeeModeConferenceId)
+        assertEquals("committee", repository.committeeModeCommitteeId)
+        assertEquals(CommitteeMode.Mapped, repository.committeeModeMode)
+        viewModel.close()
+    }
+
+    @Test
+    fun `set position mapped committee refreshes selected conference`() {
+        val original = Conference(ConferenceId("conference"), "Original", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val updated = Conference(ConferenceId("conference"), "Mapped position", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val repository = FakeConferenceRepository(initialConference = original, positionMappedConference = updated)
+        val viewModel = viewModelWith(repository)
+
+        viewModel.selectConference("conference")
+        waitUntil { viewModel.state.value.selectedConference === original }
+
+        viewModel.setPositionMappedCommittee("position", "target-committee")
+
+        waitUntil { viewModel.state.value.selectedConference === updated }
+        assertSame(updated, viewModel.state.value.selectedConference)
+        assertNull(viewModel.state.value.boardActionError)
+        assertEquals("conference", repository.positionMappedConferenceId)
+        assertEquals("position", repository.positionMappedPositionId)
+        assertEquals("target-committee", repository.positionMappedCommitteeId)
+        viewModel.close()
+    }
+
+    @Test
     fun `notice manager actions update scoped state`() {
         val viewModel = viewModelWith(FakeConferenceRepository())
 
@@ -255,6 +297,8 @@ private class FakeConferenceRepository(
     private val createdReservationConferenceDeferred: CompletableDeferred<Conference>? = null,
     private val createReservationStarted: CompletableDeferred<Unit>? = null,
     private val removeDelegateReservationError: String? = null,
+    private val committeeModeConference: Conference? = initialConference,
+    private val positionMappedConference: Conference? = initialConference,
 ) : ConferenceRepository {
     var resolvedDelegateId: String? = null
         private set
@@ -273,6 +317,18 @@ private class FakeConferenceRepository(
     var createdReservationUniversityCount: Int? = null
         private set
     var createdReservationDelegationId: String? = null
+        private set
+    var committeeModeConferenceId: String? = null
+        private set
+    var committeeModeCommitteeId: String? = null
+        private set
+    var committeeModeMode: CommitteeMode? = null
+        private set
+    var positionMappedConferenceId: String? = null
+        private set
+    var positionMappedPositionId: String? = null
+        private set
+    var positionMappedCommitteeId: String? = null
         private set
 
     override suspend fun listConferences(): List<Conference> = conferences
@@ -301,13 +357,23 @@ private class FakeConferenceRepository(
         conferenceId: String,
         committeeId: String,
         mode: CommitteeMode,
-    ): Conference = unsupported()
+    ): Conference {
+        committeeModeConferenceId = conferenceId
+        committeeModeCommitteeId = committeeId
+        committeeModeMode = mode
+        return requireNotNull(committeeModeConference)
+    }
 
     override suspend fun setPositionMappedCommittee(
         conferenceId: String,
         positionId: String,
         mappedCommitteeId: String?,
-    ): Conference = unsupported()
+    ): Conference {
+        positionMappedConferenceId = conferenceId
+        positionMappedPositionId = positionId
+        positionMappedCommitteeId = mappedCommitteeId
+        return requireNotNull(positionMappedConference)
+    }
 
     override suspend fun assignDelegateToSlot(
         conferenceId: String,

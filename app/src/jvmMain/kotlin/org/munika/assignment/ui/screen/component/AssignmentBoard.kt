@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.ui.viewmodel.AssignmentBoardUiState
 import org.munika.assignment.ui.viewmodel.BoardScrollRequest
 
@@ -37,7 +38,8 @@ fun AssignmentBoard(
     actionError: String?,
     scrollRequest: BoardScrollRequest?,
     onSetCommitteeSlotsPerPosition: (String, Int) -> Unit,
-    onSetCommitteeHighSchoolStatus: (String, Boolean) -> Unit,
+    onSetCommitteeMode: (String, CommitteeMode) -> Unit,
+    onSetPositionMappedCommittee: (String, String?) -> Unit,
     onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
     onClearPendingSlot: (slotId: String) -> Unit,
     onOpenDelegateDetail: (String) -> Unit,
@@ -99,7 +101,8 @@ fun AssignmentBoard(
                     loading = loading,
                     listState = columnListStates.getOrPut(committee.id) { LazyListState() },
                     onSetSlotsPerPosition = onSetCommitteeSlotsPerPosition,
-                    onSetHighSchoolStatus = onSetCommitteeHighSchoolStatus,
+                    onSetCommitteeMode = onSetCommitteeMode,
+                    onSetPositionMappedCommittee = onSetPositionMappedCommittee,
                     onAssignDelegateToSlot = onAssignDelegateToSlot,
                     onClearPendingSlot = onClearPendingSlot,
                     onOpenDelegateDetail = onOpenDelegateDetail,

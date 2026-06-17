@@ -167,7 +167,11 @@ private fun Position.toBoardUiState(): PositionBoardUiState =
         effectiveMode = effectiveCommitteeMode,
         mappingIncomplete = mappingIncomplete,
         mappedCommittee = mappedCommittee?.toMappedCommitteeUiState(),
-        mappingOptions = conference.committees.toMappingOptions(owningCommittee = committee),
+        mappingOptions = if (committee.mode == CommitteeMode.Mapped) {
+            conference.committees.toMappingOptions(owningCommittee = committee)
+        } else {
+            emptyList()
+        },
         slots = slots.sortedBy { it.index }.map { it.toBoardUiState() },
         interestedDelegates = interestedDelegates
             .filter { it.visibleOnAssignmentBoard() }

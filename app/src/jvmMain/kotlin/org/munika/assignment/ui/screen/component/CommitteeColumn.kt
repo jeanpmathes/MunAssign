@@ -19,7 +19,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
@@ -28,6 +27,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.ui.viewmodel.CommitteeBoardUiState
 import org.munika.assignment.ui.viewmodel.SlotBoardStatus
 
@@ -49,7 +50,8 @@ fun CommitteeColumn(
     loading: Boolean,
     listState: LazyListState,
     onSetSlotsPerPosition: (String, Int) -> Unit,
-    onSetHighSchoolStatus: (String, Boolean) -> Unit,
+    onSetCommitteeMode: (String, CommitteeMode) -> Unit,
+    onSetPositionMappedCommittee: (String, String?) -> Unit,
     onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
     onClearPendingSlot: (slotId: String) -> Unit,
     onOpenDelegateDetail: (String) -> Unit,
@@ -68,7 +70,7 @@ fun CommitteeColumn(
             CommitteeHeader(
                 committee = committee,
                 loading = loading,
-                onToggleHighSchool = { onSetHighSchoolStatus(committee.id, !committee.isHighSchoolCommittee) },
+                onSetMode = { mode -> onSetCommitteeMode(committee.id, mode) },
                 onIncrease = { onSetSlotsPerPosition(committee.id, committee.slotsPerPosition + 1) },
                 onOpenReservationManager = onOpenReservationManager,
                 onDecrease = {
@@ -95,6 +97,7 @@ fun CommitteeColumn(
                         onAssignDelegateToSlot = onAssignDelegateToSlot,
                         onClearPendingSlot = onClearPendingSlot,
                         onOpenDelegateDetail = onOpenDelegateDetail,
+                        onSetPositionMappedCommittee = onSetPositionMappedCommittee,
                         highlighted = position.id == highlightedPositionId,
                     )
                 }
@@ -120,16 +123,17 @@ fun CommitteeColumn(
 private fun CommitteeHeader(
     committee: CommitteeBoardUiState,
     loading: Boolean,
-    onToggleHighSchool: () -> Unit,
+    onSetMode: (CommitteeMode) -> Unit,
     onIncrease: () -> Unit,
     onDecrease: () -> Unit,
     onOpenReservationManager: () -> Unit,
 ) {
     val highSchoolColor = Color(0xFF8E24AA)
-    val headerColor = if (committee.isHighSchoolCommittee) {
-        highSchoolColor.copy(alpha = 0.14f)
-    } else {
-        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+    val mappedColor = Color(0xFF00796B)
+    val headerColor = when (committee.mode) {
+        CommitteeMode.HighSchool -> highSchoolColor.copy(alpha = 0.14f)
+        CommitteeMode.Mapped -> mappedColor.copy(alpha = 0.15f)
+        CommitteeMode.University -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
     }
     Column(
         modifier = Modifier.fillMaxWidth()
@@ -152,30 +156,6 @@ private fun CommitteeHeader(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            BoardTooltip(
-                if (committee.isHighSchoolCommittee) {
-                    "This committee is marked as a high-school committee."
-                } else {
-                    "Mark this committee as a high-school committee."
-                },
-            ) {
-                IconButton(
-                    onClick = onToggleHighSchool,
-                    enabled = !loading,
-                    modifier = Modifier.size(32.dp),
-                ) {
-                    Icon(
-                        Icons.Filled.School,
-                        contentDescription = if (committee.isHighSchoolCommittee) {
-                            "Unset high-school committee"
-                        } else {
-                            "Set high-school committee"
-                        },
-                        tint = if (committee.isHighSchoolCommittee) highSchoolColor else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-            }
             SlotCountStepper(
                 value = committee.slotsPerPosition,
                 enabled = !loading,
@@ -183,24 +163,33 @@ private fun CommitteeHeader(
                 onDecrease = onDecrease,
             )
         }
+        CommitteeModeSelector(
+            mode = committee.mode,
+            enabled = !loading,
+            onSetMode = onSetMode,
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             CommitteeMetric(label = "Open", value = committee.openSlotCount, tooltip = "Empty slots in this committee.")
             CommitteeMetric(label = "Pending", value = committee.pendingSlotCount, tooltip = "Slots assigned in MunAssign but not yet confirmed by a MyMUN update.")
             CommitteeMetric(label = "Assigned", value = committee.assignedSlotCount, tooltip = "Slots confirmed by MyMUN update data.")
-            if (committee.isHighSchoolCommittee && committee.universityAssignedCount > 0) {
-                CommitteeMetric(
-                    label = "Uni",
-                    value = committee.universityAssignedCount,
-                    tooltip = "University-level delegates assigned in this high-school committee.",
-                    warning = true,
-                )
-            } else if (!committee.isHighSchoolCommittee && committee.highSchoolerAssignedCount > 0) {
-                CommitteeMetric(
-                    label = "HS",
-                    value = committee.highSchoolerAssignedCount,
-                    tooltip = "High-school delegates assigned in this non-high-school committee.",
-                    warning = true,
-                )
+            when (committee.mode) {
+                CommitteeMode.HighSchool -> if (committee.universityAssignedCount > 0) {
+                    CommitteeMetric(
+                        label = "Uni",
+                        value = committee.universityAssignedCount,
+                        tooltip = "University-level delegates assigned in this high-school committee.",
+                        warning = true,
+                    )
+                }
+                CommitteeMode.University -> if (committee.highSchoolerAssignedCount > 0) {
+                    CommitteeMetric(
+                        label = "HS",
+                        value = committee.highSchoolerAssignedCount,
+                        tooltip = "High-school delegates assigned in this university committee.",
+                        warning = true,
+                    )
+                }
+                CommitteeMode.Mapped -> Unit
             }
         }
         committee.reservationReminder?.let { reminder ->
@@ -214,6 +203,48 @@ private fun CommitteeHeader(
                         .clickable(onClick = onOpenReservationManager)
                         .padding(vertical = 2.dp),
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CommitteeModeSelector(
+    mode: CommitteeMode,
+    enabled: Boolean,
+    onSetMode: (CommitteeMode) -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(6.dp)),
+    ) {
+        CommitteeMode.entries.forEach { option ->
+            val selected = option == mode
+            BoardTooltip(option.tooltip) {
+                TextButton(
+                    onClick = { onSetMode(option) },
+                    enabled = enabled && !selected,
+                    modifier = Modifier
+                        .width(58.dp)
+                        .background(
+                            if (selected) {
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
+                            } else {
+                                Color.Transparent
+                            },
+                        ),
+                ) {
+                    Text(
+                        text = option.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                        color = if (selected) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
             }
         }
     }
@@ -259,6 +290,20 @@ private fun SlotCountStepper(
         }
     }
 }
+
+private val CommitteeMode.label: String
+    get() = when (this) {
+        CommitteeMode.HighSchool -> "HS"
+        CommitteeMode.University -> "Uni"
+        CommitteeMode.Mapped -> "Map"
+    }
+
+private val CommitteeMode.tooltip: String
+    get() = when (this) {
+        CommitteeMode.HighSchool -> "Treat every position in this committee as high-school."
+        CommitteeMode.University -> "Treat every position in this committee as university."
+        CommitteeMode.Mapped -> "Assign each position in this committee to another committee."
+    }
 
 @Composable
 private fun CommitteeMetric(label: String, value: Int, tooltip: String, warning: Boolean = false) {

@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.munika.assignment.data.excel.MymunWorkbookUpdater
+import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.QuestionConfiguration
 import org.munika.assignment.domain.repository.ConferenceRepository
@@ -284,11 +285,18 @@ class MainViewModel(
     }
 
     fun setCommitteeHighSchoolStatus(committeeId: String, isHighSchoolCommittee: Boolean) {
+        setCommitteeMode(
+            committeeId = committeeId,
+            mode = if (isHighSchoolCommittee) CommitteeMode.HighSchool else CommitteeMode.University,
+        )
+    }
+
+    fun setCommitteeMode(committeeId: String, mode: CommitteeMode) {
         val selectedId = selectedIdOrNull() ?: return
         scope.launch {
             _state.update { it.copy(loading = true, boardActionError = null) }
             try {
-                val conference = repository.setCommitteeHighSchoolStatus(selectedId, committeeId, isHighSchoolCommittee)
+                val conference = repository.setCommitteeMode(selectedId, committeeId, mode)
                 _state.update {
                     it.copy(
                         selectedConference = conference,
@@ -300,14 +308,45 @@ class MainViewModel(
                 _state.update {
                     it.copy(
                         loading = false,
-                        boardActionError = exception.message ?: "Committee high-school status could not be changed.",
+                        boardActionError = exception.message ?: "Committee mode could not be changed.",
                     )
                 }
             } catch (exception: Exception) {
                 _state.update {
                     it.copy(
                         loading = false,
-                        boardActionError = "Committee high-school status update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
+                        boardActionError = "Committee mode update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
+                    )
+                }
+            }
+        }
+    }
+
+    fun setPositionMappedCommittee(positionId: String, mappedCommitteeId: String?) {
+        val selectedId = selectedIdOrNull() ?: return
+        scope.launch {
+            _state.update { it.copy(loading = true, boardActionError = null) }
+            try {
+                val conference = repository.setPositionMappedCommittee(selectedId, positionId, mappedCommitteeId)
+                _state.update {
+                    it.copy(
+                        selectedConference = conference,
+                        loading = false,
+                        boardActionError = null,
+                    )
+                }
+            } catch (exception: IllegalArgumentException) {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        boardActionError = exception.message ?: "Position correspondence could not be changed.",
+                    )
+                }
+            } catch (exception: Exception) {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        boardActionError = "Position correspondence update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
                     )
                 }
             }

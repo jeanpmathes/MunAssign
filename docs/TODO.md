@@ -2,7 +2,6 @@
 
 ## Later - Transfer And Polish
 
-- IPC handling, is not HS / Uni specific but has a slot per committee, needs mapping from name to committee, takes HS / Uni from that committee
 - Fix all warnings of code.
 - Improve upload experience (no weird message) and the UI when conference is empty.
 - Polish question configuration keyboard/focus handling after regular use.
@@ -17,6 +16,7 @@
 - Stress tests with many people.
 - Warning for low language level.
 - Improve tooltips.
+- Larger window size / use size at last close.
 
 ## Experimental
 

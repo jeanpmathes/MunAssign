@@ -5,8 +5,8 @@ This document records persistence and update rules that are not obvious from the
 ## Ownership Boundaries
 
 - `Conference` owns all assignment data and stores organizer-managed display order.
-- `Committee` owns positions, the uniform `slotsPerPosition` value, and the organizer-managed high-school committee flag.
-- `Position` represents one assignable country or role from `Countries.Member Name`.
+- `Committee` owns positions, the uniform `slotsPerPosition` value, and the organizer-managed committee mode.
+- `Position` represents one assignable country or role from `Countries.Member Name` and may store a mapped target committee when its owning committee is in mapped mode.
 - `Slot` stores the current delegate reference and assignment source.
 - `Delegate` stores MyMUN profile data plus organizer-managed active/inactive state.
 - `Question` stores dynamic MyMUN question text plus local handling configuration.
@@ -52,6 +52,14 @@ Slot status is derived from slot data:
 - Delegate plus `Mymun` source means `Assigned`.
 
 One delegate can occupy at most one slot in a conference. A position can have multiple slots because slot count is configured per committee.
+
+Committee mode determines the high-school/university bucket used by its positions:
+
+- `HighSchool` positions count as high-school slots.
+- `University` positions count as university slots.
+- `Mapped` positions inherit the mode of their mapped target committee.
+
+Mapped targets must be committees in the same conference whose mode is not `Mapped`. This prevents chained or circular IPC correspondences. Unmapped positions in mapped committees are treated as incomplete for board state and do not contribute to high-school or university accept capacity until a target is selected.
 
 During an update:
 
@@ -109,7 +117,7 @@ MyMUN updates preserve where the referenced objects still exist:
 - delegate active/inactive state;
 - pending app assignments not contradicted by confirmed MyMUN assignments;
 - committee aliases;
-- committee high-school status;
+- committee mode and position correspondences;
 - question handling configuration.
 - organizer-managed reservations;
 - manual reservation links for retained active delegates;
@@ -183,3 +191,5 @@ Update metadata tables:
 - Current slot assignments enforce at most one occupied slot per delegate per conference.
 - Conference-owned foreign keys cascade on delete.
 - `conferences.display_order` stores the organizer-managed order used by the top-bar selector and management screen.
+- `committees.mode` stores `HighSchool`, `University`, or `Mapped`; the legacy high-school boolean is derived from the mode for compatibility.
+- `positions.mapped_committee_id` stores the optional mapped target committee. The repository clears this value when the owning committee leaves mapped mode, when the target disappears, or when the target becomes mapped.

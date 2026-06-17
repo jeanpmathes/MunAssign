@@ -14,6 +14,7 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It k
 - Reservations are organizer-managed accept-capacity holds. They can reserve high-school and/or university places, optionally link to one MyMUN delegation, and are not tied to specific committees, positions, or slots.
 - A delegate can consume at most one reservation. Manual delegate links are explicit organizer choices. Automatic delegation links are persisted rows rebuilt from active, paid, accepted delegates in submission-date order, skipping delegates that already consume a reservation.
 - Deactivated delegates never consume reservations. Extra delegates in a linked delegation simply stop consuming reservation capacity once the reservation count is full; there is no over-use state.
+- Committees can be marked high-school, university, or mapped. Mapped committees are for IPC-style committees where each position corresponds to another non-mapped committee and inherits that committee's high-school or university bucket.
 
 ## Technology
 
@@ -43,14 +44,17 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It k
 4. Blocking validation errors abort the update and leave the database unchanged.
 5. Organizers may create reservations and review MyMUN delegations before or during assignment work.
 6. The board shows committees as columns, positions as cards, and slots as rows.
-7. Slot controls can create or clear pending assignments, but cannot locally confirm a final assignment.
-8. Later MyMUN updates reconcile confirmed assignments from `Countries.Delegates` and rebuild automatic reservation usage.
+7. Organizers can switch a committee between high-school, university, and mapped mode. Mapped committee positions use a per-position dropdown to select the corresponding non-mapped committee.
+8. Slot controls can create or clear pending assignments, but cannot locally confirm a final assignment.
+9. Later MyMUN updates reconcile confirmed assignments from `Countries.Delegates` and rebuild automatic reservation usage.
 
 ## UI Requirements
 
 - The top bar shows conference name, active paid delegate count, unpaid delegate count, open slots, pending slots, assigned slots, high-school and university accept capacity after remaining reservations, and actions for delegate list, delegation overview, reservation manager, plus `.munassign` import/export.
 - The main view is a horizontally scrollable board of committee columns.
 - High-school committee columns show the total and remaining high-school reservation capacity reminder. University committee columns show the equivalent university reminder. The reminder opens the reservation manager and does not bind reservations to that committee.
+- Mapped committee columns use a distinct header tone and do not show a reservation reminder because capacity is derived position-by-position from their correspondences.
+- Mapped positions show a correspondence dropdown listing eligible high-school and university committees. Mapped committees cannot be selected as correspondence targets.
 - Each position shows slot rows, interested delegate count, and interested delegates inline when the position has no assignment.
 - Confirmed-assigned delegates are greyed out where they appear as interested delegates elsewhere.
 - Clicking a delegate opens a side panel with profile data, assignment state, reservation usage, preferences, configured question answers, comment history, and deactivate/reactivate controls. Manual reservation links can be assigned, changed, or removed there; automatic delegation links can be changed by assigning a manual reservation.
