@@ -12,6 +12,7 @@ class Position(
     override val id: PositionId,
     val committee: Committee,
     val name: String,
+    var mappedCommittee: Committee? = null,
     val slots: MutableList<Slot> = mutableListOf(),
 ) : DomainObject<PositionId> {
     init {
@@ -29,6 +30,19 @@ class Position(
 
     val displayName: String
         get() = CountryFlagEmojiResolver.displayNameFor(name)
+
+    val effectiveCommitteeMode: CommitteeMode?
+        get() = when (committee.mode) {
+            CommitteeMode.HighSchool -> CommitteeMode.HighSchool
+            CommitteeMode.University -> CommitteeMode.University
+            CommitteeMode.Mapped -> mappedCommittee?.mode?.takeIf { it != CommitteeMode.Mapped }
+        }
+
+    val isEffectivelyHighSchool: Boolean?
+        get() = effectiveCommitteeMode?.let { it == CommitteeMode.HighSchool }
+
+    val mappingIncomplete: Boolean
+        get() = committee.mode == CommitteeMode.Mapped && mappedCommittee == null
 
     val assignedDelegates: List<Delegate>
         get() = slots.mapNotNull { it.delegate }
