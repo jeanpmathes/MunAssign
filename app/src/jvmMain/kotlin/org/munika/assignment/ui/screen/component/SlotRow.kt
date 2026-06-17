@@ -38,6 +38,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.ui.viewmodel.SlotBoardStatus
 import org.munika.assignment.ui.viewmodel.SlotBoardUiState
 
@@ -50,7 +51,7 @@ fun SlotRow(
     onClearPendingAssignment: () -> Unit,
     onOpenDelegateDetail: (String) -> Unit,
 ) {
-    val style = slot.status.style()
+    val style = slot.status.style(slot.effectiveMode)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -98,12 +99,23 @@ fun SlotRow(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        if (slot.effectiveMode == CommitteeMode.HighSchool) {
+            BoardTooltip("High-school slot.") {
+                Icon(
+                    Icons.Filled.School,
+                    contentDescription = "High-school slot",
+                    tint = HighSchoolColor,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            Spacer(Modifier.width(6.dp))
+        }
         if (slot.delegateIsHighSchooler) {
             BoardTooltip("High school delegate.") {
                 Icon(
                     Icons.Filled.School,
                     contentDescription = "High school delegate",
-                    tint = Color(0xFF8E24AA),
+                    tint = HighSchoolColor,
                     modifier = Modifier.size(18.dp),
                 )
             }
@@ -153,16 +165,24 @@ private fun StatusPill(text: String, containerColor: Color, contentColor: Color)
 }
 
 @Composable
-private fun SlotBoardStatus.style(): SlotStyle =
+private fun SlotBoardStatus.style(effectiveMode: CommitteeMode?): SlotStyle =
     when (this) {
         SlotBoardStatus.Empty -> SlotStyle(
             label = "Open",
             emptyText = "Available",
             tooltip = "Open slot with no delegate assigned.",
             icon = Icons.Filled.RadioButtonUnchecked,
-            accentColor = MaterialTheme.colorScheme.outline,
-            borderColor = MaterialTheme.colorScheme.outlineVariant,
-            containerColor = MaterialTheme.colorScheme.surface,
+            accentColor = if (effectiveMode == CommitteeMode.HighSchool) HighSchoolColor else MaterialTheme.colorScheme.outline,
+            borderColor = if (effectiveMode == CommitteeMode.HighSchool) {
+                HighSchoolColor.copy(alpha = 0.42f)
+            } else {
+                MaterialTheme.colorScheme.outlineVariant
+            },
+            containerColor = if (effectiveMode == CommitteeMode.HighSchool) {
+                HighSchoolColor.copy(alpha = 0.06f)
+            } else {
+                MaterialTheme.colorScheme.surface
+            },
             pillColor = MaterialTheme.colorScheme.surfaceVariant,
             pillTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -201,3 +221,5 @@ private data class SlotStyle(
     val pillColor: Color,
     val pillTextColor: Color,
 )
+
+private val HighSchoolColor = Color(0xFF8E24AA)

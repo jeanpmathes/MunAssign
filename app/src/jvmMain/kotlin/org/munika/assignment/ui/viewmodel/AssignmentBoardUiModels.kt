@@ -71,6 +71,7 @@ data class SlotBoardUiState(
     val id: String,
     val index: Int,
     val status: SlotBoardStatus,
+    val effectiveMode: CommitteeMode?,
     val delegateName: String?,
     val delegateId: String?,
     val delegateIsHighSchooler: Boolean,
@@ -238,6 +239,7 @@ private fun Slot.toBoardUiState(): SlotBoardUiState =
             AssignmentStatus.Pending -> SlotBoardStatus.Pending
             AssignmentStatus.Assigned -> SlotBoardStatus.Assigned
         },
+        effectiveMode = position.effectiveCommitteeMode,
         delegateName = delegate?.displayName,
         delegateId = delegate?.id?.value,
         delegateIsHighSchooler = delegate?.isHighSchooler == true,

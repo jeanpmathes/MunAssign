@@ -5,10 +5,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,15 +21,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -129,15 +135,27 @@ private fun CommitteeHeader(
     onOpenReservationManager: () -> Unit,
 ) {
     val highSchoolColor = Color(0xFF8E24AA)
-    val mappedColor = Color(0xFF00796B)
-    val headerColor = when (committee.mode) {
-        CommitteeMode.HighSchool -> highSchoolColor.copy(alpha = 0.14f)
-        CommitteeMode.Mapped -> mappedColor.copy(alpha = 0.15f)
-        CommitteeMode.University -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+    val universityColor = MaterialTheme.colorScheme.primary
+    val headerBrush = when (committee.mode) {
+        CommitteeMode.HighSchool -> Brush.linearGradient(listOf(highSchoolColor.copy(alpha = 0.14f), highSchoolColor.copy(alpha = 0.08f)))
+        CommitteeMode.Mapped -> Brush.linearGradient(
+            listOf(
+                universityColor.copy(alpha = 0.10f),
+                highSchoolColor.copy(alpha = 0.16f),
+                universityColor.copy(alpha = 0.10f),
+            ),
+        )
+        CommitteeMode.University -> Brush.linearGradient(
+            listOf(
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+            ),
+        )
     }
+    var settingsOpen by remember(committee.id) { mutableStateOf(false) }
     Column(
         modifier = Modifier.fillMaxWidth()
-            .background(headerColor)
+            .background(headerBrush)
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -156,18 +174,16 @@ private fun CommitteeHeader(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            SlotCountStepper(
-                value = committee.slotsPerPosition,
-                enabled = !loading,
-                onIncrease = onIncrease,
-                onDecrease = onDecrease,
-            )
+            BoardTooltip("Open committee settings.") {
+                IconButton(
+                    onClick = { settingsOpen = true },
+                    enabled = !loading,
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(Icons.Filled.Settings, contentDescription = "Committee settings", modifier = Modifier.size(18.dp))
+                }
+            }
         }
-        CommitteeModeSelector(
-            mode = committee.mode,
-            enabled = !loading,
-            onSetMode = onSetMode,
-        )
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             CommitteeMetric(label = "Open", value = committee.openSlotCount, tooltip = "Empty slots in this committee.")
             CommitteeMetric(label = "Pending", value = committee.pendingSlotCount, tooltip = "Slots assigned in MunAssign but not yet confirmed by a MyMUN update.")
@@ -192,56 +208,106 @@ private fun CommitteeHeader(
                 CommitteeMode.Mapped -> Unit
             }
         }
-        committee.reservationReminder?.let { reminder ->
-            BoardTooltip("Open reservation manager. These reservations reserve acceptance capacity for this committee type, but do not attach to specific slots.") {
-                Text(
-                    text = "${reminder.label}: ${reminder.remainingCount}/${reminder.totalCount} open",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .clickable(onClick = onOpenReservationManager)
-                        .padding(vertical = 2.dp),
-                )
+        Box(modifier = Modifier.height(22.dp)) {
+            committee.reservationReminder?.let { reminder ->
+                BoardTooltip("Open reservation manager. These reservations reserve acceptance capacity for this committee type, but do not attach to specific slots.") {
+                    Text(
+                        text = "${reminder.label}: ${reminder.remainingCount} open",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .clickable(onClick = onOpenReservationManager)
+                            .padding(vertical = 2.dp),
+                    )
+                }
             }
         }
+    }
+
+    if (settingsOpen) {
+        CommitteeSettingsDialog(
+            committee = committee,
+            loading = loading,
+            onDismiss = { settingsOpen = false },
+            onSetMode = onSetMode,
+            onIncrease = onIncrease,
+            onDecrease = onDecrease,
+        )
     }
 }
 
 @Composable
-private fun CommitteeModeSelector(
+private fun CommitteeSettingsDialog(
+    committee: CommitteeBoardUiState,
+    loading: Boolean,
+    onDismiss: () -> Unit,
+    onSetMode: (CommitteeMode) -> Unit,
+    onIncrease: () -> Unit,
+    onDecrease: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("${committee.name} settings") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.width(320.dp)) {
+                CommitteeModeDropdown(
+                    mode = committee.mode,
+                    enabled = !loading,
+                    onSetMode = onSetMode,
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Slots per position", style = MaterialTheme.typography.bodyMedium)
+                    SlotCountStepper(
+                        value = committee.slotsPerPosition,
+                        enabled = !loading,
+                        onIncrease = onIncrease,
+                        onDecrease = onDecrease,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) {
+                Text("OK")
+            }
+        },
+    )
+}
+
+@Composable
+private fun CommitteeModeDropdown(
     mode: CommitteeMode,
     enabled: Boolean,
     onSetMode: (CommitteeMode) -> Unit,
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(6.dp)),
-    ) {
-        CommitteeMode.entries.forEach { option ->
-            val selected = option == mode
-            BoardTooltip(option.tooltip) {
-                TextButton(
-                    onClick = { onSetMode(option) },
-                    enabled = enabled && !selected,
-                    modifier = Modifier
-                        .width(58.dp)
-                        .background(
-                            if (selected) {
-                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
-                            } else {
-                                Color.Transparent
-                            },
-                        ),
-                ) {
-                    Text(
-                        text = option.label,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                        color = if (selected) {
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
+    var expanded by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Type", style = MaterialTheme.typography.bodyMedium)
+        Box {
+            OutlinedButton(
+                onClick = { expanded = true },
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(mode.label)
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+            ) {
+                CommitteeMode.entries.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option.label) },
+                        onClick = {
+                            expanded = false
+                            if (option != mode) {
+                                onSetMode(option)
+                            }
                         },
                     )
                 }
@@ -293,16 +359,9 @@ private fun SlotCountStepper(
 
 private val CommitteeMode.label: String
     get() = when (this) {
-        CommitteeMode.HighSchool -> "HS"
-        CommitteeMode.University -> "Uni"
-        CommitteeMode.Mapped -> "Map"
-    }
-
-private val CommitteeMode.tooltip: String
-    get() = when (this) {
-        CommitteeMode.HighSchool -> "Treat every position in this committee as high-school."
-        CommitteeMode.University -> "Treat every position in this committee as university."
-        CommitteeMode.Mapped -> "Assign each position in this committee to another committee."
+        CommitteeMode.HighSchool -> "High school"
+        CommitteeMode.University -> "University"
+        CommitteeMode.Mapped -> "Mapped"
     }
 
 @Composable

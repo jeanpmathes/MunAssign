@@ -335,6 +335,18 @@ class AssignmentBoardUiModelsTest {
         assertEquals(listOf("Available Delegate", "Neutral Delegate"), candidates.map { it.name })
     }
 
+    @Test
+    fun `mapped position slots expose effective school level`() {
+        val board = mappedBoard()
+
+        val slot = board.conference.toAssignmentBoardUiState()
+            .committees.single { it.name == "IPC" }
+            .positions.single()
+            .slots.single()
+
+        assertEquals(CommitteeMode.HighSchool, slot.effectiveMode)
+    }
+
     private fun board(slotCount: Int = 1, isHighSchoolCommittee: Boolean = false): Board {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val committee = Committee(
