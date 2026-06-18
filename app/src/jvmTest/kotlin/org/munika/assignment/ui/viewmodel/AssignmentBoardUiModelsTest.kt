@@ -336,15 +336,24 @@ class AssignmentBoardUiModelsTest {
     }
 
     @Test
-    fun `mapped position slots expose effective school level`() {
+    fun `mapped committee exposes both reservation buckets`() {
         val board = mappedBoard()
+        board.conference.reservations += Reservation(
+            id = ReservationId("reservation"),
+            conference = board.conference,
+            name = "Mixed Hold",
+            highSchoolCount = 2,
+            universityCount = 3,
+            createdAt = Instant.EPOCH,
+            updatedAt = Instant.EPOCH,
+        )
 
-        val slot = board.conference.toAssignmentBoardUiState()
+        val reminders = board.conference.toAssignmentBoardUiState()
             .committees.single { it.name == "IPC" }
-            .positions.single()
-            .slots.single()
+            .reservationReminders
 
-        assertEquals(CommitteeMode.HighSchool, slot.effectiveMode)
+        assertEquals(listOf("HS reservations", "Uni reservations"), reminders.map { it.label })
+        assertEquals(listOf(2, 3), reminders.map { it.remainingCount })
     }
 
     private fun board(slotCount: Int = 1, isHighSchoolCommittee: Boolean = false): Board {

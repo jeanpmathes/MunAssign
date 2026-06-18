@@ -27,9 +27,11 @@ data class CommitteeBoardUiState(
     val assignedSlotCount: Int,
     val highSchoolerAssignedCount: Int,
     val universityAssignedCount: Int,
-    val reservationReminder: ReservationReminderUiState?,
+    val reservationReminders: List<ReservationReminderUiState>,
     val positions: List<PositionBoardUiState>,
-)
+) {
+    val reservationReminder: ReservationReminderUiState? = reservationReminders.singleOrNull()
+}
 
 data class ReservationReminderUiState(
     val label: String,
@@ -71,7 +73,6 @@ data class SlotBoardUiState(
     val id: String,
     val index: Int,
     val status: SlotBoardStatus,
-    val effectiveMode: CommitteeMode?,
     val delegateName: String?,
     val delegateId: String?,
     val delegateIsHighSchooler: Boolean,
@@ -122,7 +123,14 @@ fun Conference.toAssignmentBoardUiState(): AssignmentBoardUiState =
     AssignmentBoardUiState(
         conferenceId = id.value,
         committees = committees.map { committee ->
-            val reservationReminder = reservations.toReservationReminderUiState(committee.isHighSchoolCommittee)
+            val reservationReminders = when (committee.mode) {
+                CommitteeMode.HighSchool -> listOfNotNull(reservations.toReservationReminderUiState(isHighSchool = true))
+                CommitteeMode.University -> listOfNotNull(reservations.toReservationReminderUiState(isHighSchool = false))
+                CommitteeMode.Mapped -> listOfNotNull(
+                    reservations.toReservationReminderUiState(isHighSchool = true),
+                    reservations.toReservationReminderUiState(isHighSchool = false),
+                )
+            }
             CommitteeBoardUiState(
                 id = committee.id.value,
                 name = committee.displayName,
@@ -134,14 +142,14 @@ fun Conference.toAssignmentBoardUiState(): AssignmentBoardUiState =
                 assignedSlotCount = committee.assignedSlotCount,
                 highSchoolerAssignedCount = committee.slots.count { it.delegate?.isHighSchooler == true },
                 universityAssignedCount = committee.slots.count { it.delegate != null && it.delegate?.isHighSchooler != true },
-                reservationReminder = if (committee.mode == CommitteeMode.Mapped) null else reservationReminder,
+                reservationReminders = reservationReminders,
                 positions = committee.positions.map { it.toBoardUiState() },
             )
         },
     )
 
-private fun List<Reservation>.toReservationReminderUiState(isHighSchoolCommittee: Boolean): ReservationReminderUiState? {
-    val totalCount = if (isHighSchoolCommittee) {
+private fun List<Reservation>.toReservationReminderUiState(isHighSchool: Boolean): ReservationReminderUiState? {
+    val totalCount = if (isHighSchool) {
         sumOf { it.highSchoolCount }
     } else {
         sumOf { it.universityCount }
@@ -149,9 +157,9 @@ private fun List<Reservation>.toReservationReminderUiState(isHighSchoolCommittee
     if (totalCount == 0) return null
 
     return ReservationReminderUiState(
-        label = if (isHighSchoolCommittee) "HS reservations" else "Uni reservations",
+        label = if (isHighSchool) "HS reservations" else "Uni reservations",
         totalCount = totalCount,
-        remainingCount = if (isHighSchoolCommittee) {
+        remainingCount = if (isHighSchool) {
             sumOf { it.remainingHighSchoolCount }
         } else {
             sumOf { it.remainingUniversityCount }
@@ -239,7 +247,6 @@ private fun Slot.toBoardUiState(): SlotBoardUiState =
             AssignmentStatus.Pending -> SlotBoardStatus.Pending
             AssignmentStatus.Assigned -> SlotBoardStatus.Assigned
         },
-        effectiveMode = position.effectiveCommitteeMode,
         delegateName = delegate?.displayName,
         delegateId = delegate?.id?.value,
         delegateIsHighSchooler = delegate?.isHighSchooler == true,

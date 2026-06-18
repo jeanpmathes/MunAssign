@@ -19,10 +19,13 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
@@ -48,7 +51,7 @@ import org.munika.assignment.ui.viewmodel.InterestedDelegateUiState
 import org.munika.assignment.ui.viewmodel.PositionBoardUiState
 import org.munika.assignment.ui.viewmodel.SlotBoardUiState
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun PositionCard(
     position: PositionBoardUiState,
@@ -61,18 +64,20 @@ fun PositionCard(
     var menuSlot by remember(position.id) { mutableStateOf<SlotBoardUiState?>(null) }
     var assignmentSlot by remember(position.id) { mutableStateOf<SlotBoardUiState?>(null) }
     var pendingMoveRequest by remember(position.id) { mutableStateOf<PendingInterestedMoveRequest?>(null) }
+    val mappedTone = position.mappedPositionTone()
 
     Card(
         modifier = Modifier.fillMaxWidth(),
         border = BorderStroke(
             width = if (highlighted) 2.dp else 1.dp,
-            color = if (highlighted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+            color = if (highlighted) MaterialTheme.colorScheme.primary else mappedTone?.borderColor
+                ?: MaterialTheme.colorScheme.outlineVariant,
         ),
         colors = CardDefaults.cardColors(
             containerColor = if (highlighted) {
                 MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.38f)
             } else {
-                MaterialTheme.colorScheme.surface
+                mappedTone?.containerColor ?: MaterialTheme.colorScheme.surface
             },
         ),
         shape = RoundedCornerShape(8.dp),
@@ -96,6 +101,9 @@ fun PositionCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                }
+                mappedTone?.let { tone ->
+                    PositionModeBadge(tone)
                 }
             }
 
@@ -208,6 +216,7 @@ fun PositionCard(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MappedCommitteeSelector(
     position: PositionBoardUiState,
@@ -216,20 +225,24 @@ private fun MappedCommitteeSelector(
     var expanded by remember(position.id) { mutableStateOf(false) }
     val mappedCommittee = position.mappedCommittee
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Box {
-            BoardTooltip("Choose which regular committee this IPC position corresponds to.") {
-                OutlinedButton(
-                    onClick = { expanded = true },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        text = mappedCommittee?.let { "${it.name} (${it.mode.label})" } ?: "Select correspondence",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            DropdownMenu(
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = !expanded },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            OutlinedTextField(
+                value = mappedCommittee?.let { "${it.name} (${it.mode.label})" }.orEmpty(),
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Corresponding committee") },
+                placeholder = { Text("Select correspondence") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                singleLine = true,
+                modifier = Modifier
+                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = true)
+                    .fillMaxWidth(),
+            )
+            ExposedDropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
             ) {
@@ -263,6 +276,53 @@ private fun MappedCommitteeSelector(
         }
     }
 }
+
+@Composable
+private fun PositionBoardUiState.mappedPositionTone(): PositionModeTone? {
+    if (!showsMappingSelector) return null
+    return when (effectiveMode) {
+        CommitteeMode.HighSchool -> PositionModeTone(
+            label = "HS",
+            containerColor = HighSchoolColor.copy(alpha = 0.07f),
+            borderColor = HighSchoolColor.copy(alpha = 0.50f),
+            badgeColor = HighSchoolColor.copy(alpha = 0.16f),
+            contentColor = HighSchoolColor,
+        )
+        CommitteeMode.University -> PositionModeTone(
+            label = "Uni",
+            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.06f),
+            borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.42f),
+            badgeColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+            contentColor = MaterialTheme.colorScheme.primary,
+        )
+        CommitteeMode.Mapped,
+        null,
+        -> null
+    }
+}
+
+@Composable
+private fun PositionModeBadge(tone: PositionModeTone) {
+    BoardTooltip("${tone.label} position inherited from the corresponding committee.") {
+        Text(
+            text = tone.label,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = tone.contentColor,
+            modifier = Modifier
+                .background(tone.badgeColor, RoundedCornerShape(999.dp))
+                .padding(horizontal = 7.dp, vertical = 3.dp),
+        )
+    }
+}
+
+private data class PositionModeTone(
+    val label: String,
+    val containerColor: Color,
+    val borderColor: Color,
+    val badgeColor: Color,
+    val contentColor: Color,
+)
 
 private data class PendingInterestedMoveRequest(
     val slot: SlotBoardUiState,
@@ -386,3 +446,5 @@ private val CommitteeMode.label: String
         CommitteeMode.University -> "Uni"
         CommitteeMode.Mapped -> "Mapped"
     }
+
+private val HighSchoolColor = Color(0xFF8E24AA)

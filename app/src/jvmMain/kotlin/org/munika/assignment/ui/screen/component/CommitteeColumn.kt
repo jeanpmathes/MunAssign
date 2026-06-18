@@ -24,13 +24,16 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -209,13 +212,24 @@ private fun CommitteeHeader(
             }
         }
         Box(modifier = Modifier.height(22.dp)) {
-            committee.reservationReminder?.let { reminder ->
+            if (committee.reservationReminders.isNotEmpty()) {
+                val reminderText = if (committee.mode == CommitteeMode.Mapped) {
+                    committee.reservationReminders.joinToString(" · ") { reminder ->
+                        "${reminder.shortLabel}: ${reminder.remainingCount} open"
+                    }
+                } else {
+                    committee.reservationReminders.joinToString(" · ") { reminder ->
+                        "${reminder.label}: ${reminder.remainingCount} open"
+                    }
+                }
                 BoardTooltip("Open reservation manager. These reservations reserve acceptance capacity for this committee type, but do not attach to specific slots.") {
                     Text(
-                        text = "${reminder.label}: ${reminder.remainingCount} open",
+                        text = reminderText,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
                             .clickable(onClick = onOpenReservationManager)
                             .padding(vertical = 2.dp),
@@ -279,6 +293,7 @@ private fun CommitteeSettingsDialog(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CommitteeModeDropdown(
     mode: CommitteeMode,
@@ -287,16 +302,24 @@ private fun CommitteeModeDropdown(
 ) {
     var expanded by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("Type", style = MaterialTheme.typography.bodyMedium)
-        Box {
-            OutlinedButton(
-                onClick = { expanded = true },
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { if (enabled) expanded = !expanded },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            OutlinedTextField(
+                value = mode.label,
+                onValueChange = {},
+                readOnly = true,
                 enabled = enabled,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(mode.label)
-            }
-            DropdownMenu(
+                label = { Text("Type") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                singleLine = true,
+                modifier = Modifier
+                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = enabled)
+                    .fillMaxWidth(),
+            )
+            ExposedDropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
             ) {
@@ -363,6 +386,9 @@ private val CommitteeMode.label: String
         CommitteeMode.University -> "University"
         CommitteeMode.Mapped -> "Mapped"
     }
+
+private val org.munika.assignment.ui.viewmodel.ReservationReminderUiState.shortLabel: String
+    get() = if (label.startsWith("HS")) "HS" else "Uni"
 
 @Composable
 private fun CommitteeMetric(label: String, value: Int, tooltip: String, warning: Boolean = false) {
