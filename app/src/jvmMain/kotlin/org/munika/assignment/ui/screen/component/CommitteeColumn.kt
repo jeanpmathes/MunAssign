@@ -43,8 +43,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -138,15 +140,20 @@ private fun CommitteeHeader(
     onOpenReservationManager: () -> Unit,
 ) {
     val highSchoolColor = Color(0xFF8E24AA)
-    val universityColor = MaterialTheme.colorScheme.primary
     val headerBrush = when (committee.mode) {
         CommitteeMode.HighSchool -> Brush.linearGradient(listOf(highSchoolColor.copy(alpha = 0.14f), highSchoolColor.copy(alpha = 0.08f)))
         CommitteeMode.Mapped -> Brush.linearGradient(
-            listOf(
-                universityColor.copy(alpha = 0.10f),
-                highSchoolColor.copy(alpha = 0.16f),
-                universityColor.copy(alpha = 0.10f),
+            colorStops = arrayOf(
+                0.00f to MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
+                0.38f to MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
+                0.38f to highSchoolColor.copy(alpha = 0.13f),
+                0.58f to highSchoolColor.copy(alpha = 0.13f),
+                0.58f to MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
+                1.00f to MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
             ),
+            start = Offset.Zero,
+            end = Offset(30f, 30f),
+            tileMode = TileMode.Repeated,
         )
         CommitteeMode.University -> Brush.linearGradient(
             listOf(
@@ -213,19 +220,17 @@ private fun CommitteeHeader(
         }
         Box(modifier = Modifier.height(22.dp)) {
             if (committee.reservationReminders.isNotEmpty()) {
-                val reminderText = if (committee.mode == CommitteeMode.Mapped) {
-                    committee.reservationReminders.joinToString(" · ") { reminder ->
-                        "${reminder.shortLabel}: ${reminder.remainingCount} open"
-                    }
-                } else {
-                    committee.reservationReminders.joinToString(" · ") { reminder ->
-                        "${reminder.label}: ${reminder.remainingCount} open"
-                    }
+                val reminderText = committee.reservationReminders.joinToString(" · ") { reminder ->
+                    "${reminder.label}: ${reminder.remainingCount} open"
                 }
                 BoardTooltip("Open reservation manager. These reservations reserve acceptance capacity for this committee type, but do not attach to specific slots.") {
                     Text(
                         text = reminderText,
-                        style = MaterialTheme.typography.labelMedium,
+                        style = if (committee.mode == CommitteeMode.Mapped) {
+                            MaterialTheme.typography.labelSmall
+                        } else {
+                            MaterialTheme.typography.labelMedium
+                        },
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.primary,
                         maxLines = 1,
@@ -386,9 +391,6 @@ private val CommitteeMode.label: String
         CommitteeMode.University -> "University"
         CommitteeMode.Mapped -> "Mapped"
     }
-
-private val org.munika.assignment.ui.viewmodel.ReservationReminderUiState.shortLabel: String
-    get() = if (label.startsWith("HS")) "HS" else "Uni"
 
 @Composable
 private fun CommitteeMetric(label: String, value: Int, tooltip: String, warning: Boolean = false) {

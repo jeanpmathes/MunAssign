@@ -102,8 +102,8 @@ fun PositionCard(
                         )
                     }
                 }
-                mappedTone?.let { tone ->
-                    PositionModeBadge(tone)
+                if (mappedTone != null) {
+                    HighSchoolPositionIcon()
                 }
             }
 
@@ -231,11 +231,22 @@ private fun MappedCommitteeSelector(
             modifier = Modifier.fillMaxWidth(),
         ) {
             OutlinedTextField(
-                value = mappedCommittee?.let { "${it.name} (${it.mode.label})" }.orEmpty(),
+                value = mappedCommittee?.name.orEmpty(),
                 onValueChange = {},
                 readOnly = true,
                 label = { Text("Corresponding committee") },
                 placeholder = { Text("Select correspondence") },
+                leadingIcon = if (mappedCommittee?.mode == CommitteeMode.HighSchool) {
+                    {
+                        Icon(
+                            Icons.Filled.School,
+                            contentDescription = "High-school committee",
+                            tint = HighSchoolColor,
+                        )
+                    }
+                } else {
+                    null
+                },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                 singleLine = true,
                 modifier = Modifier
@@ -248,7 +259,18 @@ private fun MappedCommitteeSelector(
             ) {
                 position.mappingOptions.forEach { option ->
                     DropdownMenuItem(
-                        text = { Text("${option.name} (${option.mode.label})") },
+                        text = { Text(option.name) },
+                        leadingIcon = if (option.mode == CommitteeMode.HighSchool) {
+                            {
+                                Icon(
+                                    Icons.Filled.School,
+                                    contentDescription = "High-school committee",
+                                    tint = HighSchoolColor,
+                                )
+                            }
+                        } else {
+                            null
+                        },
                         onClick = {
                             expanded = false
                             onSetPositionMappedCommittee(position.id, option.id)
@@ -282,19 +304,10 @@ private fun PositionBoardUiState.mappedPositionTone(): PositionModeTone? {
     if (!showsMappingSelector) return null
     return when (effectiveMode) {
         CommitteeMode.HighSchool -> PositionModeTone(
-            label = "HS",
             containerColor = HighSchoolColor.copy(alpha = 0.07f),
             borderColor = HighSchoolColor.copy(alpha = 0.50f),
-            badgeColor = HighSchoolColor.copy(alpha = 0.16f),
-            contentColor = HighSchoolColor,
         )
-        CommitteeMode.University -> PositionModeTone(
-            label = "Uni",
-            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.06f),
-            borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.42f),
-            badgeColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
-            contentColor = MaterialTheme.colorScheme.primary,
-        )
+        CommitteeMode.University -> null
         CommitteeMode.Mapped,
         null,
         -> null
@@ -302,26 +315,20 @@ private fun PositionBoardUiState.mappedPositionTone(): PositionModeTone? {
 }
 
 @Composable
-private fun PositionModeBadge(tone: PositionModeTone) {
-    BoardTooltip("${tone.label} position inherited from the corresponding committee.") {
-        Text(
-            text = tone.label,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Bold,
-            color = tone.contentColor,
-            modifier = Modifier
-                .background(tone.badgeColor, RoundedCornerShape(999.dp))
-                .padding(horizontal = 7.dp, vertical = 3.dp),
+private fun HighSchoolPositionIcon() {
+    BoardTooltip("High-school position inherited from the corresponding committee.") {
+        Icon(
+            Icons.Filled.School,
+            contentDescription = "High-school position",
+            tint = HighSchoolColor,
+            modifier = Modifier.height(18.dp),
         )
     }
 }
 
 private data class PositionModeTone(
-    val label: String,
     val containerColor: Color,
     val borderColor: Color,
-    val badgeColor: Color,
-    val contentColor: Color,
 )
 
 private data class PendingInterestedMoveRequest(
@@ -439,12 +446,5 @@ private data class RankBadgeStyle(
 
 private val PositionBoardUiState.showsMappingSelector: Boolean
     get() = mappingOptions.isNotEmpty() || mappedCommittee != null || mappingIncomplete
-
-private val CommitteeMode.label: String
-    get() = when (this) {
-        CommitteeMode.HighSchool -> "HS"
-        CommitteeMode.University -> "Uni"
-        CommitteeMode.Mapped -> "Mapped"
-    }
 
 private val HighSchoolColor = Color(0xFF8E24AA)
