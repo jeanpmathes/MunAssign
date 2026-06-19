@@ -13,10 +13,10 @@
 - The text when disabling a delegate is ugly.
 - Add a splash screen and loading indicator.
 - Drag and drop of excel files.
-- Stress tests with many people.
 - Warning for low language level.
 - Improve tooltips.
 - Larger window size / use size at last close.
+- Stress tests with many people.
 
 ## Experimental
 
