@@ -19,13 +19,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.School
-import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
@@ -38,6 +38,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipAnchorPosition
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
@@ -250,7 +251,7 @@ private fun IssueRow(
         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
             TooltipIconButton("Open delegate profile.") {
                 IconButton(onClick = onOpenDelegate, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Filled.ArrowForward, contentDescription = "Open delegate profile", modifier = Modifier.size(17.dp))
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Open delegate profile", modifier = Modifier.size(17.dp))
                 }
             }
             if (issue.resolved) {
@@ -261,7 +262,7 @@ private fun IssueRow(
                 }
                 TooltipIconButton("Reopen issue.") {
                     IconButton(onClick = onUnresolve, modifier = Modifier.size(32.dp), enabled = issue.resolutionId != null) {
-                        Icon(Icons.Filled.Undo, contentDescription = "Reopen issue", modifier = Modifier.size(17.dp))
+                        Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Reopen issue", modifier = Modifier.size(17.dp))
                     }
                 }
             } else {
@@ -305,7 +306,7 @@ private fun LabeledIssueText(label: String, tooltip: String, text: String) {
 @Composable
 private fun TooltipIcon(tooltip: String, content: @Composable () -> Unit) {
     TooltipBox(
-        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(positioning = TooltipAnchorPosition.Above),
         tooltip = { PlainTooltip { Text(tooltip) } },
         state = rememberTooltipState(),
     ) {
@@ -316,7 +317,7 @@ private fun TooltipIcon(tooltip: String, content: @Composable () -> Unit) {
 @Composable
 private fun TooltipIconButton(tooltip: String, content: @Composable () -> Unit) {
     TooltipBox(
-        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(positioning = TooltipAnchorPosition.Above),
         tooltip = { PlainTooltip { Text(tooltip) } },
         state = rememberTooltipState(),
     ) {

@@ -42,6 +42,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -55,6 +56,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipAnchorPosition
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
@@ -489,7 +491,7 @@ private fun ConferenceDropdown(
             trailingIcon = {
                 ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
             },
-            modifier = Modifier.menuAnchor().width(300.dp),
+            modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled).width(300.dp),
         )
         DropdownMenu(
             expanded = expanded,
@@ -597,7 +599,7 @@ internal fun Conference.toAcceptanceCapacityUiState(): AcceptanceCapacityUiState
 @Composable
 private fun StatGroup(label: String, value: String, tooltip: String) {
     TooltipBox(
-        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(positioning = TooltipAnchorPosition.Above),
         tooltip = { PlainTooltip { Text(tooltip) } },
         state = rememberTooltipState(),
     ) {
@@ -616,7 +618,7 @@ private fun StatGroup(label: String, value: String, tooltip: String) {
 @Composable
 private fun CapacityStatGroup(capacity: AcceptanceCapacityUiState) {
     TooltipBox(
-        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(positioning = TooltipAnchorPosition.Above),
         tooltip = {
             PlainTooltip {
                 Text("Acceptance capacity after accepted paid active delegates and remaining reservations are subtracted from high-school and university committee slots.")
@@ -660,7 +662,7 @@ private fun TooltipIconButton(
     tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
     TooltipBox(
-        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(positioning = TooltipAnchorPosition.Above),
         tooltip = { PlainTooltip { Text(tooltip) } },
         state = rememberTooltipState(),
     ) {
@@ -679,7 +681,7 @@ private fun NoticeIconButton(
     enabled: Boolean,
 ) {
     TooltipBox(
-        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(positioning = TooltipAnchorPosition.Above),
         tooltip = { PlainTooltip { Text(tooltip) } },
         state = rememberTooltipState(),
     ) {
@@ -740,7 +742,7 @@ private val CapacityNegativeColor = Color(0xFFC62828)
 @Composable
 private fun WithTooltip(tooltip: String, content: @Composable () -> Unit) {
     TooltipBox(
-        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(positioning = TooltipAnchorPosition.Above),
         tooltip = { PlainTooltip { Text(tooltip) } },
         state = rememberTooltipState(),
     ) {
