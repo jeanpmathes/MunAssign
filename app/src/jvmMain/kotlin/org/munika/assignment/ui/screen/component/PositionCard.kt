@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -29,8 +30,11 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,24 +68,35 @@ fun PositionCard(
     var menuSlot by remember(position.id) { mutableStateOf<SlotBoardUiState?>(null) }
     var assignmentSlot by remember(position.id) { mutableStateOf<SlotBoardUiState?>(null) }
     var pendingMoveRequest by remember(position.id) { mutableStateOf<PendingInterestedMoveRequest?>(null) }
-    val mappedTone = position.mappedPositionTone()
+    val highSchoolTone = position.highSchoolPositionTone()
 
     Card(
         modifier = Modifier.fillMaxWidth(),
         border = BorderStroke(
             width = if (highlighted) 2.dp else 1.dp,
-            color = if (highlighted) MaterialTheme.colorScheme.primary else mappedTone?.borderColor
+            color = if (highlighted) MaterialTheme.colorScheme.primary else highSchoolTone?.borderColor
                 ?: MaterialTheme.colorScheme.outlineVariant,
         ),
         colors = CardDefaults.cardColors(
             containerColor = if (highlighted) {
                 MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.38f)
             } else {
-                mappedTone?.containerColor ?: MaterialTheme.colorScheme.surface
+                highSchoolTone?.containerColor ?: MaterialTheme.colorScheme.surface
             },
         ),
         shape = RoundedCornerShape(8.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (highlighted) 5.dp else 1.dp),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = when {
+                highlighted -> 5.dp
+                highSchoolTone != null -> 0.dp
+                else -> 1.dp
+            },
+            pressedElevation = if (highSchoolTone != null) 0.dp else 1.dp,
+            focusedElevation = if (highSchoolTone != null) 0.dp else 1.dp,
+            hoveredElevation = if (highSchoolTone != null) 0.dp else 1.dp,
+            draggedElevation = if (highSchoolTone != null) 0.dp else 4.dp,
+            disabledElevation = 0.dp,
+        ),
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -102,7 +117,7 @@ fun PositionCard(
                         )
                     }
                 }
-                if (mappedTone != null) {
+                if (highSchoolTone != null) {
                     HighSchoolPositionIcon()
                 }
             }
@@ -236,16 +251,41 @@ private fun MappedCommitteeSelector(
                 readOnly = true,
                 label = { Text("Corresponding committee") },
                 placeholder = { Text("Select correspondence") },
-                leadingIcon = if (mappedCommittee?.mode == CommitteeMode.HighSchool) {
-                    {
-                        Icon(
-                            Icons.Filled.School,
-                            contentDescription = "High-school committee",
-                            tint = HighSchoolColor,
-                        )
+                suffix = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        if (mappedCommittee?.mode == CommitteeMode.HighSchool) {
+                            Icon(
+                                Icons.Filled.School,
+                                contentDescription = "High-school committee",
+                                tint = HighSchoolColor,
+                            )
+                        }
+                        if (mappedCommittee != null) {
+                            BoardTooltip("Clear correspondence.") {
+                                IconButton(
+                                    onClick = { onSetPositionMappedCommittee(position.id, null) },
+                                    modifier = Modifier.size(24.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Close,
+                                        contentDescription = "Clear correspondence",
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                            }
+                        } else {
+                            BoardTooltip("No corresponding committee selected.") {
+                                Icon(
+                                    Icons.Filled.Warning,
+                                    contentDescription = "Correspondence missing",
+                                    tint = MissingMappingColor,
+                                )
+                            }
+                        }
                     }
-                } else {
-                    null
                 },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                 singleLine = true,
@@ -260,7 +300,7 @@ private fun MappedCommitteeSelector(
                 position.mappingOptions.forEach { option ->
                     DropdownMenuItem(
                         text = { Text(option.name) },
-                        leadingIcon = if (option.mode == CommitteeMode.HighSchool) {
+                        trailingIcon = if (option.mode == CommitteeMode.HighSchool) {
                             {
                                 Icon(
                                     Icons.Filled.School,
@@ -277,42 +317,21 @@ private fun MappedCommitteeSelector(
                         },
                     )
                 }
-                if (mappedCommittee != null) {
-                    DropdownMenuItem(
-                        text = { Text("Clear correspondence") },
-                        onClick = {
-                            expanded = false
-                            onSetPositionMappedCommittee(position.id, null)
-                        },
-                    )
-                }
             }
-        }
-        if (position.mappingIncomplete) {
-            Text(
-                text = "Correspondence missing",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.error,
-                fontWeight = FontWeight.SemiBold,
-            )
         }
     }
 }
 
 @Composable
-private fun PositionBoardUiState.mappedPositionTone(): PositionModeTone? {
-    if (!showsMappingSelector) return null
-    return when (effectiveMode) {
-        CommitteeMode.HighSchool -> PositionModeTone(
+private fun PositionBoardUiState.highSchoolPositionTone(): PositionModeTone? =
+    if (effectiveMode == CommitteeMode.HighSchool) {
+        PositionModeTone(
             containerColor = HighSchoolColor.copy(alpha = 0.07f),
             borderColor = HighSchoolColor.copy(alpha = 0.50f),
         )
-        CommitteeMode.University -> null
-        CommitteeMode.Mapped,
-        null,
-        -> null
+    } else {
+        null
     }
-}
 
 @Composable
 private fun HighSchoolPositionIcon() {
@@ -448,3 +467,4 @@ private val PositionBoardUiState.showsMappingSelector: Boolean
     get() = mappingOptions.isNotEmpty() || mappedCommittee != null || mappingIncomplete
 
 private val HighSchoolColor = Color(0xFF8E24AA)
+private val MissingMappingColor = Color(0xFFF9A825)

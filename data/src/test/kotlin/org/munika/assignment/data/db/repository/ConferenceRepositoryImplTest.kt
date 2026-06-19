@@ -244,7 +244,7 @@ class ConferenceRepositoryImplTest {
     }
 
     @Test
-    fun `switching mapped committee back to normal clears position mappings`() = runBlocking {
+    fun `switching mapped committee back to normal rejects existing position mappings`() = runBlocking {
         val dbPath = Files.createTempDirectory("munassign-ipc-clear").resolve("data.db")
         val database = DatabaseFactory.connect(dbPath)
         val repository = ConferenceRepositoryImpl(database)
@@ -257,9 +257,38 @@ class ConferenceRepositoryImplTest {
         repository.setCommitteeMode(conference.id.value, ipc.id.value, CommitteeMode.Mapped)
         repository.setPositionMappedCommittee(conference.id.value, ipc.positions.single().id.value, target.id.value)
 
-        val updated = repository.setCommitteeMode(conference.id.value, ipc.id.value, CommitteeMode.University)
+        val error = assertFailsWith<IllegalArgumentException> {
+            repository.setCommitteeMode(conference.id.value, ipc.id.value, CommitteeMode.University)
+        }
 
-        assertNull(updated.committees.single { it.mymunName == "IPC" }.positions.single().mappedCommittee)
+        assertTrue(error.message.orEmpty().contains("correspondence"))
+        val reloaded = requireNotNull(repository.getConference(conference.id.value))
+        assertEquals(CommitteeMode.Mapped, reloaded.committees.single { it.mymunName == "IPC" }.mode)
+        assertEquals(target.id, reloaded.committees.single { it.mymunName == "IPC" }.positions.single().mappedCommittee?.id)
+    }
+
+    @Test
+    fun `position mapping rejects a target already used by a sibling position`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-ipc-duplicate-target").resolve("data.db")
+        val repository = ConferenceRepositoryImpl(DatabaseFactory.connect(dbPath))
+        val conference = repository.createConference("TestConf")
+        assertTrue(
+            repository.applyMymunUpdateSnapshot(
+                conference.id.value,
+                snapshotWithTwoCommittees(ipcPositionNames = listOf("Reporter One", "Reporter Two")),
+            ).success,
+        )
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val ipc = loaded.committees.single { it.mymunName == "IPC" }
+        val target = loaded.committees.single { it.mymunName == "UNSC" }
+        repository.setCommitteeMode(conference.id.value, ipc.id.value, CommitteeMode.Mapped)
+        repository.setPositionMappedCommittee(conference.id.value, ipc.positions.first().id.value, target.id.value)
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            repository.setPositionMappedCommittee(conference.id.value, ipc.positions.last().id.value, target.id.value)
+        }
+
+        assertTrue(error.message.orEmpty().contains("already corresponds"))
     }
 
     @Test
@@ -1611,20 +1640,23 @@ class ConferenceRepositoryImplTest {
             issues = emptyList(),
         )
 
-    private fun snapshotWithTwoCommittees(): MymunWorkbookSnapshot =
+    private fun snapshotWithTwoCommittees(
+        ipcPositionNames: List<String> = listOf("UNSC Reporter"),
+    ): MymunWorkbookSnapshot =
         MymunWorkbookSnapshot(
             workbookName = "ipc.xlsx",
             delegates = listOf(delegate()),
-            countryPositions = listOf(
+            countryPositions = ipcPositionNames.mapIndexed { index, positionName ->
                 MymunCountryPositionRow(
-                    rowNumber = 2,
+                    rowNumber = 2 + index,
                     committeeName = "IPC",
-                    memberName = "UNSC Reporter",
+                    memberName = positionName,
                     delegationName = null,
                     delegatesRaw = null,
-                ),
+                )
+            } + listOf(
                 MymunCountryPositionRow(
-                    rowNumber = 3,
+                    rowNumber = 2 + ipcPositionNames.size,
                     committeeName = "UNSC",
                     memberName = "France",
                     delegationName = null,

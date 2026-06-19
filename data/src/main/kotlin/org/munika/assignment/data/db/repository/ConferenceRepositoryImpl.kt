@@ -247,13 +247,24 @@ class ConferenceRepositoryImpl(
         committeeId: String,
         mode: CommitteeMode,
     ): Conference = db {
-        requireCommitteeInConference(conferenceId, committeeId)
+        val committee = requireCommitteeInConference(conferenceId, committeeId)
+        val currentMode = CommitteeMode.valueOf(committee[CommitteeTable.mode])
         if (mode == CommitteeMode.Mapped) {
             val inboundMapping = PositionTable.selectAll()
                 .where { (PositionTable.conferenceId eq conferenceId) and (PositionTable.mappedCommitteeId eq committeeId) }
                 .firstOrNull()
             require(inboundMapping == null) {
                 "Committee $committeeId cannot become mapped while positions map to it."
+            }
+        }
+        if (currentMode == CommitteeMode.Mapped && mode != CommitteeMode.Mapped) {
+            val mappedPositionNames = PositionTable.selectAll()
+                .where { PositionTable.committeeId eq committeeId }
+                .filter { it[PositionTable.mappedCommitteeId] != null }
+                .map { it[PositionTable.name] }
+            require(mappedPositionNames.isEmpty()) {
+                "Committee ${committee[CommitteeTable.mymunName]} cannot leave mapped mode while correspondences are set for " +
+                    mappedPositionNames.joinToString(limit = 3) + ". Remove all correspondences first."
             }
         }
         val updated = CommitteeTable.update({
@@ -263,11 +274,6 @@ class ConferenceRepositoryImpl(
             it[CommitteeTable.isHighSchoolCommittee] = mode == CommitteeMode.HighSchool
         }
         require(updated == 1) { "Committee $committeeId does not belong to conference $conferenceId." }
-        if (mode != CommitteeMode.Mapped) {
-            PositionTable.update({ PositionTable.committeeId eq committeeId }) {
-                it[PositionTable.mappedCommitteeId] = null
-            }
-        }
         ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
             it[updatedAtEpochMillis] = Instant.now().toEpochMilli()
         }
@@ -291,6 +297,19 @@ class ConferenceRepositoryImpl(
         val target = mappedCommitteeId?.let { targetId -> requireCommitteeInConference(conferenceId, targetId) }
         require(target == null || CommitteeMode.valueOf(target[CommitteeTable.mode]) != CommitteeMode.Mapped) {
             "Position $positionId cannot map to a mapped committee."
+        }
+        if (mappedCommitteeId != null) {
+            val siblingUsingTarget = PositionTable.selectAll()
+                .where {
+                    (PositionTable.committeeId eq owningCommittee[CommitteeTable.id]) and
+                        (PositionTable.id neq positionId) and
+                        (PositionTable.mappedCommitteeId eq mappedCommitteeId)
+                }
+                .firstOrNull()
+            require(siblingUsingTarget == null) {
+                "Another position in ${owningCommittee[CommitteeTable.mymunName]} already corresponds to " +
+                    "${target?.get(CommitteeTable.mymunName)}."
+            }
         }
         PositionTable.update({ PositionTable.id eq positionId }) {
             it[PositionTable.mappedCommitteeId] = mappedCommitteeId

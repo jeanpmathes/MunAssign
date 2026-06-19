@@ -145,14 +145,12 @@ private fun CommitteeHeader(
         CommitteeMode.Mapped -> Brush.linearGradient(
             colorStops = arrayOf(
                 0.00f to MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
-                0.38f to MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
-                0.38f to highSchoolColor.copy(alpha = 0.13f),
-                0.58f to highSchoolColor.copy(alpha = 0.13f),
-                0.58f to MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
-                1.00f to MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
+                0.50f to MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
+                0.50f to highSchoolColor.copy(alpha = 0.13f),
+                1.00f to highSchoolColor.copy(alpha = 0.13f),
             ),
             start = Offset.Zero,
-            end = Offset(30f, 30f),
+            end = Offset(44f, 44f),
             tileMode = TileMode.Repeated,
         )
         CommitteeMode.University -> Brush.linearGradient(
@@ -163,6 +161,7 @@ private fun CommitteeHeader(
         )
     }
     var settingsOpen by remember(committee.id) { mutableStateOf(false) }
+    var blockedModeChangeMessage by remember(committee.id) { mutableStateOf<String?>(null) }
     Column(
         modifier = Modifier.fillMaxWidth()
             .background(headerBrush)
@@ -249,9 +248,34 @@ private fun CommitteeHeader(
             committee = committee,
             loading = loading,
             onDismiss = { settingsOpen = false },
-            onSetMode = onSetMode,
+            onSetMode = { mode ->
+                val mappedPositions = committee.positions.filter { it.mappedCommittee != null }
+                if (committee.mode == CommitteeMode.Mapped && mode != CommitteeMode.Mapped && mappedPositions.isNotEmpty()) {
+                    blockedModeChangeMessage =
+                        "Cannot change ${committee.name} to ${mode.label} because correspondences are set for " +
+                            mappedPositions.joinToString(limit = 3) { position ->
+                                "${position.name} (${position.mappedCommittee?.name})"
+                            } + ". Remove all correspondences first."
+                    settingsOpen = false
+                } else {
+                    onSetMode(mode)
+                }
+            },
             onIncrease = onIncrease,
             onDecrease = onDecrease,
+        )
+    }
+
+    blockedModeChangeMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { blockedModeChangeMessage = null },
+            title = { Text("Committee mode cannot be changed") },
+            text = { Text(message) },
+            confirmButton = {
+                Button(onClick = { blockedModeChangeMessage = null }) {
+                    Text("OK")
+                }
+            },
         )
     }
 }

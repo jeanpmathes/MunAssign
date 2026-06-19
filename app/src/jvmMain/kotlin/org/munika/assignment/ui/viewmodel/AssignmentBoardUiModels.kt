@@ -177,7 +177,7 @@ private fun Position.toBoardUiState(): PositionBoardUiState =
         mappingIncomplete = mappingIncomplete,
         mappedCommittee = mappedCommittee?.toMappedCommitteeUiState(),
         mappingOptions = if (committee.mode == CommitteeMode.Mapped) {
-            conference.committees.toMappingOptions(owningCommittee = committee)
+            conference.committees.toMappingOptions(position = this)
         } else {
             emptyList()
         },
@@ -228,8 +228,17 @@ private fun Committee.toMappedCommitteeUiState(): PositionMappedCommitteeUiState
         mode = mode,
     )
 
-private fun List<Committee>.toMappingOptions(owningCommittee: Committee): List<CommitteeMappingOptionUiState> =
-    filter { it !== owningCommittee && it.mode != CommitteeMode.Mapped }
+private fun List<Committee>.toMappingOptions(position: Position): List<CommitteeMappingOptionUiState> {
+    val usedTargetIds = position.committee.positions
+        .asSequence()
+        .filter { it !== position }
+        .mapNotNull { it.mappedCommittee?.id }
+        .toSet()
+    return filter {
+        it !== position.committee &&
+            it.mode != CommitteeMode.Mapped &&
+            (it.id !in usedTargetIds || it === position.mappedCommittee)
+    }
         .map {
             CommitteeMappingOptionUiState(
                 id = it.id.value,
@@ -237,6 +246,7 @@ private fun List<Committee>.toMappingOptions(owningCommittee: Committee): List<C
                 mode = it.mode,
             )
         }
+}
 
 private fun Slot.toBoardUiState(): SlotBoardUiState =
     SlotBoardUiState(

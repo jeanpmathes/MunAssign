@@ -356,6 +356,22 @@ class AssignmentBoardUiModelsTest {
         assertEquals(listOf(2, 3), reminders.map { it.remainingCount })
     }
 
+    @Test
+    fun `mapped position options exclude targets used by sibling positions`() {
+        val board = mappedBoard()
+        val ipc = board.conference.committees.single { it.mymunName == "IPC" }
+        val secondReporter = Position(PositionId("second-reporter"), ipc, "Second Reporter")
+        ipc.positions += secondReporter
+        secondReporter.slots += Slot(SlotId("second-reporter-1"), secondReporter, 1, Instant.EPOCH)
+
+        val positions = board.conference.toAssignmentBoardUiState()
+            .committees.single { it.name == "IPC" }
+            .positions
+
+        assertEquals(listOf("UNSC"), positions.single { it.id == "reporter" }.mappingOptions.map { it.name })
+        assertTrue(positions.single { it.id == "second-reporter" }.mappingOptions.isEmpty())
+    }
+
     private fun board(slotCount: Int = 1, isHighSchoolCommittee: Boolean = false): Board {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val committee = Committee(
