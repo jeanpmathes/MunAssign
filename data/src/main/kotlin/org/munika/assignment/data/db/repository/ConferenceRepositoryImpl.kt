@@ -5,6 +5,7 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.greater
@@ -17,7 +18,7 @@ import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
-import org.jetbrains.exposed.v1.jdbc.transactions.experimental.newSuspendedTransaction
+import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
 import org.munika.assignment.data.db.DatabaseFactory
 import org.munika.assignment.data.db.mapper.ConferenceGraphMapper
@@ -1752,8 +1753,10 @@ class ConferenceRepositoryImpl(
         }
     }
 
-    private suspend fun <T> db(block: suspend () -> T): T =
-        newSuspendedTransaction(Dispatchers.IO, db = database) { block() }
+    private suspend fun <T> db(block: () -> T): T =
+        withContext(Dispatchers.IO) {
+            transaction(database) { block() }
+        }
 
     private fun loadConferenceGraph(conferenceId: String): Conference {
         val conferenceRow = ConferenceTable.selectAll().where { ConferenceTable.id eq conferenceId }
