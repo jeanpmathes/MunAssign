@@ -411,14 +411,14 @@ class AssignmentBoardUiModelsTest {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val ipc = Committee(CommitteeId("ipc"), conference, "IPC", slotsPerPosition = 1, mode = CommitteeMode.Mapped)
         val target = Committee(CommitteeId("target"), conference, "UNSC", slotsPerPosition = 1, mode = CommitteeMode.HighSchool)
-        val reporter = Position(PositionId("reporter"), ipc, "UNSC Reporter", mappedCommittee = target)
+        val reporter = Position(PositionId("reporter"), ipc, "UNSC Reporter").also { ipc.positions += it }
+        reporter.setMappedCommittee(target)
         val targetPosition = Position(PositionId("target-position"), target, "France")
         val available = delegate(conference, "available", "Available", "Delegate", PaymentStatus.Paid, active = true)
         val neutral = delegate(conference, "neutral", "Neutral", "Delegate", PaymentStatus.Paid, active = true)
 
         conference.committees += listOf(ipc, target)
         conference.delegates += listOf(available, neutral)
-        ipc.positions += reporter
         target.positions += targetPosition
         reporter.slots += Slot(SlotId("reporter-1"), reporter, 1, Instant.EPOCH)
         targetPosition.slots += Slot(SlotId("target-1"), targetPosition, 1, Instant.EPOCH)

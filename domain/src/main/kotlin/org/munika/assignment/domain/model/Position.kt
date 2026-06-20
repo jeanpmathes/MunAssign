@@ -12,7 +12,6 @@ class Position(
     override val id: PositionId,
     val committee: Committee,
     val name: String,
-    var mappedCommittee: Committee? = null,
     val slots: MutableList<Slot> = mutableListOf(),
 ) : DomainObject<PositionId> {
     init {
@@ -21,6 +20,34 @@ class Position(
 
     val conference: Conference
         get() = committee.conference
+
+    var mappedCommittee: Committee? = null
+        private set
+
+    /**
+     * Sets this position's correspondence target while preserving mapped-committee invariants.
+     * Passing null clears an existing correspondence so persistence mapping and mode changes can
+     * detach a target safely.
+     */
+    fun setMappedCommittee(target: Committee?): Unit {
+        if (target != null) {
+            require(committee.mode == CommitteeMode.Mapped) {
+                "Only positions owned by mapped committees can have a mapped target."
+            }
+            require(target.conference === conference) {
+                "Mapped target committee must belong to the same conference."
+            }
+            require(target.mode != CommitteeMode.Mapped) {
+                "Mapped target committee must not itself be mapped."
+            }
+            require(committee.positions.none { sibling ->
+                sibling !== this && sibling.mappedCommittee === target
+            }) {
+                "Mapped target committee is already used by another position in this committee."
+            }
+        }
+        mappedCommittee = target
+    }
 
     val countryFlagEmoji: String?
         get() = CountryFlagEmojiResolver.emojiFor(name)

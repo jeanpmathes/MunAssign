@@ -22,6 +22,9 @@ data class QuestionConfiguration(
         require(displayOrder >= 0) { "Question display order must not be negative." }
         require(role == null || role in StandardQuestionRoles.all) { "Unknown question role: ${role?.id}." }
         require(handling in StandardQuestionHandlingTypes.all) { "Unknown question handling type: ${handling.id}." }
+        require(role == null || handling == StandardQuestionHandlingTypes.ExpectedTypedAnswer) {
+            "Role-backed questions must use expected typed-answer handling."
+        }
         validateRules()
         validateMappings("MUN experience", mappings.munExperience.map { it.rawValue })
         validateMappings("High schooler", mappings.highSchooler.map { it.rawValue })

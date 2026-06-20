@@ -100,11 +100,11 @@ object ConferenceGraphMapper {
             val position = requireNotNull(positionsById[row.id]) {
                 "Position ${row.id} was not mapped."
             }
-            position.mappedCommittee = row.mappedCommitteeId?.let { mappedCommitteeId ->
+            position.setMappedCommittee(row.mappedCommitteeId?.let { mappedCommitteeId ->
                 requireNotNull(committeesById[mappedCommitteeId]) {
                     "Position ${row.id} references missing mapped committee $mappedCommitteeId."
                 }
-            }
+            })
         }
 
         val delegationsById = rows.delegations.associate { row ->

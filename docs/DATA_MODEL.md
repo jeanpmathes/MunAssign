@@ -93,6 +93,11 @@ handling archetypes.
 
 Role-specific mapping tables are intentionally separate so language-level values cannot be mapped into experience-level values, or similar.
 
+High-school status deliberately defaults to university/non-high-school when the high-school role is
+not configured, the delegate has no answer, or the raw answer has no configured mapping. This
+conservative fallback is intentional; organizers can correct observed raw values through the
+question configuration workflow.
+
 Answer issues are derived from current profile/question rules and are either:
 
 - `Warning`, meaning the answer may justify follow-up or affect assignment;
@@ -136,7 +141,7 @@ Reservation consumption is persisted in `reservation_delegate_links` so the appl
 - `Manual` links are explicit organizer choices from delegate detail and are preserved while the delegate remains active.
 - `DelegationAuto` links are maintained by reconciliation for reservations linked to delegations.
 
-Delegation reconciliation considers active, paid, accepted delegates in submission-date order. It skips delegates that already have any reservation link, fills high-school or university capacity according to the delegate's high-schooler answer, and stops when the relevant reservation bucket is full. Extra eligible delegates do not consume a reservation and are not an error.
+Delegation reconciliation considers active, paid, accepted delegates in submission-date order. It skips delegates that already have any reservation link, fills high-school or university capacity according to the delegate's high-schooler answer, and stops when the relevant reservation bucket is full. When multiple reservations link the same delegation, the oldest-created reservation consumes delegates first; equal creation times are ordered by stable reservation ID. Extra eligible delegates do not consume a reservation and are not an error.
 
 Reducing a reservation count below current manual usage is rejected. Reducing below automatic usage is allowed; reconciliation removes excess automatic links while preserving manual links. Deactivating a delegate removes any manual or automatic reservation consumption for that delegate.
 

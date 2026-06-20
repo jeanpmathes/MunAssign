@@ -65,7 +65,7 @@ class ConferenceStatsTest {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val target = committee(conference, "target", isHighSchool = true, positionCount = 1)
         val ipc = committee(conference, "ipc", isHighSchool = false, positionCount = 1, mode = CommitteeMode.Mapped)
-        ipc.positions.single().mappedCommittee = target
+        ipc.positions.single().setMappedCommittee(target)
         conference.committees += listOf(target, ipc)
 
         val capacity = conference.toAcceptanceCapacityUiState()

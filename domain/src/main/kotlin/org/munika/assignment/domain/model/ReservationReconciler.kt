@@ -52,7 +52,9 @@ object ReservationReconciler {
             .filter { it.source == ReservationLinkSource.DelegationAuto }
             .associateBy { it.reservation.id to it.delegate.id }
 
-        conference.reservations.forEach { reservation ->
+        conference.reservations
+            .sortedWith(compareBy<Reservation>({ it.createdAt }, { it.id.value }))
+            .forEach { reservation ->
             val delegation = reservation.delegation ?: return@forEach
             var usedHighSchool = nextLinks.count { it.reservation === reservation && it.delegate.isHighSchooler }
             var usedUniversity = nextLinks.count { it.reservation === reservation && !it.delegate.isHighSchooler }

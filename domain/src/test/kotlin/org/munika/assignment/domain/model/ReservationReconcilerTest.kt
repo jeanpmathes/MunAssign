@@ -177,6 +177,45 @@ class ReservationReconcilerTest {
         assertNull(third.reservationLink)
     }
 
+    @Test
+    fun `oldest linked reservation consumes delegation first regardless of list order`() {
+        val fixture = fixture()
+        val delegation = fixture.delegation()
+        val delegate = fixture.delegate(id = "delegate", delegation = delegation)
+        val newest = fixture.reservation(
+            id = "newest",
+            highSchoolCount = 1,
+            universityCount = 0,
+            delegation = delegation,
+            createdAt = Instant.ofEpochMilli(30),
+        )
+        val oldestByLaterId = fixture.reservation(
+            id = "z-oldest",
+            highSchoolCount = 1,
+            universityCount = 0,
+            delegation = delegation,
+            createdAt = Instant.ofEpochMilli(10),
+        )
+        val oldestByFirstId = fixture.reservation(
+            id = "a-oldest",
+            highSchoolCount = 1,
+            universityCount = 0,
+            delegation = delegation,
+            createdAt = Instant.ofEpochMilli(10),
+        )
+        fixture.conference.reservations.clear()
+        fixture.conference.reservations += listOf(newest, oldestByLaterId, oldestByFirstId)
+
+        ReservationReconciler.reconcile(
+            conference = fixture.conference,
+            existingLinks = emptyList(),
+            now = Later,
+            idFactory = fixture.idFactory("auto-"),
+        )
+
+        assertSame(oldestByFirstId, delegate.reservationLink?.reservation)
+    }
+
     private fun fixture(): Fixture =
         Fixture(
             Conference(
@@ -250,6 +289,7 @@ class ReservationReconcilerTest {
             highSchoolCount: Int,
             universityCount: Int,
             delegation: Delegation? = null,
+            createdAt: Instant = Now,
         ): Reservation =
             Reservation(
                 id = ReservationId(id),
@@ -258,7 +298,7 @@ class ReservationReconcilerTest {
                 highSchoolCount = highSchoolCount,
                 universityCount = universityCount,
                 delegation = delegation,
-                createdAt = Now,
+                createdAt = createdAt,
                 updatedAt = Now,
             ).also { conference.reservations += it }
 

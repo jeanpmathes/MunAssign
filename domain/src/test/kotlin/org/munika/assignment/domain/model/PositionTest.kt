@@ -3,6 +3,7 @@ package org.munika.assignment.domain.model
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -27,7 +28,8 @@ class PositionTest {
         val conference = conference()
         val ipc = committee(conference, "ipc", CommitteeMode.Mapped)
         val target = committee(conference, "target", CommitteeMode.HighSchool)
-        val position = Position(PositionId("ipc-position"), ipc, "UNSC", mappedCommittee = target)
+        val position = Position(PositionId("ipc-position"), ipc, "UNSC").also { ipc.positions += it }
+        position.setMappedCommittee(target)
 
         assertEquals(CommitteeMode.HighSchool, position.effectiveCommitteeMode)
         assertEquals(true, position.isEffectivelyHighSchool)
@@ -43,6 +45,54 @@ class PositionTest {
         assertNull(position.effectiveCommitteeMode)
         assertNull(position.isEffectivelyHighSchool)
         assertTrue(position.mappingIncomplete)
+    }
+
+    @Test
+    fun `mapping requires a mapped owning committee`() {
+        val conference = conference()
+        val owner = committee(conference, "owner", CommitteeMode.University)
+        val target = committee(conference, "target", CommitteeMode.HighSchool)
+        val position = Position(PositionId("position"), owner, "France")
+
+        assertFailsWith<IllegalArgumentException> { position.setMappedCommittee(target) }
+    }
+
+    @Test
+    fun `mapping target must belong to the same conference`() {
+        val conference = conference()
+        val otherConference = Conference(
+            ConferenceId("other"),
+            "Other",
+            createdAt = Instant.EPOCH,
+            updatedAt = Instant.EPOCH,
+        )
+        val owner = committee(conference, "owner", CommitteeMode.Mapped)
+        val target = committee(otherConference, "target", CommitteeMode.HighSchool)
+        val position = Position(PositionId("position"), owner, "France")
+
+        assertFailsWith<IllegalArgumentException> { position.setMappedCommittee(target) }
+    }
+
+    @Test
+    fun `mapping target must not be mapped`() {
+        val conference = conference()
+        val owner = committee(conference, "owner", CommitteeMode.Mapped)
+        val target = committee(conference, "target", CommitteeMode.Mapped)
+        val position = Position(PositionId("position"), owner, "France")
+
+        assertFailsWith<IllegalArgumentException> { position.setMappedCommittee(target) }
+    }
+
+    @Test
+    fun `sibling positions cannot share a mapping target`() {
+        val conference = conference()
+        val owner = committee(conference, "owner", CommitteeMode.Mapped)
+        val target = committee(conference, "target", CommitteeMode.HighSchool)
+        val first = Position(PositionId("first"), owner, "France").also { owner.positions += it }
+        val second = Position(PositionId("second"), owner, "Germany").also { owner.positions += it }
+        first.setMappedCommittee(target)
+
+        assertFailsWith<IllegalArgumentException> { second.setMappedCommittee(target) }
     }
 
     private fun conference(): Conference =

@@ -42,4 +42,21 @@ class QuestionConfigurationTest {
             )
         }
     }
+
+    @Test
+    fun `role backed configuration rejects general handling archetype`() {
+        assertFailsWith<IllegalArgumentException> {
+            QuestionConfiguration(
+                questionId = QuestionId("question"),
+                questionText = "Question: MUN experience",
+                role = StandardQuestionRoles.ExperienceLevel,
+                handling = StandardQuestionHandlingTypes.VisaSupport,
+                visibleInDelegateDetail = true,
+                organizerLabel = null,
+                displayOrder = 0,
+                rules = emptyList(),
+                mappings = TypedAnswerMappings.defaults(),
+            )
+        }
+    }
 }
