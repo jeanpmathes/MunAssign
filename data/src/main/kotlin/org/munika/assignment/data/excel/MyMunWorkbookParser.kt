@@ -20,9 +20,11 @@ import java.util.Locale
 class MyMunWorkbookParser {
     private val formatter = DataFormatter(Locale.ROOT)
 
+    /** Parses the workbook at [path] into staging data without persisting it. */
     fun parse(path: Path): MymunWorkbookSnapshot =
         Files.newInputStream(path).use { input -> parse(input, path.fileName.toString()) }
 
+    /** Parses [input] into staging data and reports validation issues in the returned snapshot. */
     fun parse(input: InputStream, workbookName: String? = null): MymunWorkbookSnapshot {
         val issues = mutableListOf<MymunValidationIssue>()
 
@@ -62,6 +64,7 @@ class MyMunWorkbookParser {
         }
     }
 
+    /** Reads each workbook sheet's normalized header row for diagnostics without parsing rows. */
     fun inspectHeaders(path: Path): Map<String, List<String>> =
         Files.newInputStream(path).use { input ->
             WorkbookFactory.create(input).use { workbook ->

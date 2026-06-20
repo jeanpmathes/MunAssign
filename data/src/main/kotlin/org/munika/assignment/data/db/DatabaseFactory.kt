@@ -27,9 +27,11 @@ import org.munika.assignment.domain.model.StandardQuestionRoles
 object DatabaseFactory {
     private val logger = LoggerFactory.getLogger(DatabaseFactory::class.java)
 
+    /** Returns the application database path beneath the supplied user [home]. */
     fun defaultDatabasePath(home: Path = Path(System.getProperty("user.home"))): Path =
         home.resolve(".munassign").resolve("data.db")
 
+    /** Opens the SQLite database at [path], applies migrations, and seeds stable lookup rows. */
     fun connect(path: Path = defaultDatabasePath()): Database {
         Files.createDirectories(path.parent)
         val database = Database.connect("jdbc:sqlite:${path.toAbsolutePath()}?foreign_keys=on", driver = "org.sqlite.JDBC")

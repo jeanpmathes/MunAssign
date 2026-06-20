@@ -11,6 +11,7 @@ class MymunWorkbookUpdater(
     private val repository: ConferenceRepositoryImpl,
     private val parser: MyMunWorkbookParser = MyMunWorkbookParser(),
 ) {
+    /** Parses [workbookPath] and atomically applies it when staging has no blocking errors. */
     suspend fun applyUpdate(conferenceId: String, workbookPath: Path): UpdateResult {
         val snapshot = parser.parse(workbookPath)
         return repository.applyMymunUpdateSnapshot(

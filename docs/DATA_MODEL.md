@@ -98,6 +98,11 @@ not configured, the delegate has no answer, or the raw answer has no configured 
 conservative fallback is intentional; organizers can correct observed raw values through the
 question configuration workflow.
 
+When an update first introduces a distinct nonblank raw answer for a role-backed question and that
+normalized value has no role-specific mapping, the update succeeds with an `unmapped_role_answer`
+warning naming the question and raw value. Values already present in the conference's persisted
+pre-update answers do not warn again, and mapped values never warn.
+
 Answer issues are derived from current profile/question rules and are either:
 
 - `Warning`, meaning the answer may justify follow-up or affect assignment;

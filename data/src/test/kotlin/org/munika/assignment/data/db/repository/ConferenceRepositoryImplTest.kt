@@ -1559,6 +1559,90 @@ class ConferenceRepositoryImplTest {
     }
 
     @Test
+    fun `MyMUN update warns for a newly observed unmapped role answer`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-unmapped-role-answer").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        val result = repository.applyMymunUpdateSnapshot(
+            conference.id.value,
+            snapshotWithRoleAnswer("Maybe"),
+        )
+
+        assertTrue(result.success, result.issues.joinToString("; ") { it.message })
+        val warning = result.issues.single { it.code == "unmapped_role_answer" }
+        assertEquals(UpdateIssueSeverity.Warning, warning.severity)
+        assertTrue("Question: Are you a high-schooler?" in warning.message)
+        assertTrue("Maybe" in warning.message)
+    }
+
+    @Test
+    fun `MyMUN update does not warn for a default-mapped role answer`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-default-role-answer").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        val result = repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithRoleAnswer("Yes"))
+
+        assertTrue(result.success, result.issues.joinToString("; ") { it.message })
+        assertTrue(result.issues.none { it.code == "unmapped_role_answer" })
+    }
+
+    @Test
+    fun `MyMUN update does not warn for a mapped role answer`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-mapped-role-answer").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithRoleAnswer("Maybe")).success)
+        val question = requireNotNull(repository.getConference(conference.id.value)).questions.single()
+        repository.updateQuestionConfiguration(
+            conferenceId = conference.id.value,
+            configuration = QuestionConfiguration(
+                questionId = question.id,
+                questionText = question.questionText,
+                visibleInDelegateDetail = false,
+                organizerLabel = null,
+                role = StandardQuestionRoles.HighSchoolerStatus,
+                handling = StandardQuestionHandlingTypes.ExpectedTypedAnswer,
+                displayOrder = question.displayOrder,
+                rules = emptyList(),
+                mappings = TypedAnswerMappings(
+                    highSchooler = listOf(HighSchoolerAnswerMapping("Maybe", HighSchoolerStatus.Yes)),
+                ),
+            ),
+        )
+
+        val result = repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithRoleAnswer("Maybe"))
+
+        assertTrue(result.success, result.issues.joinToString("; ") { it.message })
+        assertTrue(result.issues.none { it.code == "unmapped_role_answer" })
+    }
+
+    @Test
+    fun `MyMUN update does not repeat an unmapped role answer warning`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-observed-role-answer").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val firstResult = repository.applyMymunUpdateSnapshot(
+            conference.id.value,
+            snapshotWithRoleAnswer("Maybe"),
+        )
+        assertTrue(firstResult.issues.any { it.code == "unmapped_role_answer" })
+
+        val repeatedResult = repository.applyMymunUpdateSnapshot(
+            conference.id.value,
+            snapshotWithRoleAnswer("Maybe"),
+        )
+
+        assertTrue(repeatedResult.success, repeatedResult.issues.joinToString("; ") { it.message })
+        assertTrue(repeatedResult.issues.none { it.code == "unmapped_role_answer" })
+    }
+
+    @Test
     fun `role inference takes precedence over overlapping general question handling`() = runBlocking {
         val dbPath = Files.createTempDirectory("munassign-question-role-precedence").resolve("data.db")
         val database = DatabaseFactory.connect(dbPath)
@@ -1711,6 +1795,42 @@ class ConferenceRepositoryImplTest {
 
     private fun snapshotWithQuestion(): MymunWorkbookSnapshot =
         snapshotWithQuestions(listOf("Question: Please explain your choice of comittees."))
+
+    private fun snapshotWithRoleAnswer(answer: String): MymunWorkbookSnapshot {
+        val questionText = "Question: Are you a high-schooler?"
+        val questionColumn = MymunQuestionColumn(
+            sheetName = "Delegates",
+            columnNumber = 5,
+            displayOrder = 4,
+            questionText = questionText,
+        )
+        return MymunWorkbookSnapshot(
+            workbookName = "role-answer.xlsx",
+            delegates = listOf(delegate()),
+            countryPositions = listOf(
+                MymunCountryPositionRow(
+                    rowNumber = 2,
+                    committeeName = "GA",
+                    memberName = "France",
+                    delegationName = null,
+                    delegatesRaw = null,
+                ),
+            ),
+            delegations = emptyList(),
+            questionColumns = listOf(questionColumn),
+            questionAnswers = listOf(
+                MymunQuestionAnswerCell(
+                    delegateRowNumber = 2,
+                    questionColumn = questionColumn,
+                    answer = answer,
+                    location = CellLocation("Delegates", 2, 5, questionText),
+                ),
+            ),
+            preferenceCandidates = emptyList(),
+            confirmedAssignmentCandidates = emptyList(),
+            issues = emptyList(),
+        )
+    }
 
     private fun snapshotWithQuestions(questionTexts: List<String>): MymunWorkbookSnapshot {
         val questionColumns = questionTexts.mapIndexed { index, questionText ->

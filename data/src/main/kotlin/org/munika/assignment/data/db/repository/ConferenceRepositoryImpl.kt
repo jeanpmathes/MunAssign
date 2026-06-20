@@ -84,6 +84,7 @@ import org.munika.assignment.domain.model.ReservationReconciler
 import org.munika.assignment.domain.model.RequiredAnswer
 import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
+import org.munika.assignment.domain.model.TypedAnswerMappings
 import org.munika.assignment.domain.repository.ConferenceRepository
 import org.munika.assignment.domain.repository.UpdateIssue
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
@@ -905,6 +906,38 @@ class ConferenceRepositoryImpl(
                     code = "duplicate_confirmed_assignment",
                     message = "Confirmed assignment delegate '${delegate.displayName}' appears in more than one slot: $positions.",
                 )
+            }
+
+        val observedAnswersByQuestionId = existingQuestions.values.associate { question ->
+            val questionId = question[DelegateQuestionTable.id]
+            questionId to observedAnswers(questionId)
+        }
+        snapshot.questionAnswers
+            .filter { !it.answer.isNullOrBlank() }
+            .distinctBy { normalize(it.questionColumn.questionText) to normalizeAnswer(it.answer.orEmpty()) }
+            .forEach { answerCell ->
+                val rawAnswer = answerCell.answer ?: return@forEach
+                val normalizedQuestion = normalize(answerCell.questionColumn.questionText)
+                val existingQuestion = existingQuestions[normalizedQuestion]
+                val roleId = existingQuestion?.get(DelegateQuestionTable.roleId)
+                    ?: inferQuestionRoleId(answerCell.questionColumn.questionText)
+                val mappedAnswers = mappedAnswers(existingQuestion?.get(DelegateQuestionTable.id), roleId)
+                val observedAnswers = existingQuestion
+                    ?.get(DelegateQuestionTable.id)
+                    ?.let(observedAnswersByQuestionId::get)
+                    .orEmpty()
+                val normalizedAnswer = normalizeAnswer(rawAnswer)
+                if (roleId != null && normalizedAnswer !in mappedAnswers && normalizedAnswer !in observedAnswers) {
+                    issues += UpdateIssue(
+                        severity = UpdateIssueSeverity.Warning,
+                        code = "unmapped_role_answer",
+                        message = "Question '${answerCell.questionColumn.questionText}' has unmapped answer '$rawAnswer'.",
+                        sheetName = answerCell.location.sheetName,
+                        rowNumber = answerCell.location.rowNumber,
+                        columnNumber = answerCell.location.columnNumber,
+                        columnName = answerCell.location.columnName,
+                    )
+                }
             }
 
         issues.forEach { issue ->
@@ -2005,6 +2038,41 @@ class ConferenceRepositoryImpl(
     private fun normalize(value: String): String = value.trim().lowercase().replace(Regex("\\s+"), " ")
 
     private fun normalizeAnswer(value: String): String = value.trim().lowercase()
+
+    private fun mappedAnswers(questionId: String?, roleId: String?): Set<String> {
+        val persisted = when (roleId) {
+            StandardQuestionRoles.ExperienceLevel.id -> questionId?.let { id ->
+                MunExperienceAnswerMappingTable.selectAll()
+                    .where { MunExperienceAnswerMappingTable.questionId eq id }
+                    .map { it[MunExperienceAnswerMappingTable.normalizedRawValue] }
+            }.orEmpty()
+            StandardQuestionRoles.HighSchoolerStatus.id -> questionId?.let { id ->
+                HighSchoolerAnswerMappingTable.selectAll()
+                    .where { HighSchoolerAnswerMappingTable.questionId eq id }
+                    .map { it[HighSchoolerAnswerMappingTable.normalizedRawValue] }
+            }.orEmpty()
+            StandardQuestionRoles.LanguageLevel.id -> questionId?.let { id ->
+                LanguageLevelAnswerMappingTable.selectAll()
+                    .where { LanguageLevelAnswerMappingTable.questionId eq id }
+                    .map { it[LanguageLevelAnswerMappingTable.normalizedRawValue] }
+            }.orEmpty()
+            else -> emptyList()
+        }
+        if (persisted.isNotEmpty()) return persisted.toSet()
+
+        val defaults = TypedAnswerMappings.defaults()
+        return when (roleId) {
+            StandardQuestionRoles.ExperienceLevel.id -> defaults.munExperience.mapTo(mutableSetOf()) { normalizeAnswer(it.rawValue) }
+            StandardQuestionRoles.HighSchoolerStatus.id -> defaults.highSchooler.mapTo(mutableSetOf()) { normalizeAnswer(it.rawValue) }
+            StandardQuestionRoles.LanguageLevel.id -> defaults.languageLevel.mapTo(mutableSetOf()) { normalizeAnswer(it.rawValue) }
+            else -> emptySet()
+        }
+    }
+
+    private fun observedAnswers(questionId: String): Set<String> =
+        DelegateQuestionAnswerTable.selectAll()
+            .where { DelegateQuestionAnswerTable.questionId eq questionId }
+            .mapNotNullTo(mutableSetOf()) { it[DelegateQuestionAnswerTable.answer]?.takeIf(String::isNotBlank)?.let(::normalizeAnswer) }
 
     private fun LocalDate.toEpochMilliUtc(): Long = atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli()
 
