@@ -25,6 +25,7 @@ import org.munika.assignment.domain.model.ReservationDelegateLink
 import org.munika.assignment.domain.model.ReservationDelegateLinkId
 import org.munika.assignment.domain.model.ReservationId
 import org.munika.assignment.domain.model.ReservationLinkSource
+import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
 import org.munika.assignment.domain.model.TypedAnswerMappings
 
@@ -111,6 +112,7 @@ class ReservationUiModelsTest {
                 QuestionId("high-schooler-$id"),
                 "High schooler",
                 role = StandardQuestionRoles.HighSchoolerStatus,
+                handling = StandardQuestionHandlingTypes.ExpectedTypedAnswer,
                 mappings = TypedAnswerMappings(highSchooler = listOf(HighSchoolerAnswerMapping("Yes", HighSchoolerStatus.Yes))),
             )
             delegate.answers += QuestionAnswer(QuestionAnswerId("high-schooler-answer-$id"), delegate, question, "Yes")

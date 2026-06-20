@@ -3,9 +3,22 @@ package org.munika.assignment.domain.model
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class QuestionTest {
+    @Test
+    fun `role-backed question requires expected typed-answer handling`() {
+        assertFailsWith<IllegalArgumentException> {
+            Question(
+                id = QuestionId("question"),
+                questionText = "Are you a high-schooler and do you need visa support?",
+                role = StandardQuestionRoles.HighSchoolerStatus,
+                handling = StandardQuestionHandlingTypes.VisaSupport,
+            )
+        }
+    }
+
     @Test
     fun `question handling can change without changing question identity`() {
         val question = Question(

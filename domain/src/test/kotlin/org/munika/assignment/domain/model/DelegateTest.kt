@@ -23,6 +23,7 @@ class DelegateTest {
             id = QuestionId("question-language"),
             questionText = "Question: What is your level of English?",
             role = StandardQuestionRoles.LanguageLevel,
+            handling = StandardQuestionHandlingTypes.ExpectedTypedAnswer,
         )
 
         delegate.answers += QuestionAnswer(
@@ -121,6 +122,7 @@ class DelegateTest {
             id = QuestionId("question-hs-$age-$status"),
             questionText = "High schooler",
             role = StandardQuestionRoles.HighSchoolerStatus,
+            handling = StandardQuestionHandlingTypes.ExpectedTypedAnswer,
             mappings = TypedAnswerMappings(highSchooler = listOf(HighSchoolerAnswerMapping("Answer", mappedStatus))),
         )
         delegate.answers += QuestionAnswer(

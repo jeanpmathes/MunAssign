@@ -95,6 +95,33 @@ class PositionTest {
         assertFailsWith<IllegalArgumentException> { second.setMappedCommittee(target) }
     }
 
+    @Test
+    fun `mapping requires the position to be registered with its owning committee`() {
+        val conference = conference()
+        val owner = committee(conference, "owner", CommitteeMode.Mapped)
+        val target = committee(conference, "target", CommitteeMode.HighSchool)
+        val position = Position(PositionId("position"), owner, "France")
+
+        assertFailsWith<IllegalArgumentException> { position.setMappedCommittee(target) }
+    }
+
+    @Test
+    fun `mapping rejects a noncanonical target with the same id`() {
+        val conference = conference()
+        val owner = committee(conference, "owner", CommitteeMode.Mapped)
+        committee(conference, "target", CommitteeMode.HighSchool)
+        val detachedTarget = Committee(
+            id = CommitteeId("target"),
+            conference = conference,
+            mymunName = "DETACHED",
+            slotsPerPosition = 1,
+            mode = CommitteeMode.HighSchool,
+        )
+        val position = Position(PositionId("position"), owner, "France").also { owner.positions += it }
+
+        assertFailsWith<IllegalArgumentException> { position.setMappedCommittee(detachedTarget) }
+    }
+
     private fun conference(): Conference =
         Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
 

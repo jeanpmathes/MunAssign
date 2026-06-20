@@ -25,6 +25,7 @@ import org.munika.assignment.domain.model.Reservation
 import org.munika.assignment.domain.model.ReservationId
 import org.munika.assignment.domain.model.Slot
 import org.munika.assignment.domain.model.SlotId
+import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
 import org.munika.assignment.domain.model.TypedAnswerMappings
 
@@ -65,8 +66,8 @@ class ConferenceStatsTest {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val target = committee(conference, "target", isHighSchool = true, positionCount = 1)
         val ipc = committee(conference, "ipc", isHighSchool = false, positionCount = 1, mode = CommitteeMode.Mapped)
-        ipc.positions.single().setMappedCommittee(target)
         conference.committees += listOf(target, ipc)
+        ipc.positions.single().setMappedCommittee(target)
 
         val capacity = conference.toAcceptanceCapacityUiState()
 
@@ -129,6 +130,7 @@ class ConferenceStatsTest {
             id = QuestionId("$id-high-school-question"),
             questionText = "High schooler?",
             role = StandardQuestionRoles.HighSchoolerStatus,
+            handling = StandardQuestionHandlingTypes.ExpectedTypedAnswer,
             mappings = TypedAnswerMappings(
                 highSchooler = listOf(
                     HighSchoolerAnswerMapping("Yes", HighSchoolerStatus.Yes),

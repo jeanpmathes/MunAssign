@@ -145,6 +145,16 @@ object DatabaseFactory {
                 "UPDATE committees SET mode = CASE WHEN is_high_school_committee THEN 'HighSchool' ELSE 'University' END",
             )
         },
+        SchemaMigration(version = 9, name = "normalize_role_backed_question_handling") {
+            TransactionManager.current().exec(
+                """
+                UPDATE delegate_questions
+                SET handling_type_id = '${StandardQuestionHandlingTypes.ExpectedTypedAnswer.id}'
+                WHERE role_id IS NOT NULL
+                  AND handling_type_id <> '${StandardQuestionHandlingTypes.ExpectedTypedAnswer.id}'
+                """.trimIndent(),
+            )
+        },
     )
 
     private fun addColumnIfMissing(tableName: String, columnName: String, definition: String) {

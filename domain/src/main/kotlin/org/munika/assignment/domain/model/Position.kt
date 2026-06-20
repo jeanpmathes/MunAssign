@@ -34,14 +34,23 @@ class Position(
             require(committee.mode == CommitteeMode.Mapped) {
                 "Only positions owned by mapped committees can have a mapped target."
             }
+            require(conference.committees.any { it === committee }) {
+                "Mapped position's owning committee must be registered with its conference."
+            }
+            require(committee.positions.any { it === this }) {
+                "Mapped position must be registered with its owning committee."
+            }
             require(target.conference === conference) {
                 "Mapped target committee must belong to the same conference."
+            }
+            require(conference.committees.any { it === target }) {
+                "Mapped target committee must be registered with the conference."
             }
             require(target.mode != CommitteeMode.Mapped) {
                 "Mapped target committee must not itself be mapped."
             }
             require(committee.positions.none { sibling ->
-                sibling !== this && sibling.mappedCommittee === target
+                sibling !== this && sibling.mappedCommittee?.id == target.id
             }) {
                 "Mapped target committee is already used by another position in this committee."
             }

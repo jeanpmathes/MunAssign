@@ -231,6 +231,7 @@ class ReservationReconcilerTest {
             id = QuestionId("high-schooler"),
             questionText = "Are you a high schooler?",
             role = StandardQuestionRoles.HighSchoolerStatus,
+            handling = StandardQuestionHandlingTypes.ExpectedTypedAnswer,
         )
 
         fun delegation(id: String = "delegation"): Delegation =

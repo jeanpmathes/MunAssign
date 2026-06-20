@@ -49,6 +49,7 @@ import org.munika.assignment.domain.model.ReservationId
 import org.munika.assignment.domain.model.ReservationLinkSource
 import org.munika.assignment.domain.model.Slot
 import org.munika.assignment.domain.model.SlotId
+import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
 import org.munika.assignment.domain.model.TypedAnswerMappings
 
@@ -256,6 +257,7 @@ class DelegateDetailUiModelsTest {
             id = QuestionId("question-experience"),
             questionText = "Experience",
             role = StandardQuestionRoles.ExperienceLevel,
+            handling = StandardQuestionHandlingTypes.ExpectedTypedAnswer,
             mappings = TypedAnswerMappings(
                 munExperience = listOf(MunExperienceAnswerMapping("Some", MunExperienceLevel.Intermediate)),
             ),
@@ -264,6 +266,7 @@ class DelegateDetailUiModelsTest {
             id = QuestionId("question-language"),
             questionText = "Language",
             role = StandardQuestionRoles.LanguageLevel,
+            handling = StandardQuestionHandlingTypes.ExpectedTypedAnswer,
             mappings = TypedAnswerMappings(
                 languageLevel = listOf(LanguageLevelAnswerMapping("B1", LanguageLevel.IndependentUserB1B2)),
             ),
@@ -272,6 +275,7 @@ class DelegateDetailUiModelsTest {
             id = QuestionId("question-high-schooler"),
             questionText = "High schooler",
             role = StandardQuestionRoles.HighSchoolerStatus,
+            handling = StandardQuestionHandlingTypes.ExpectedTypedAnswer,
             mappings = TypedAnswerMappings(
                 highSchooler = listOf(HighSchoolerAnswerMapping("Yes", HighSchoolerStatus.Yes)),
             ),

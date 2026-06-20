@@ -1468,10 +1468,10 @@ class ConferenceRepositoryImpl(
     private fun inferQuestionHandlingId(questionText: String, roleId: String?): String {
         val normalized = normalize(questionText)
         return when {
+            roleId != null -> StandardQuestionHandlingTypes.ExpectedTypedAnswer.id
             isCommitteeExplanationQuestion(normalized) -> StandardQuestionHandlingTypes.CommitteeChoiceExplanation.id
             "visa" in normalized -> StandardQuestionHandlingTypes.VisaSupport.id
             "delegation" in normalized -> StandardQuestionHandlingTypes.DelegationMembership.id
-            roleId != null -> StandardQuestionHandlingTypes.ExpectedTypedAnswer.id
             else -> StandardQuestionHandlingTypes.Default.id
         }
     }

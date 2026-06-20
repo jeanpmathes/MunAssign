@@ -20,11 +20,7 @@ data class QuestionConfiguration(
     init {
         require(questionText.isNotBlank()) { "Question text must not be blank." }
         require(displayOrder >= 0) { "Question display order must not be negative." }
-        require(role == null || role in StandardQuestionRoles.all) { "Unknown question role: ${role?.id}." }
-        require(handling in StandardQuestionHandlingTypes.all) { "Unknown question handling type: ${handling.id}." }
-        require(role == null || handling == StandardQuestionHandlingTypes.ExpectedTypedAnswer) {
-            "Role-backed questions must use expected typed-answer handling."
-        }
+        validateQuestionHandling(role, handling)
         validateRules()
         validateMappings("MUN experience", mappings.munExperience.map { it.rawValue })
         validateMappings("High schooler", mappings.highSchooler.map { it.rawValue })
@@ -61,6 +57,14 @@ data class QuestionConfiguration(
         require(normalizedValues.size == normalizedValues.toSet().size) {
             "$label mapping raw values must be unique."
         }
+    }
+}
+
+internal fun validateQuestionHandling(role: QuestionRole?, handling: QuestionHandlingType) {
+    require(role == null || role in StandardQuestionRoles.all) { "Unknown question role: ${role?.id}." }
+    require(handling in StandardQuestionHandlingTypes.all) { "Unknown question handling type: ${handling.id}." }
+    require(role == null || handling == StandardQuestionHandlingTypes.ExpectedTypedAnswer) {
+        "Role-backed questions must use expected typed-answer handling."
     }
 }
 

@@ -1559,6 +1559,44 @@ class ConferenceRepositoryImplTest {
     }
 
     @Test
+    fun `role inference takes precedence over overlapping general question handling`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-question-role-precedence").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("KAMUN")
+        val questionText = "Question: Are you a high-schooler and do you need visa support?"
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithQuestions(listOf(questionText))).success)
+        val question = requireNotNull(repository.getConference(conference.id.value)).questions.single()
+
+        assertEquals(StandardQuestionRoles.HighSchoolerStatus, question.role)
+        assertEquals(StandardQuestionHandlingTypes.ExpectedTypedAnswer, question.handling)
+    }
+
+    @Test
+    fun `database migration normalizes legacy role-backed question handling`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-question-handling-migration").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("KAMUN")
+        val questionText = "Question: Are you a high-schooler?"
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithQuestions(listOf(questionText))).success)
+        val questionId = requireNotNull(repository.getConference(conference.id.value)).questions.single().id.value
+        transaction(database) {
+            DelegateQuestionTable.update({ DelegateQuestionTable.id eq questionId }) {
+                it[handlingTypeId] = StandardQuestionHandlingTypes.VisaSupport.id
+            }
+            exec("DELETE FROM schema_migrations WHERE version = 9")
+        }
+
+        val migratedRepository = ConferenceRepositoryImpl(DatabaseFactory.connect(dbPath))
+        val migratedQuestion = requireNotNull(migratedRepository.getConference(conference.id.value)).questions.single()
+
+        assertEquals(StandardQuestionHandlingTypes.ExpectedTypedAnswer, migratedQuestion.handling)
+    }
+
+    @Test
     fun `question reorder persists display order`() = runBlocking {
         val dbPath = Files.createTempDirectory("munassign-question-order").resolve("data.db")
         val database = DatabaseFactory.connect(dbPath)

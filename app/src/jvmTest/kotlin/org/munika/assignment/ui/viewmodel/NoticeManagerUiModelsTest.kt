@@ -22,6 +22,7 @@ import org.munika.assignment.domain.model.Question
 import org.munika.assignment.domain.model.QuestionAnswer
 import org.munika.assignment.domain.model.QuestionAnswerId
 import org.munika.assignment.domain.model.QuestionId
+import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
 import org.munika.assignment.domain.model.TypedAnswerMappings
 
@@ -96,6 +97,7 @@ class NoticeManagerUiModelsTest {
             id = QuestionId("school"),
             questionText = "School?",
             role = StandardQuestionRoles.HighSchoolerStatus,
+            handling = StandardQuestionHandlingTypes.ExpectedTypedAnswer,
             mappings = TypedAnswerMappings(highSchooler = listOf(HighSchoolerAnswerMapping("Yes", HighSchoolerStatus.Yes))),
         )
         val answerQuestion = Question(

@@ -19,6 +19,7 @@ class Question(
 ) : DomainObject<QuestionId> {
     init {
         require(questionText.isNotBlank()) { "Question text must not be blank." }
+        validateQuestionHandling(role, handling)
     }
 
     val displayLabel: String

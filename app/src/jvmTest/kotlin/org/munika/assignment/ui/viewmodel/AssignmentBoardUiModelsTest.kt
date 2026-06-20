@@ -38,6 +38,7 @@ import org.munika.assignment.domain.model.ReservationId
 import org.munika.assignment.domain.model.ReservationLinkSource
 import org.munika.assignment.domain.model.Slot
 import org.munika.assignment.domain.model.SlotId
+import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
 import org.munika.assignment.domain.model.TypedAnswerMappings
 
@@ -412,12 +413,12 @@ class AssignmentBoardUiModelsTest {
         val ipc = Committee(CommitteeId("ipc"), conference, "IPC", slotsPerPosition = 1, mode = CommitteeMode.Mapped)
         val target = Committee(CommitteeId("target"), conference, "UNSC", slotsPerPosition = 1, mode = CommitteeMode.HighSchool)
         val reporter = Position(PositionId("reporter"), ipc, "UNSC Reporter").also { ipc.positions += it }
+        conference.committees += listOf(ipc, target)
         reporter.setMappedCommittee(target)
         val targetPosition = Position(PositionId("target-position"), target, "France")
         val available = delegate(conference, "available", "Available", "Delegate", PaymentStatus.Paid, active = true)
         val neutral = delegate(conference, "neutral", "Neutral", "Delegate", PaymentStatus.Paid, active = true)
 
-        conference.committees += listOf(ipc, target)
         conference.delegates += listOf(available, neutral)
         target.positions += targetPosition
         reporter.slots += Slot(SlotId("reporter-1"), reporter, 1, Instant.EPOCH)
@@ -451,6 +452,7 @@ class AssignmentBoardUiModelsTest {
             QuestionId("high-schooler-${delegate.id.value}"),
             "High schooler",
             role = StandardQuestionRoles.HighSchoolerStatus,
+            handling = StandardQuestionHandlingTypes.ExpectedTypedAnswer,
             mappings = TypedAnswerMappings(highSchooler = listOf(HighSchoolerAnswerMapping("Yes", HighSchoolerStatus.Yes))),
         )
         delegate.answers += QuestionAnswer(QuestionAnswerId("high-schooler-answer-${delegate.id.value}"), delegate, question, "Yes")
