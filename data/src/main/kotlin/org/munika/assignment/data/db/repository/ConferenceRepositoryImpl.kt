@@ -919,8 +919,11 @@ class ConferenceRepositoryImpl(
                 val rawAnswer = answerCell.answer ?: return@forEach
                 val normalizedQuestion = normalize(answerCell.questionColumn.questionText)
                 val existingQuestion = existingQuestions[normalizedQuestion]
-                val roleId = existingQuestion?.get(DelegateQuestionTable.roleId)
-                    ?: inferQuestionRoleId(answerCell.questionColumn.questionText)
+                val roleId = if (existingQuestion == null) {
+                    inferQuestionRoleId(answerCell.questionColumn.questionText)
+                } else {
+                    existingQuestion[DelegateQuestionTable.roleId]
+                }
                 val mappedAnswers = mappedAnswers(existingQuestion?.get(DelegateQuestionTable.id), roleId)
                 val observedAnswers = existingQuestion
                     ?.get(DelegateQuestionTable.id)

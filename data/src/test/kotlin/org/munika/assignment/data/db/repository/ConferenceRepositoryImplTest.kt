@@ -1596,7 +1596,12 @@ class ConferenceRepositoryImplTest {
         val database = DatabaseFactory.connect(dbPath)
         val repository = ConferenceRepositoryImpl(database)
         val conference = repository.createConference("TestConf")
-        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithRoleAnswer("Maybe")).success)
+        assertTrue(
+            repository.applyMymunUpdateSnapshot(
+                conference.id.value,
+                snapshotWithQuestions(listOf("Question: Are you a high-schooler?")),
+            ).success,
+        )
         val question = requireNotNull(repository.getConference(conference.id.value)).questions.single()
         repository.updateQuestionConfiguration(
             conferenceId = conference.id.value,
@@ -1612,6 +1617,40 @@ class ConferenceRepositoryImplTest {
                 mappings = TypedAnswerMappings(
                     highSchooler = listOf(HighSchoolerAnswerMapping("Maybe", HighSchoolerStatus.Yes)),
                 ),
+            ),
+        )
+
+        val result = repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithRoleAnswer("Maybe"))
+
+        assertTrue(result.success, result.issues.joinToString("; ") { it.message })
+        assertTrue(result.issues.none { it.code == "unmapped_role_answer" })
+    }
+
+    @Test
+    fun `MyMUN update respects an organizer-cleared question role`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-cleared-question-role").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        assertTrue(
+            repository.applyMymunUpdateSnapshot(
+                conference.id.value,
+                snapshotWithQuestions(listOf("Question: Are you a high-schooler?")),
+            ).success,
+        )
+        val question = requireNotNull(repository.getConference(conference.id.value)).questions.single()
+        repository.updateQuestionConfiguration(
+            conferenceId = conference.id.value,
+            configuration = QuestionConfiguration(
+                questionId = question.id,
+                questionText = question.questionText,
+                visibleInDelegateDetail = true,
+                organizerLabel = null,
+                role = null,
+                handling = StandardQuestionHandlingTypes.Default,
+                displayOrder = question.displayOrder,
+                rules = emptyList(),
+                mappings = TypedAnswerMappings(),
             ),
         )
 
