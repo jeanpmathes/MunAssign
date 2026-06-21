@@ -2,7 +2,6 @@
 
 ## Later - Transfer And Polish
 
-- Fix all warnings of code.
 - Improve upload experience (no weird message) and the UI when conference is empty.
 - Polish question configuration keyboard/focus handling after regular use.
 - Implement `.munassign` SQLite export for a single conference.
