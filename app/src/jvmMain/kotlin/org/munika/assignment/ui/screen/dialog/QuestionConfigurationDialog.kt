@@ -3,12 +3,15 @@
 package org.munika.assignment.ui.screen.dialog
 
 import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -79,6 +82,7 @@ import org.munika.assignment.ui.viewmodel.EditableQuestionConfigurationUiState
 import org.munika.assignment.ui.viewmodel.QuestionConfigurationListUiState
 import org.munika.assignment.ui.viewmodel.normalizedForSave
 import org.munika.assignment.ui.viewmodel.toEditableQuestionConfigurationUiStates
+import org.munika.assignment.ui.viewmodel.validationErrors
 
 @Composable
 fun QuestionConfigurationDialog(
@@ -253,18 +257,7 @@ private fun QuestionRow(
                 RoleCapsule(
                     selectedRoleId = state.roleId,
                     onSelect = { roleId ->
-                        onChange(
-                            state.copy(
-                                roleId = roleId,
-                                handlingTypeId = if (roleId == null) {
-                                    StandardQuestionHandlingTypes.Default.id
-                                } else {
-                                    StandardQuestionHandlingTypes.ExpectedTypedAnswer.id
-                                },
-                                visibleInDelegateDetail = roleId == null && state.visibleInDelegateDetail,
-                                rules = emptyList(),
-                            ),
-                        )
+                        onChange(state.withRole(roleId))
                     },
                 )
                 Spacer(modifier = Modifier.weight(1f))
@@ -472,17 +465,22 @@ private fun MappingDialog(
         text = {
             Column(modifier = Modifier.width(620.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 errors.forEach { Text(it, color = MaterialTheme.colorScheme.error) }
-                mappings.forEachIndexed { index, mapping ->
-                    MappingRow(
-                        roleId = role.id,
-                        mapping = mapping,
-                        onChange = { updated ->
-                            onChange(state.withSelectedRoleMappings(mappings.toMutableList().also { it[index] = updated }))
-                        },
-                        onDelete = {
-                            onChange(state.withSelectedRoleMappings(mappings.toMutableList().also { it.removeAt(index) }))
-                        },
-                    )
+                Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    mappings.forEachIndexed { index, mapping ->
+                        MappingRow(
+                            roleId = role.id,
+                            mapping = mapping,
+                            onChange = { updated ->
+                                onChange(state.withSelectedRoleMappings(mappings.toMutableList().also { it[index] = updated }))
+                            },
+                            onDelete = {
+                                onChange(state.withSelectedRoleMappings(mappings.toMutableList().also { it.removeAt(index) }))
+                            },
+                        )
+                    }
                 }
                 OutlinedButton(
                     onClick = {
@@ -513,6 +511,7 @@ private fun MappingRow(
         OutlinedTextField(
             value = mapping.rawValue,
             onValueChange = { onChange(mapping.copy(rawValue = it)) },
+            readOnly = mapping.isObserved,
             label = { Text("Raw answer") },
             singleLine = true,
             modifier = Modifier.weight(1f),
@@ -524,7 +523,12 @@ private fun MappingRow(
             onSelect = { onChange(mapping.copy(mappedValueId = it)) },
             modifier = Modifier.weight(1f),
         )
-        ReorderButton("Remove mapping", Icons.Filled.Delete, enabled = true, onClick = onDelete)
+        ReorderButton(
+            tooltip = if (mapping.isObserved) "Observed answers cannot be removed." else "Remove mapping",
+            icon = Icons.Filled.Delete,
+            enabled = !mapping.isObserved,
+            onClick = onDelete,
+        )
     }
 }
 
@@ -656,17 +660,6 @@ private fun EditableQuestionConfigurationUiState.withSelectedRoleMappings(
         else -> this
     }
 
-private fun List<EditableAnswerMappingUiState>.validationErrors(label: String): List<String> =
-    buildList {
-        if (this@validationErrors.any { it.rawValue.isBlank() }) {
-            add("$label mapping raw values must not be blank.")
-        }
-        val normalizedValues = this@validationErrors.map { it.rawValue.trim().lowercase() }
-        if (normalizedValues.size != normalizedValues.toSet().size) {
-            add("$label mapping raw values must be unique.")
-        }
-    }
-
 private fun mappedValueOptions(roleId: String): List<Pair<String, String>> =
     when (roleId) {
         StandardQuestionRoles.ExperienceLevel.id -> MunExperienceLevel.entries.map { it.name to it.label }
@@ -678,8 +671,9 @@ private fun mappedValueOptions(roleId: String): List<Pair<String, String>> =
 private fun firstMappedValueId(roleId: String): String =
     mappedValueOptions(roleId).first().first
 
-private fun mappedValueLabel(roleId: String, valueId: String): String =
-    mappedValueOptions(roleId).firstOrNull { it.first == valueId }?.second ?: valueId
+private fun mappedValueLabel(roleId: String, valueId: String?): String =
+    valueId?.let { selected -> mappedValueOptions(roleId).firstOrNull { it.first == selected }?.second }
+        ?: "Select mapping"
 
 private val MunExperienceLevel.label: String
     get() = when (this) {

@@ -16,5 +16,5 @@ val appModule: Module = module {
     single { ConferenceRepositoryImpl() } bind ConferenceRepository::class
     single { MymunWorkbookUpdater(get()) }
     single { ListConferencesUseCase(get()) }
-    single { MainViewModel(get(), get()) }
+    single { MainViewModel(get<ConferenceRepository>(), get<MymunWorkbookUpdater>()) }
 }

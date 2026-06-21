@@ -1,6 +1,6 @@
 package org.munika.assignment.ui.viewmodel
 
-import java.nio.file.Files
+import java.nio.file.Path
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -9,17 +9,69 @@ import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
-import org.munika.assignment.data.db.DatabaseFactory
-import org.munika.assignment.data.db.repository.ConferenceRepositoryImpl
-import org.munika.assignment.data.excel.MymunWorkbookUpdater
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.ConferenceId
 import org.munika.assignment.domain.model.QuestionConfiguration
 import org.munika.assignment.domain.repository.ConferenceRepository
+import org.munika.assignment.domain.repository.UpdateResult
+import org.munika.assignment.domain.repository.UpdateSummary
 
 class MainViewModelTest {
+    @Test
+    fun `delayed conference creation refreshes list without replacing a newer selection`() {
+        val conferenceA = Conference(ConferenceId("conference-a"), "Conference A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val conferenceB = Conference(ConferenceId("conference-b"), "Conference B", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val created = Conference(ConferenceId("conference-created"), "Created", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val createStarted = CompletableDeferred<Unit>()
+        val createResult = CompletableDeferred<Conference>()
+        val repository = FakeConferenceRepository(
+            initialConference = conferenceA,
+            conferences = listOf(conferenceA, conferenceB),
+            createdConferenceDeferred = createResult,
+            createConferenceStarted = createStarted,
+            conferencesAfterCreate = listOf(conferenceA, conferenceB, created),
+        )
+        val viewModel = viewModelWith(repository)
+        waitUntil { viewModel.state.value.selectedConference === conferenceA }
+
+        assertTrue(viewModel.createConference("Created"))
+        runBlocking { createStarted.await() }
+        viewModel.selectConference("conference-b")
+        waitUntil { viewModel.state.value.selectedConference === conferenceB }
+        createResult.complete(created)
+
+        assertEquals(listOf("conference-a", "conference-b", "conference-created"), viewModel.state.value.conferences.map { it.id.value })
+        assertEquals("conference-b", viewModel.state.value.selectedConferenceId)
+        assertSame(conferenceB, viewModel.state.value.selectedConference)
+        assertNull(viewModel.state.value.conferenceActionError)
+        viewModel.close()
+    }
+
+    @Test
+    fun `selecting another conference clears conference scoped UI state`() {
+        val conferenceA = Conference(ConferenceId("conference-a"), "Conference A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val conferenceB = Conference(ConferenceId("conference-b"), "Conference B", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conferenceA, conferences = listOf(conferenceA, conferenceB)))
+        waitUntil { viewModel.state.value.selectedConference === conferenceA }
+        viewModel.openDelegateDetail("delegate-a")
+        viewModel.openDelegateList()
+        viewModel.openQuestionConfiguration()
+        viewModel.openReservationManager()
+
+        viewModel.selectConference("conference-b")
+
+        assertNull(viewModel.state.value.selectedDelegateId)
+        assertFalse(viewModel.state.value.delegateListOpen)
+        assertFalse(viewModel.state.value.questionConfigurationOpen)
+        assertFalse(viewModel.state.value.reservationManagerOpen)
+        viewModel.close()
+    }
+
     @Test
     fun `delegation overview actions update open state`() {
         val viewModel = viewModelWith(FakeConferenceRepository())
@@ -184,6 +236,113 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `delayed committee mutation success does not alter newly selected conference`() {
+        val conferenceA = Conference(ConferenceId("conference-a"), "Conference A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val conferenceB = Conference(ConferenceId("conference-b"), "Conference B", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val updatedA = Conference(ConferenceId("conference-a"), "Updated A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val started = CompletableDeferred<Unit>()
+        val result = CompletableDeferred<Result<Conference>>()
+        val repository = FakeConferenceRepository(
+            initialConference = conferenceA,
+            conferences = listOf(conferenceA, conferenceB),
+            committeeModeResultDeferred = result,
+            committeeModeStarted = started,
+        )
+        val viewModel = viewModelWith(repository)
+        waitUntil { viewModel.state.value.selectedConference === conferenceA }
+
+        viewModel.setCommitteeMode("committee", CommitteeMode.Mapped)
+        runBlocking { started.await() }
+        viewModel.selectConference("conference-b")
+        waitUntil { viewModel.state.value.selectedConference === conferenceB }
+        result.complete(Result.success(updatedA))
+
+        assertSame(conferenceB, viewModel.state.value.selectedConference)
+        assertNull(viewModel.state.value.boardActionError)
+        assertFalse(viewModel.state.value.loading)
+        viewModel.close()
+    }
+
+    @Test
+    fun `delayed committee mutation failure does not leak into newly selected conference`() {
+        val conferenceA = Conference(ConferenceId("conference-a"), "Conference A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val conferenceB = Conference(ConferenceId("conference-b"), "Conference B", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val started = CompletableDeferred<Unit>()
+        val result = CompletableDeferred<Result<Conference>>()
+        val repository = FakeConferenceRepository(
+            initialConference = conferenceA,
+            conferences = listOf(conferenceA, conferenceB),
+            committeeModeResultDeferred = result,
+            committeeModeStarted = started,
+        )
+        val viewModel = viewModelWith(repository)
+        waitUntil { viewModel.state.value.selectedConference === conferenceA }
+
+        viewModel.setCommitteeMode("committee", CommitteeMode.Mapped)
+        runBlocking { started.await() }
+        viewModel.selectConference("conference-b")
+        waitUntil { viewModel.state.value.selectedConference === conferenceB }
+        result.complete(Result.failure(IllegalArgumentException("Conference A failed")))
+
+        assertSame(conferenceB, viewModel.state.value.selectedConference)
+        assertNull(viewModel.state.value.boardActionError)
+        assertFalse(viewModel.state.value.loading)
+        viewModel.close()
+    }
+
+    @Test
+    fun `delayed workbook success does not alter newly selected conference`() {
+        val conferenceA = Conference(ConferenceId("conference-a"), "Conference A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val conferenceB = Conference(ConferenceId("conference-b"), "Conference B", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val started = CompletableDeferred<Unit>()
+        val result = CompletableDeferred<Result<UpdateResult>>()
+        val repository = FakeConferenceRepository(initialConference = conferenceA, conferences = listOf(conferenceA, conferenceB))
+        val viewModel = viewModelWith(repository) { _, _ ->
+            started.complete(Unit)
+            result.await().getOrThrow()
+        }
+        waitUntil { viewModel.state.value.selectedConference === conferenceA }
+
+        viewModel.updateFromWorkbook(Path.of("conference-a.xlsx"))
+        runBlocking { started.await() }
+        viewModel.selectConference("conference-b")
+        waitUntil { viewModel.state.value.selectedConference === conferenceB }
+        result.complete(Result.success(UpdateResult(true, emptyList(), UpdateSummary(delegatesCreated = 4))))
+
+        assertSame(conferenceB, viewModel.state.value.selectedConference)
+        assertTrue(viewModel.state.value.updateIssues.isEmpty())
+        assertNull(viewModel.state.value.updateSummary)
+        assertFalse(viewModel.state.value.loading)
+        viewModel.close()
+    }
+
+    @Test
+    fun `delayed workbook failure does not leak into newly selected conference`() {
+        val conferenceA = Conference(ConferenceId("conference-a"), "Conference A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val conferenceB = Conference(ConferenceId("conference-b"), "Conference B", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val started = CompletableDeferred<Unit>()
+        val result = CompletableDeferred<Result<UpdateResult>>()
+        val repository = FakeConferenceRepository(initialConference = conferenceA, conferences = listOf(conferenceA, conferenceB))
+        val viewModel = viewModelWith(repository) { _, _ ->
+            started.complete(Unit)
+            result.await().getOrThrow()
+        }
+        waitUntil { viewModel.state.value.selectedConference === conferenceA }
+
+        viewModel.updateFromWorkbook(Path.of("conference-a.xlsx"))
+        runBlocking { started.await() }
+        viewModel.selectConference("conference-b")
+        waitUntil { viewModel.state.value.selectedConference === conferenceB }
+        result.complete(Result.failure(IllegalStateException("Conference A workbook failed")))
+
+        assertSame(conferenceB, viewModel.state.value.selectedConference)
+        assertTrue(viewModel.state.value.updateIssues.isEmpty())
+        assertNull(viewModel.state.value.updateSummary)
+        assertFalse(viewModel.state.value.loading)
+        viewModel.close()
+    }
+
+    @Test
     fun `set position mapped committee refreshes selected conference`() {
         val original = Conference(ConferenceId("conference"), "Original", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val updated = Conference(ConferenceId("conference"), "Mapped position", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
@@ -273,11 +432,14 @@ class MainViewModelTest {
         viewModel.close()
     }
 
-    private fun viewModelWith(repository: ConferenceRepository): MainViewModel {
-        val dbPath = Files.createTempDirectory("munassign-main-viewmodel-test").resolve("data.db")
-        val updaterRepository = ConferenceRepositoryImpl(DatabaseFactory.connect(dbPath))
-        return MainViewModel(repository, MymunWorkbookUpdater(updaterRepository))
-    }
+    private fun viewModelWith(
+        repository: ConferenceRepository,
+        workbookUpdate: suspend (String, Path) -> UpdateResult = { _, _ -> UpdateResult(true, emptyList()) },
+    ): MainViewModel = MainViewModel(
+        repository,
+        WorkbookUpdateRunner { conferenceId, path -> workbookUpdate(conferenceId, path) },
+        CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+    )
 
     private fun waitUntil(predicate: () -> Boolean) {
         repeat(100) {
@@ -291,6 +453,9 @@ class MainViewModelTest {
 private class FakeConferenceRepository(
     private val initialConference: Conference? = null,
     private val conferences: List<Conference> = listOfNotNull(initialConference),
+    private val createdConferenceDeferred: CompletableDeferred<Conference>? = null,
+    private val createConferenceStarted: CompletableDeferred<Unit>? = null,
+    private val conferencesAfterCreate: List<Conference>? = null,
     private val resolvedConference: Conference? = initialConference,
     private val resolveError: String? = null,
     private val createdReservationConference: Conference? = initialConference,
@@ -298,8 +463,11 @@ private class FakeConferenceRepository(
     private val createReservationStarted: CompletableDeferred<Unit>? = null,
     private val removeDelegateReservationError: String? = null,
     private val committeeModeConference: Conference? = initialConference,
+    private val committeeModeResultDeferred: CompletableDeferred<Result<Conference>>? = null,
+    private val committeeModeStarted: CompletableDeferred<Unit>? = null,
     private val positionMappedConference: Conference? = initialConference,
 ) : ConferenceRepository {
+    private var conferenceCreated: Boolean = false
     var resolvedDelegateId: String? = null
         private set
     var resolvedQuestionId: String? = null
@@ -331,9 +499,15 @@ private class FakeConferenceRepository(
     var positionMappedCommitteeId: String? = null
         private set
 
-    override suspend fun listConferences(): List<Conference> = conferences
+    override suspend fun listConferences(): List<Conference> =
+        if (conferenceCreated) conferencesAfterCreate ?: conferences else conferences
 
-    override suspend fun createConference(name: String): Conference = unsupported()
+    override suspend fun createConference(name: String): Conference {
+        createConferenceStarted?.complete(Unit)
+        val created = createdConferenceDeferred?.await() ?: unsupported()
+        conferenceCreated = true
+        return created
+    }
 
     override suspend fun renameConference(conferenceId: String, newName: String): Conference = unsupported()
 
@@ -361,6 +535,8 @@ private class FakeConferenceRepository(
         committeeModeConferenceId = conferenceId
         committeeModeCommitteeId = committeeId
         committeeModeMode = mode
+        committeeModeStarted?.complete(Unit)
+        committeeModeResultDeferred?.let { return it.await().getOrThrow() }
         return requireNotNull(committeeModeConference)
     }
 

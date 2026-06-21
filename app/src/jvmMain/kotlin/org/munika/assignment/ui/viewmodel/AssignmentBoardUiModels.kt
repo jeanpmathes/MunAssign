@@ -126,10 +126,7 @@ fun Conference.toAssignmentBoardUiState(): AssignmentBoardUiState =
             val reservationReminders = when (committee.mode) {
                 CommitteeMode.HighSchool -> listOfNotNull(reservations.toReservationReminderUiState(isHighSchool = true))
                 CommitteeMode.University -> listOfNotNull(reservations.toReservationReminderUiState(isHighSchool = false))
-                CommitteeMode.Mapped -> listOfNotNull(
-                    reservations.toReservationReminderUiState(isHighSchool = true),
-                    reservations.toReservationReminderUiState(isHighSchool = false),
-                )
+                CommitteeMode.Mapped -> emptyList()
             }
             CommitteeBoardUiState(
                 id = committee.id.value,

@@ -337,7 +337,7 @@ class AssignmentBoardUiModelsTest {
     }
 
     @Test
-    fun `mapped committee exposes both reservation buckets`() {
+    fun `mapped committee does not expose reservation reminders`() {
         val board = mappedBoard()
         board.conference.reservations += Reservation(
             id = ReservationId("reservation"),
@@ -353,8 +353,7 @@ class AssignmentBoardUiModelsTest {
             .committees.single { it.name == "IPC" }
             .reservationReminders
 
-        assertEquals(listOf("HS reservations", "Uni reservations"), reminders.map { it.label })
-        assertEquals(listOf(2, 3), reminders.map { it.remainingCount })
+        assertTrue(reminders.isEmpty())
     }
 
     @Test

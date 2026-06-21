@@ -15,6 +15,7 @@ import org.munika.assignment.domain.model.QuestionRole
 import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
 import org.munika.assignment.domain.model.TypedAnswerMappings
+import org.munika.assignment.domain.model.normalizeAnswer
 import org.munika.assignment.domain.model.toConfiguration
 
 data class QuestionConfigurationListUiState(
@@ -44,6 +45,7 @@ data class EditableQuestionConfigurationUiState(
     val munExperienceMappings: List<EditableAnswerMappingUiState>,
     val highSchoolerMappings: List<EditableAnswerMappingUiState>,
     val languageLevelMappings: List<EditableAnswerMappingUiState>,
+    val observedRawValues: List<String> = emptyList(),
 ) {
     val selectedRole: QuestionRole?
         get() = StandardQuestionRoles.fromId(roleId)
@@ -62,12 +64,24 @@ data class EditableQuestionConfigurationUiState(
         if (roleId != null && StandardQuestionRoles.fromId(roleId) == null) {
             errors += "Select a valid role."
         }
-        errors += selectedMappings().validationErrors(selectedRole?.name ?: "Mapping")
+        val mappings = selectedMappings()
+        errors += mappings.validationErrors(selectedRole?.name ?: "Mapping")
+        val hasUnmappedObservedAnswer = observedRawValues.any { observedRawValue ->
+            val observedValue = normalizeAnswer(observedRawValue)
+            mappings.none { mapping ->
+                normalizeAnswer(mapping.rawValue) == observedValue && mapping.mappedValueId != null
+            }
+        }
+        if (selectedRole != null && hasUnmappedObservedAnswer) {
+            errors += "Every observed answer must have a selected mapping."
+        }
         return errors
     }
 
-    fun toConfiguration(): QuestionConfiguration =
-        QuestionConfiguration(
+    fun toConfiguration(): QuestionConfiguration {
+        val errors = validationErrors()
+        require(errors.isEmpty()) { errors.joinToString(" ") }
+        return QuestionConfiguration(
             questionId = QuestionId(questionId),
             questionText = questionText,
             role = selectedRole,
@@ -82,6 +96,22 @@ data class EditableQuestionConfigurationUiState(
                 languageLevel = languageLevelMappings.toLanguageLevelMappings(),
             ),
         )
+    }
+
+    fun withRole(roleId: String?): EditableQuestionConfigurationUiState =
+        copy(
+            roleId = roleId,
+            handlingTypeId = if (roleId == null) {
+                StandardQuestionHandlingTypes.Default.id
+            } else {
+                StandardQuestionHandlingTypes.ExpectedTypedAnswer.id
+            },
+            visibleInDelegateDetail = roleId == null && visibleInDelegateDetail,
+            rules = emptyList(),
+            munExperienceMappings = munExperienceMappings.withoutUnmappedObservedRows(),
+            highSchoolerMappings = highSchoolerMappings.withoutUnmappedObservedRows(),
+            languageLevelMappings = languageLevelMappings.withoutUnmappedObservedRows(),
+        ).withObservedAnswers(observedRawValues)
 
     private fun selectedMappings(): List<EditableAnswerMappingUiState> =
         when (selectedRole) {
@@ -93,9 +123,13 @@ data class EditableQuestionConfigurationUiState(
         }
 }
 
+private fun List<EditableAnswerMappingUiState>.withoutUnmappedObservedRows(): List<EditableAnswerMappingUiState> =
+    filter { it.mappedValueId != null }.map { it.copy(isObserved = false) }
+
 data class EditableAnswerMappingUiState(
     val rawValue: String,
-    val mappedValueId: String,
+    val mappedValueId: String?,
+    val isObserved: Boolean = false,
 )
 
 fun Conference.toQuestionConfigurationListUiState(): QuestionConfigurationListUiState =
@@ -116,7 +150,15 @@ fun Conference.toQuestionConfigurationListUiState(): QuestionConfigurationListUi
     )
 
 fun Conference.toEditableQuestionConfigurationUiStates(): List<EditableQuestionConfigurationUiState> =
-    questions.sortedWith(questionDisplayComparator()).map { it.toConfiguration().toEditableUiState() }
+    questions.sortedWith(questionDisplayComparator()).map { question ->
+        question.toConfiguration().toEditableUiState().withObservedAnswers(
+            delegates.asSequence()
+                .flatMap { it.answers.asSequence() }
+                .filter { it.question.id == question.id }
+                .mapNotNull { it.rawAnswer?.takeIf(String::isNotBlank) }
+                .toList(),
+        )
+    }
 
 fun QuestionConfiguration.toEditableUiState(): EditableQuestionConfigurationUiState =
     EditableQuestionConfigurationUiState(
@@ -142,7 +184,10 @@ fun List<EditableAnswerMappingUiState>.validationErrors(label: String): List<Str
     if (any { it.rawValue.isBlank() }) {
         errors += "$label mapping raw values must not be blank."
     }
-    val normalizedValues = map { it.rawValue.trim().lowercase() }
+    if (any { it.mappedValueId == null }) {
+        errors += "$label mappings must all have a selected mapping."
+    }
+    val normalizedValues = map { normalizeAnswer(it.rawValue) }
     if (normalizedValues.size != normalizedValues.toSet().size) {
         errors += "$label mapping raw values must be unique."
     }
@@ -155,10 +200,47 @@ private fun questionDisplayComparator(): Comparator<org.munika.assignment.domain
         .thenBy { it.questionText }
 
 private fun List<EditableAnswerMappingUiState>.toMunExperienceMappings(): List<MunExperienceAnswerMapping> =
-    map { MunExperienceAnswerMapping(it.rawValue.trim(), MunExperienceLevel.valueOf(it.mappedValueId)) }
+    map { MunExperienceAnswerMapping(it.rawValue.trim(), MunExperienceLevel.valueOf(requireNotNull(it.mappedValueId))) }
 
 private fun List<EditableAnswerMappingUiState>.toHighSchoolerMappings(): List<HighSchoolerAnswerMapping> =
-    map { HighSchoolerAnswerMapping(it.rawValue.trim(), HighSchoolerStatus.valueOf(it.mappedValueId)) }
+    map { HighSchoolerAnswerMapping(it.rawValue.trim(), HighSchoolerStatus.valueOf(requireNotNull(it.mappedValueId))) }
 
 private fun List<EditableAnswerMappingUiState>.toLanguageLevelMappings(): List<LanguageLevelAnswerMapping> =
-    map { LanguageLevelAnswerMapping(it.rawValue.trim(), LanguageLevel.valueOf(it.mappedValueId)) }
+    map { LanguageLevelAnswerMapping(it.rawValue.trim(), LanguageLevel.valueOf(requireNotNull(it.mappedValueId))) }
+
+private fun EditableQuestionConfigurationUiState.withObservedAnswers(
+    observedRawAnswers: List<String>,
+): EditableQuestionConfigurationUiState {
+    val distinctObservedRawAnswers = observedRawAnswers.distinctBy(::normalizeAnswer)
+    val observedNormalizedValues = distinctObservedRawAnswers.mapTo(linkedSetOf()) { normalizeAnswer(it) }
+    val stateWithObservedAnswers = copy(observedRawValues = distinctObservedRawAnswers)
+
+    fun List<EditableAnswerMappingUiState>.mergeObserved(): List<EditableAnswerMappingUiState> {
+        val configuredMappings = map { mapping ->
+            mapping.copy(isObserved = normalizeAnswer(mapping.rawValue) in observedNormalizedValues)
+        }
+        val normalizedValues = configuredMappings.mapTo(mutableSetOf()) { normalizeAnswer(it.rawValue) }
+        val observedMappings = distinctObservedRawAnswers.mapNotNull { rawAnswer ->
+            val normalized = normalizeAnswer(rawAnswer)
+            if (normalized.isBlank() || !normalizedValues.add(normalized)) {
+                null
+            } else {
+                EditableAnswerMappingUiState(rawValue = rawAnswer, mappedValueId = null, isObserved = true)
+            }
+        }
+        return configuredMappings + observedMappings
+    }
+
+    return when (stateWithObservedAnswers.selectedRole) {
+        StandardQuestionRoles.ExperienceLevel -> stateWithObservedAnswers.copy(
+            munExperienceMappings = munExperienceMappings.mergeObserved(),
+        )
+        StandardQuestionRoles.HighSchoolerStatus -> stateWithObservedAnswers.copy(
+            highSchoolerMappings = highSchoolerMappings.mergeObserved(),
+        )
+        StandardQuestionRoles.LanguageLevel -> stateWithObservedAnswers.copy(
+            languageLevelMappings = languageLevelMappings.mergeObserved(),
+        )
+        else -> stateWithObservedAnswers
+    }
+}

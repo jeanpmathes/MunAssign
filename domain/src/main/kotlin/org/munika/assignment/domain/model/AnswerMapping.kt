@@ -1,4 +1,5 @@
 package org.munika.assignment.domain.model
 
-internal fun normalizeAnswer(value: String?): String =
+/** Normalizes raw MyMUN answer text for mapping lookup and uniqueness checks. */
+fun normalizeAnswer(value: String?): String =
     value?.trim()?.lowercase().orEmpty()

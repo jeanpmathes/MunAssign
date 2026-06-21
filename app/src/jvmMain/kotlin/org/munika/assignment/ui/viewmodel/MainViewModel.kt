@@ -17,16 +17,27 @@ import org.munika.assignment.domain.model.QuestionConfiguration
 import org.munika.assignment.domain.repository.ConferenceRepository
 import org.munika.assignment.domain.repository.UpdateIssue
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
+import org.munika.assignment.domain.repository.UpdateResult
 import org.munika.assignment.domain.repository.UpdateSummary
+
+internal fun interface WorkbookUpdateRunner {
+    suspend fun applyUpdate(conferenceId: String, path: Path): UpdateResult
+}
 
 /**
  * Main screen state holder.
  */
-class MainViewModel(
+class MainViewModel internal constructor(
     private val repository: ConferenceRepository,
-    private val workbookUpdater: MymunWorkbookUpdater,
+    private val workbookUpdater: WorkbookUpdateRunner,
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) : AutoCloseable {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    constructor(repository: ConferenceRepository, workbookUpdater: MymunWorkbookUpdater) : this(
+        repository = repository,
+        workbookUpdater = WorkbookUpdateRunner { conferenceId, path ->
+            workbookUpdater.applyUpdate(conferenceId, path)
+        },
+    )
 
     private val _state = MutableStateFlow(MainUiState())
     val state: StateFlow<MainUiState> = _state.asStateFlow()
@@ -48,7 +59,29 @@ class MainViewModel(
     }
 
     fun selectConference(conferenceId: String) {
-        _state.update { it.copy(selectedConferenceId = conferenceId) }
+        _state.update {
+            it.copy(
+                selectedConferenceId = conferenceId,
+                selectedConference = null,
+                loading = false,
+                updateIssues = emptyList(),
+                updateSummary = null,
+                boardActionError = null,
+                boardScrollRequest = null,
+                selectedDelegateId = null,
+                delegateListOpen = false,
+                noticeManagerOpen = false,
+                noticeManagerDelegateId = null,
+                delegationOverviewOpen = false,
+                delegationOverviewTargetId = null,
+                reservationManagerOpen = false,
+                reservationManagerDelegationId = null,
+                reservationActionError = null,
+                delegateReservationActionError = null,
+                questionConfigurationOpen = false,
+                questionConfigurationError = null,
+            )
+        }
         loadConference(conferenceId)
     }
 
@@ -58,17 +91,22 @@ class MainViewModel(
             _state.update { it.copy(conferenceActionError = validationError) }
             return false
         }
+        val expectedSelectedConferenceId = selectedIdOrNull()
         scope.launch {
             val created = repository.createConference(name.trim())
             val conferences = repository.listConferences()
-            _state.update {
-                it.copy(
-                    conferences = conferences,
-                    selectedConferenceId = created.id.value,
-                    selectedConference = created,
-                    updateIssues = emptyList(),
-                    conferenceActionError = null,
-                )
+            _state.update { current ->
+                if (current.selectedConferenceId == expectedSelectedConferenceId) {
+                    current.copy(
+                        conferences = conferences,
+                        selectedConferenceId = created.id.value,
+                        selectedConference = created,
+                        updateIssues = emptyList(),
+                        conferenceActionError = null,
+                    )
+                } else {
+                    current.copy(conferences = conferences)
+                }
             }
         }
         return true
@@ -84,11 +122,10 @@ class MainViewModel(
         scope.launch {
             val renamed = repository.renameConference(conferenceId, newName.trim())
             val conferences = repository.listConferences()
-            val selectedConference = if (_state.value.selectedConferenceId == conferenceId) renamed else _state.value.selectedConference
-            _state.update {
-                it.copy(
+            _state.update { current ->
+                current.copy(
                     conferences = conferences,
-                    selectedConference = selectedConference,
+                    selectedConference = if (current.selectedConferenceId == conferenceId) renamed else current.selectedConference,
                     conferenceActionError = null,
                 )
             }
@@ -107,13 +144,17 @@ class MainViewModel(
                 else -> conferences.firstOrNull()?.id?.value
             }
             val nextConference = nextId?.let { repository.getConference(it) }
-            _state.update {
-                it.copy(
-                    conferences = conferences,
-                    selectedConferenceId = nextId,
-                    selectedConference = nextConference,
-                    conferenceActionError = null,
-                )
+            _state.update { current ->
+                if (current.selectedConferenceId != previousSelectedId) {
+                    current.copy(conferences = conferences, conferenceActionError = null)
+                } else {
+                    current.copy(
+                        conferences = conferences,
+                        selectedConferenceId = nextId,
+                        selectedConference = nextConference,
+                        conferenceActionError = null,
+                    )
+                }
             }
         }
     }
@@ -256,10 +297,10 @@ class MainViewModel(
             return
         }
         scope.launch {
-            _state.update { it.copy(loading = true, boardActionError = null) }
+            updateConferenceState(selectedId) { it.copy(loading = true, boardActionError = null) }
             try {
                 val conference = repository.setCommitteeSlotsPerPosition(selectedId, committeeId, slotsPerPosition)
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         selectedConference = conference,
                         loading = false,
@@ -267,14 +308,14 @@ class MainViewModel(
                     )
                 }
             } catch (exception: IllegalArgumentException) {
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         loading = false,
                         boardActionError = exception.message ?: "Slot count could not be changed.",
                     )
                 }
             } catch (exception: Exception) {
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         loading = false,
                         boardActionError = "Slot count update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
@@ -294,10 +335,10 @@ class MainViewModel(
     fun setCommitteeMode(committeeId: String, mode: CommitteeMode) {
         val selectedId = selectedIdOrNull() ?: return
         scope.launch {
-            _state.update { it.copy(loading = true, boardActionError = null) }
+            updateConferenceState(selectedId) { it.copy(loading = true, boardActionError = null) }
             try {
                 val conference = repository.setCommitteeMode(selectedId, committeeId, mode)
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         selectedConference = conference,
                         loading = false,
@@ -305,14 +346,14 @@ class MainViewModel(
                     )
                 }
             } catch (exception: IllegalArgumentException) {
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         loading = false,
                         boardActionError = exception.message ?: "Committee mode could not be changed.",
                     )
                 }
             } catch (exception: Exception) {
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         loading = false,
                         boardActionError = "Committee mode update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
@@ -325,10 +366,10 @@ class MainViewModel(
     fun setPositionMappedCommittee(positionId: String, mappedCommitteeId: String?) {
         val selectedId = selectedIdOrNull() ?: return
         scope.launch {
-            _state.update { it.copy(loading = true, boardActionError = null) }
+            updateConferenceState(selectedId) { it.copy(loading = true, boardActionError = null) }
             try {
                 val conference = repository.setPositionMappedCommittee(selectedId, positionId, mappedCommitteeId)
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         selectedConference = conference,
                         loading = false,
@@ -336,14 +377,14 @@ class MainViewModel(
                     )
                 }
             } catch (exception: IllegalArgumentException) {
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         loading = false,
                         boardActionError = exception.message ?: "Position correspondence could not be changed.",
                     )
                 }
             } catch (exception: Exception) {
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         loading = false,
                         boardActionError = "Position correspondence update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
@@ -356,7 +397,7 @@ class MainViewModel(
     fun assignDelegateToSlot(slotId: String, delegateId: String, moveExistingPending: Boolean) {
         val selectedId = selectedIdOrNull() ?: return
         scope.launch {
-            _state.update { it.copy(loading = true, boardActionError = null) }
+            updateConferenceState(selectedId) { it.copy(loading = true, boardActionError = null) }
             try {
                 val conference = repository.assignDelegateToSlot(
                     conferenceId = selectedId,
@@ -364,7 +405,7 @@ class MainViewModel(
                     delegateId = delegateId,
                     moveExistingPending = moveExistingPending,
                 )
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         selectedConference = conference,
                         loading = false,
@@ -372,14 +413,14 @@ class MainViewModel(
                     )
                 }
             } catch (exception: IllegalArgumentException) {
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         loading = false,
                         boardActionError = exception.message ?: "Assignment could not be changed.",
                     )
                 }
             } catch (exception: Exception) {
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         loading = false,
                         boardActionError = "Assignment update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
@@ -392,10 +433,10 @@ class MainViewModel(
     fun clearPendingSlot(slotId: String) {
         val selectedId = selectedIdOrNull() ?: return
         scope.launch {
-            _state.update { it.copy(loading = true, boardActionError = null) }
+            updateConferenceState(selectedId) { it.copy(loading = true, boardActionError = null) }
             try {
                 val conference = repository.clearPendingSlot(selectedId, slotId)
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         selectedConference = conference,
                         loading = false,
@@ -403,14 +444,14 @@ class MainViewModel(
                     )
                 }
             } catch (exception: IllegalArgumentException) {
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         loading = false,
                         boardActionError = exception.message ?: "Pending assignment could not be cleared.",
                     )
                 }
             } catch (exception: Exception) {
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         loading = false,
                         boardActionError = "Assignment clear failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
@@ -423,10 +464,10 @@ class MainViewModel(
     fun deactivateDelegate(delegateId: String) {
         val selectedId = selectedIdOrNull() ?: return
         scope.launch {
-            _state.update { it.copy(loading = true, boardActionError = null) }
+            updateConferenceState(selectedId) { it.copy(loading = true, boardActionError = null) }
             try {
                 val conference = repository.deactivateDelegate(selectedId, delegateId)
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         selectedConference = conference,
                         loading = false,
@@ -434,14 +475,14 @@ class MainViewModel(
                     )
                 }
             } catch (exception: IllegalArgumentException) {
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         loading = false,
                         boardActionError = exception.message ?: "Delegate could not be deactivated.",
                     )
                 }
             } catch (exception: Exception) {
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         loading = false,
                         boardActionError = "Delegate update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
@@ -454,10 +495,10 @@ class MainViewModel(
     fun reactivateDelegate(delegateId: String) {
         val selectedId = selectedIdOrNull() ?: return
         scope.launch {
-            _state.update { it.copy(loading = true, boardActionError = null) }
+            updateConferenceState(selectedId) { it.copy(loading = true, boardActionError = null) }
             try {
                 val conference = repository.reactivateDelegate(selectedId, delegateId)
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         selectedConference = conference,
                         loading = false,
@@ -465,14 +506,14 @@ class MainViewModel(
                     )
                 }
             } catch (exception: IllegalArgumentException) {
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         loading = false,
                         boardActionError = exception.message ?: "Delegate could not be reactivated.",
                     )
                 }
             } catch (exception: Exception) {
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         loading = false,
                         boardActionError = "Delegate update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
@@ -557,9 +598,9 @@ class MainViewModel(
         scope.launch {
             try {
                 val conference = repository.addDelegateComment(selectedId, delegateId, body)
-                _state.update { it.copy(selectedConference = conference, boardActionError = null) }
+                updateConferenceState(selectedId) { it.copy(selectedConference = conference, boardActionError = null) }
             } catch (exception: IllegalArgumentException) {
-                _state.update { it.copy(boardActionError = exception.message ?: "Comment could not be added.") }
+                updateConferenceState(selectedId) { it.copy(boardActionError = exception.message ?: "Comment could not be added.") }
             }
         }
     }
@@ -569,9 +610,9 @@ class MainViewModel(
         scope.launch {
             try {
                 val conference = repository.updateDelegateComment(selectedId, commentId, body)
-                _state.update { it.copy(selectedConference = conference, boardActionError = null) }
+                updateConferenceState(selectedId) { it.copy(selectedConference = conference, boardActionError = null) }
             } catch (exception: IllegalArgumentException) {
-                _state.update { it.copy(boardActionError = exception.message ?: "Comment could not be updated.") }
+                updateConferenceState(selectedId) { it.copy(boardActionError = exception.message ?: "Comment could not be updated.") }
             }
         }
     }
@@ -581,9 +622,9 @@ class MainViewModel(
         scope.launch {
             try {
                 val conference = repository.deleteDelegateComment(selectedId, commentId)
-                _state.update { it.copy(selectedConference = conference, boardActionError = null) }
+                updateConferenceState(selectedId) { it.copy(selectedConference = conference, boardActionError = null) }
             } catch (exception: IllegalArgumentException) {
-                _state.update { it.copy(boardActionError = exception.message ?: "Comment could not be removed.") }
+                updateConferenceState(selectedId) { it.copy(boardActionError = exception.message ?: "Comment could not be removed.") }
             }
         }
     }
@@ -604,9 +645,9 @@ class MainViewModel(
                     issueKey = issueKey,
                     justification = justification,
                 )
-                _state.update { it.copy(selectedConference = conference, boardActionError = null) }
+                updateConferenceState(selectedId) { it.copy(selectedConference = conference, boardActionError = null) }
             } catch (exception: IllegalArgumentException) {
-                _state.update { it.copy(boardActionError = exception.message ?: "Issue could not be resolved.") }
+                updateConferenceState(selectedId) { it.copy(boardActionError = exception.message ?: "Issue could not be resolved.") }
             }
         }
     }
@@ -620,9 +661,9 @@ class MainViewModel(
                     resolutionId = resolutionId,
                     justification = justification,
                 )
-                _state.update { it.copy(selectedConference = conference, boardActionError = null) }
+                updateConferenceState(selectedId) { it.copy(selectedConference = conference, boardActionError = null) }
             } catch (exception: IllegalArgumentException) {
-                _state.update { it.copy(boardActionError = exception.message ?: "Issue justification could not be updated.") }
+                updateConferenceState(selectedId) { it.copy(boardActionError = exception.message ?: "Issue justification could not be updated.") }
             }
         }
     }
@@ -632,9 +673,9 @@ class MainViewModel(
         scope.launch {
             try {
                 val conference = repository.unresolveAnswerIssue(selectedId, resolutionId)
-                _state.update { it.copy(selectedConference = conference, boardActionError = null) }
+                updateConferenceState(selectedId) { it.copy(selectedConference = conference, boardActionError = null) }
             } catch (exception: IllegalArgumentException) {
-                _state.update { it.copy(boardActionError = exception.message ?: "Issue could not be reopened.") }
+                updateConferenceState(selectedId) { it.copy(boardActionError = exception.message ?: "Issue could not be reopened.") }
             }
         }
     }
@@ -644,7 +685,7 @@ class MainViewModel(
         scope.launch {
             try {
                 val conference = repository.updateQuestionConfiguration(selectedId, configuration)
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         selectedConference = conference,
                         questionConfigurationError = null,
@@ -652,11 +693,11 @@ class MainViewModel(
                     )
                 }
             } catch (exception: IllegalArgumentException) {
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(questionConfigurationError = exception.message ?: "Question configuration could not be saved.")
                 }
             } catch (exception: Exception) {
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         questionConfigurationError = "Question configuration update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
                     )
@@ -677,7 +718,7 @@ class MainViewModel(
                     selectedId,
                     configurations.sortedBy { it.displayOrder }.map { it.questionId.value },
                 )
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         selectedConference = conference,
                         questionConfigurationError = null,
@@ -685,11 +726,11 @@ class MainViewModel(
                     )
                 }
             } catch (exception: IllegalArgumentException) {
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(questionConfigurationError = exception.message ?: "Question configuration could not be saved.")
                 }
             } catch (exception: Exception) {
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         questionConfigurationError = "Question configuration update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
                     )
@@ -705,11 +746,11 @@ class MainViewModel(
     fun updateFromWorkbook(path: Path) {
         val selectedId = selectedIdOrNull() ?: return
         scope.launch {
-            _state.update { it.copy(loading = true) }
+            updateConferenceState(selectedId) { it.copy(loading = true) }
             try {
                 val result = workbookUpdater.applyUpdate(selectedId, path)
                 val conference = repository.getConference(selectedId)
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         selectedConference = conference,
                         updateIssues = result.issues,
@@ -718,7 +759,7 @@ class MainViewModel(
                     )
                 }
             } catch (exception: Exception) {
-                _state.update {
+                updateConferenceState(selectedId) {
                     it.copy(
                         updateIssues = listOf(
                             UpdateIssue(
@@ -741,28 +782,25 @@ class MainViewModel(
         action: suspend () -> Conference,
     ): Unit {
         scope.launch {
-            _state.update { it.withReservationActionError(surface, null).copy(loading = true) }
+            updateConferenceState(expectedConferenceId) {
+                it.withReservationActionError(surface, null).copy(loading = true)
+            }
             try {
                 val conference = action()
-                _state.update { current ->
-                    val selectedConference = if (current.selectedConferenceId == expectedConferenceId) {
-                        conference
-                    } else {
-                        current.selectedConference
-                    }
+                updateConferenceState(expectedConferenceId) { current ->
                     current.copy(
-                        selectedConference = selectedConference,
+                        selectedConference = conference,
                         loading = false,
                     ).withReservationActionError(surface, null)
                 }
             } catch (exception: IllegalArgumentException) {
-                _state.update {
+                updateConferenceState(expectedConferenceId) {
                     it.copy(
                         loading = false,
                     ).withReservationActionError(surface, exception.message ?: "Reservation could not be changed.")
                 }
             } catch (exception: Exception) {
-                _state.update {
+                updateConferenceState(expectedConferenceId) {
                     it.copy(
                         loading = false,
                     ).withReservationActionError(
@@ -777,11 +815,20 @@ class MainViewModel(
     private fun loadConference(conferenceId: String) {
         scope.launch {
             val conference = repository.getConference(conferenceId)
-            _state.update { it.copy(selectedConference = conference) }
+            updateConferenceState(conferenceId) { it.copy(selectedConference = conference) }
         }
     }
 
     private fun selectedIdOrNull(): String? = _state.value.selectedConferenceId
+
+    private fun updateConferenceState(
+        expectedConferenceId: String,
+        transform: (MainUiState) -> MainUiState,
+    ): Unit {
+        _state.update { current ->
+            if (current.selectedConferenceId == expectedConferenceId) transform(current) else current
+        }
+    }
 
     private fun validateConferenceName(
         name: String,

@@ -98,6 +98,12 @@ not configured, the delegate has no answer, or the raw answer has no configured 
 conservative fallback is intentional; organizers can correct observed raw values through the
 question configuration workflow.
 
+The question configuration dialog includes every distinct nonblank observed raw answer for each
+role-backed question. Answers are matched using the same normalization as domain mapping lookup;
+configured values remain selected and are not duplicated, while newly observed values are shown as
+unmapped. Observed raw values are read-only and cannot be removed from the dialog. Configuration
+cannot be saved until every observed value has an explicit typed mapping.
+
 When an update first introduces a distinct nonblank raw answer for a role-backed question and that
 normalized value has no role-specific mapping, the update succeeds with an `unmapped_role_answer`
 warning naming the question and raw value. Values already present in the conference's persisted
