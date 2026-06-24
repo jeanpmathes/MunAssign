@@ -15,10 +15,8 @@ import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.QuestionConfiguration
 import org.munika.assignment.domain.repository.ConferenceRepository
-import org.munika.assignment.domain.repository.UpdateIssue
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
 import org.munika.assignment.domain.repository.UpdateResult
-import org.munika.assignment.domain.repository.UpdateSummary
 
 internal fun interface WorkbookUpdateRunner {
     suspend fun applyUpdate(conferenceId: String, path: Path): UpdateResult
@@ -41,6 +39,7 @@ class MainViewModel internal constructor(
 
     private val _state = MutableStateFlow(MainUiState())
     val state: StateFlow<MainUiState> = _state.asStateFlow()
+    private var workbookUpdateNoticeId: Long = 0
 
     init {
         refreshConferences()
@@ -64,8 +63,7 @@ class MainViewModel internal constructor(
                 selectedConferenceId = conferenceId,
                 selectedConference = null,
                 loading = false,
-                updateIssues = emptyList(),
-                updateSummary = null,
+                workbookUpdateNotice = null,
                 boardActionError = null,
                 boardScrollRequest = null,
                 selectedDelegateId = null,
@@ -101,7 +99,7 @@ class MainViewModel internal constructor(
                         conferences = conferences,
                         selectedConferenceId = created.id.value,
                         selectedConference = created,
-                        updateIssues = emptyList(),
+                        workbookUpdateNotice = null,
                         conferenceActionError = null,
                     )
                 } else {
@@ -746,29 +744,24 @@ class MainViewModel internal constructor(
     fun updateFromWorkbook(path: Path) {
         val selectedId = selectedIdOrNull() ?: return
         scope.launch {
-            updateConferenceState(selectedId) { it.copy(loading = true) }
+            updateConferenceState(selectedId) { it.copy(loading = true, workbookUpdateNotice = null) }
             try {
                 val result = workbookUpdater.applyUpdate(selectedId, path)
                 val conference = repository.getConference(selectedId)
                 updateConferenceState(selectedId) {
                     it.copy(
                         selectedConference = conference,
-                        updateIssues = result.issues,
-                        updateSummary = result.summary,
+                        workbookUpdateNotice = result.toWorkbookUpdateNotice(),
                         loading = false,
                     )
                 }
             } catch (exception: Exception) {
                 updateConferenceState(selectedId) {
                     it.copy(
-                        updateIssues = listOf(
-                            UpdateIssue(
-                                severity = UpdateIssueSeverity.Error,
-                                message = "Workbook update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
-                                code = "update_exception",
-                            ),
+                        workbookUpdateNotice = WorkbookUpdateNotice(
+                            id = nextWorkbookUpdateNoticeId(),
+                            message = "MyMUN update failed: ${exception.readableMessage()}",
                         ),
-                        updateSummary = UpdateSummary(blockingErrorCount = 1),
                         loading = false,
                     )
                 }
@@ -851,6 +844,32 @@ class MainViewModel internal constructor(
         return null
     }
 
+    private fun UpdateResult.toWorkbookUpdateNotice(): WorkbookUpdateNotice {
+        if (!success || summary.blockingErrorCount > 0) {
+            val message = issues.firstOrNull { it.severity == UpdateIssueSeverity.Error }?.message
+                ?: "Please check the workbook and try again."
+            return WorkbookUpdateNotice(
+                id = nextWorkbookUpdateNoticeId(),
+                message = "MyMUN update failed: $message",
+            )
+        }
+        val warningCount = maxOf(summary.warningCount, issues.count { it.severity == UpdateIssueSeverity.Warning })
+        val message = when (warningCount) {
+            0 -> "MyMUN update complete."
+            1 -> "MyMUN update complete with 1 warning."
+            else -> "MyMUN update complete with $warningCount warnings."
+        }
+        return WorkbookUpdateNotice(id = nextWorkbookUpdateNoticeId(), message = message)
+    }
+
+    private fun nextWorkbookUpdateNoticeId(): Long {
+        workbookUpdateNoticeId += 1
+        return workbookUpdateNoticeId
+    }
+
+    private fun Exception.readableMessage(): String =
+        message?.takeIf { it.isNotBlank() } ?: "Please check the workbook and try again."
+
     override fun close() {
         scope.cancel()
     }
@@ -861,8 +880,7 @@ data class MainUiState(
     val conferences: List<Conference> = emptyList(),
     val selectedConferenceId: String? = null,
     val selectedConference: Conference? = null,
-    val updateIssues: List<UpdateIssue> = emptyList(),
-    val updateSummary: UpdateSummary? = null,
+    val workbookUpdateNotice: WorkbookUpdateNotice? = null,
     val conferenceActionError: String? = null,
     val boardActionError: String? = null,
     val boardScrollRequest: BoardScrollRequest? = null,
@@ -879,6 +897,11 @@ data class MainUiState(
     val delegateReservationActionError: String? = null,
     val questionConfigurationOpen: Boolean = false,
     val questionConfigurationError: String? = null,
+)
+
+data class WorkbookUpdateNotice(
+    val id: Long,
+    val message: String,
 )
 
 private enum class ReservationActionSurface {

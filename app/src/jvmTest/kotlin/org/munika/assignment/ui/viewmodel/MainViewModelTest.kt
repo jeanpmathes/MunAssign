@@ -18,6 +18,8 @@ import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.ConferenceId
 import org.munika.assignment.domain.model.QuestionConfiguration
 import org.munika.assignment.domain.repository.ConferenceRepository
+import org.munika.assignment.domain.repository.UpdateIssue
+import org.munika.assignment.domain.repository.UpdateIssueSeverity
 import org.munika.assignment.domain.repository.UpdateResult
 import org.munika.assignment.domain.repository.UpdateSummary
 
@@ -291,6 +293,81 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `workbook success emits non-technical completion notice`() {
+        val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conference)) { _, _ ->
+            UpdateResult(true, emptyList(), UpdateSummary(delegatesCreated = 4))
+        }
+        waitUntil { viewModel.state.value.selectedConference === conference }
+
+        viewModel.updateFromWorkbook(Path.of("conference.xlsx"))
+
+        waitUntil { viewModel.state.value.workbookUpdateNotice != null }
+        assertEquals("MyMUN update complete.", viewModel.state.value.workbookUpdateNotice?.message)
+        assertFalse(viewModel.state.value.loading)
+        viewModel.close()
+    }
+
+    @Test
+    fun `workbook success with warnings emits warning count notice`() {
+        val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conference)) { _, _ ->
+            UpdateResult(
+                success = true,
+                issues = listOf(
+                    UpdateIssue(UpdateIssueSeverity.Warning, "Unmapped answer"),
+                    UpdateIssue(UpdateIssueSeverity.Warning, "Short explanation"),
+                ),
+                summary = UpdateSummary(warningCount = 2),
+            )
+        }
+        waitUntil { viewModel.state.value.selectedConference === conference }
+
+        viewModel.updateFromWorkbook(Path.of("conference.xlsx"))
+
+        waitUntil { viewModel.state.value.workbookUpdateNotice != null }
+        assertEquals("MyMUN update complete with 2 warnings.", viewModel.state.value.workbookUpdateNotice?.message)
+        assertFalse(viewModel.state.value.loading)
+        viewModel.close()
+    }
+
+    @Test
+    fun `workbook failure emits concise failure notice`() {
+        val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conference)) { _, _ ->
+            UpdateResult(
+                success = false,
+                issues = listOf(UpdateIssue(UpdateIssueSeverity.Error, "Countries sheet is missing.")),
+                summary = UpdateSummary(blockingErrorCount = 1),
+            )
+        }
+        waitUntil { viewModel.state.value.selectedConference === conference }
+
+        viewModel.updateFromWorkbook(Path.of("conference.xlsx"))
+
+        waitUntil { viewModel.state.value.workbookUpdateNotice != null }
+        assertEquals("MyMUN update failed: Countries sheet is missing.", viewModel.state.value.workbookUpdateNotice?.message)
+        assertFalse(viewModel.state.value.loading)
+        viewModel.close()
+    }
+
+    @Test
+    fun `workbook exception emits concise failure notice`() {
+        val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conference)) { _, _ ->
+            throw IllegalStateException("File could not be read.")
+        }
+        waitUntil { viewModel.state.value.selectedConference === conference }
+
+        viewModel.updateFromWorkbook(Path.of("conference.xlsx"))
+
+        waitUntil { viewModel.state.value.workbookUpdateNotice != null }
+        assertEquals("MyMUN update failed: File could not be read.", viewModel.state.value.workbookUpdateNotice?.message)
+        assertFalse(viewModel.state.value.loading)
+        viewModel.close()
+    }
+
+    @Test
     fun `delayed workbook success does not alter newly selected conference`() {
         val conferenceA = Conference(ConferenceId("conference-a"), "Conference A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val conferenceB = Conference(ConferenceId("conference-b"), "Conference B", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
@@ -310,8 +387,7 @@ class MainViewModelTest {
         result.complete(Result.success(UpdateResult(true, emptyList(), UpdateSummary(delegatesCreated = 4))))
 
         assertSame(conferenceB, viewModel.state.value.selectedConference)
-        assertTrue(viewModel.state.value.updateIssues.isEmpty())
-        assertNull(viewModel.state.value.updateSummary)
+        assertNull(viewModel.state.value.workbookUpdateNotice)
         assertFalse(viewModel.state.value.loading)
         viewModel.close()
     }
@@ -336,8 +412,7 @@ class MainViewModelTest {
         result.complete(Result.failure(IllegalStateException("Conference A workbook failed")))
 
         assertSame(conferenceB, viewModel.state.value.selectedConference)
-        assertTrue(viewModel.state.value.updateIssues.isEmpty())
-        assertNull(viewModel.state.value.updateSummary)
+        assertNull(viewModel.state.value.workbookUpdateNotice)
         assertFalse(viewModel.state.value.loading)
         viewModel.close()
     }

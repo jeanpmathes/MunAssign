@@ -2,8 +2,6 @@
 
 ## Later - Transfer And Polish
 
-- Improve upload experience (no weird message) and the UI when conference is empty.
-- Polish question configuration keyboard/focus handling after regular use.
 - Implement `.munassign` SQLite export for a single conference.
 - Implement `.munassign` SQLite import that can replace the selected conference or create a new conference.
 - Add export into markdown tables for all committee assignments.

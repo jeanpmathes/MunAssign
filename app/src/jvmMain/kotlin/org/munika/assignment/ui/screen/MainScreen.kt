@@ -2,7 +2,6 @@
 
 package org.munika.assignment.ui.screen
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -36,8 +35,6 @@ import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -52,6 +49,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -82,9 +81,6 @@ import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.Delegate
 import org.munika.assignment.domain.model.PaymentStatus
 import org.munika.assignment.domain.model.QuestionConfiguration
-import org.munika.assignment.domain.repository.UpdateIssue
-import org.munika.assignment.domain.repository.UpdateIssueSeverity
-import org.munika.assignment.domain.repository.UpdateSummary
 import org.munika.assignment.ui.screen.dialog.IssueManagerPanel
 import org.munika.assignment.ui.screen.dialog.QuestionConfigurationDialog
 import org.munika.assignment.ui.screen.dialog.ReservationManagerDialog
@@ -177,95 +173,100 @@ fun MainScreen(
     var renameTarget by remember { mutableStateOf<Conference?>(null) }
     var managementOpen by remember { mutableStateOf(false) }
     val selectedConference = state.selectedConference
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(state.workbookUpdateNotice?.id) {
+        val notice = state.workbookUpdateNotice ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(notice.message)
+    }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            TopBar(
-                state = state,
-                onSelectConference = onSelectConference,
-                onOpenCreate = {
-                    onClearConferenceActionError()
-                    createDialogOpen = true
-                },
-                onOpenRename = { conference ->
-                    onClearConferenceActionError()
-                    renameTarget = conference
-                },
-                onOpenManagement = {
-                    onClearConferenceActionError()
-                    managementOpen = true
-                },
-                onOpenDelegateList = onOpenDelegateList,
-                onOpenNoticeManager = onOpenNoticeManager,
-                onOpenDelegationOverview = onOpenDelegationOverview,
-                onOpenReservationManager = { onOpenReservationManager(null) },
-                onOpenQuestionConfiguration = onOpenQuestionConfiguration,
-                onOpenWorkbook = onOpenWorkbook,
-            )
-            Box(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-                when {
-                    state.loading && state.conferences.isEmpty() -> LoadingState()
-                    state.conferences.isEmpty() -> NoConferenceState(
-                        onCreate = {
-                            onClearConferenceActionError()
-                            createDialogOpen = true
-                        },
-                    )
-                    selectedConference == null -> LoadingState()
-                    selectedConference.committees.isEmpty() -> EmptyConferenceWorkspace(
-                        loading = state.loading,
-                        summary = state.updateSummary,
-                        issues = state.updateIssues,
-                        onOpenWorkbook = onOpenWorkbook,
-                    )
-                    else -> ConferenceWorkspace(
-                        conference = selectedConference,
-                        loading = state.loading,
-                        summary = state.updateSummary,
-                        issues = state.updateIssues,
-                        boardActionError = state.boardActionError,
-                        boardScrollRequest = state.boardScrollRequest,
-                        selectedDelegateId = state.selectedDelegateId,
-                        delegateListOpen = state.delegateListOpen,
-                        delegationOverviewOpen = state.delegationOverviewOpen,
-                        delegationOverviewTargetId = state.delegationOverviewTargetId,
-                        noticeManagerOpen = state.noticeManagerOpen,
-                        issueManager = selectedConference.toIssueManagerUiState(
-                            delegateId = state.noticeManagerDelegateId,
-                        ),
-                        reservationOptions = selectedConference.toReservationManagerUiState().reservations,
-                        delegateReservationActionError = state.delegateReservationActionError,
-                        delegateListControls = state.delegateListControls,
-                        onSetCommitteeSlotsPerPosition = onSetCommitteeSlotsPerPosition,
-                        onSetCommitteeMode = onSetCommitteeMode,
-                        onSetPositionMappedCommittee = onSetPositionMappedCommittee,
-                        onAssignDelegateToSlot = onAssignDelegateToSlot,
-                        onClearPendingSlot = onClearPendingSlot,
-                        onCloseDelegateList = onCloseDelegateList,
-                        onCloseDelegationOverview = onCloseDelegationOverview,
-                        onOpenReservationManager = onOpenReservationManager,
-                        onUpdateDelegateListControls = onUpdateDelegateListControls,
-                        onApplyDelegateListPreset = onApplyDelegateListPreset,
-                        onOpenDelegateDetail = onOpenDelegateDetail,
-                        onCloseDelegateDetail = onCloseDelegateDetail,
-                        onNavigateToBoardPosition = onNavigateToBoardPosition,
-                        onDeactivateDelegate = onDeactivateDelegate,
-                        onReactivateDelegate = onReactivateDelegate,
-                        onAddDelegateComment = onAddDelegateComment,
-                        onUpdateDelegateComment = onUpdateDelegateComment,
-                        onDeleteDelegateComment = onDeleteDelegateComment,
-                        onAssignDelegateReservation = onAssignDelegateReservation,
-                        onRemoveDelegateReservation = onRemoveDelegateReservation,
-                        onOpenDelegateNoticeManager = onOpenDelegateNoticeManager,
-                        onOpenNoticeManager = onOpenNoticeManager,
-                        onCloseNoticeManager = onCloseNoticeManager,
-                        onResolveAnswerIssue = onResolveAnswerIssue,
-                        onUpdateAnswerIssueResolutionJustification = onUpdateAnswerIssueResolutionJustification,
-                        onUnresolveAnswerIssue = onUnresolveAnswerIssue,
-                        onClearBoardActionError = onClearBoardActionError,
-                    )
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                TopBar(
+                    state = state,
+                    onSelectConference = onSelectConference,
+                    onOpenCreate = {
+                        onClearConferenceActionError()
+                        createDialogOpen = true
+                    },
+                    onOpenRename = { conference ->
+                        onClearConferenceActionError()
+                        renameTarget = conference
+                    },
+                    onOpenManagement = {
+                        onClearConferenceActionError()
+                        managementOpen = true
+                    },
+                    onOpenDelegateList = onOpenDelegateList,
+                    onOpenNoticeManager = onOpenNoticeManager,
+                    onOpenDelegationOverview = onOpenDelegationOverview,
+                    onOpenReservationManager = { onOpenReservationManager(null) },
+                    onOpenQuestionConfiguration = onOpenQuestionConfiguration,
+                    onOpenWorkbook = onOpenWorkbook,
+                )
+                Box(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+                    when {
+                        state.loading && state.conferences.isEmpty() -> LoadingState()
+                        state.conferences.isEmpty() -> NoConferenceState(
+                            onCreate = {
+                                onClearConferenceActionError()
+                                createDialogOpen = true
+                            },
+                        )
+                        selectedConference == null -> LoadingState()
+                        selectedConference.committees.isEmpty() -> EmptyConferenceWorkspace()
+                        else -> ConferenceWorkspace(
+                            conference = selectedConference,
+                            loading = state.loading,
+                            boardActionError = state.boardActionError,
+                            boardScrollRequest = state.boardScrollRequest,
+                            selectedDelegateId = state.selectedDelegateId,
+                            delegateListOpen = state.delegateListOpen,
+                            delegationOverviewOpen = state.delegationOverviewOpen,
+                            delegationOverviewTargetId = state.delegationOverviewTargetId,
+                            noticeManagerOpen = state.noticeManagerOpen,
+                            issueManager = selectedConference.toIssueManagerUiState(
+                                delegateId = state.noticeManagerDelegateId,
+                            ),
+                            reservationOptions = selectedConference.toReservationManagerUiState().reservations,
+                            delegateReservationActionError = state.delegateReservationActionError,
+                            delegateListControls = state.delegateListControls,
+                            onSetCommitteeSlotsPerPosition = onSetCommitteeSlotsPerPosition,
+                            onSetCommitteeMode = onSetCommitteeMode,
+                            onSetPositionMappedCommittee = onSetPositionMappedCommittee,
+                            onAssignDelegateToSlot = onAssignDelegateToSlot,
+                            onClearPendingSlot = onClearPendingSlot,
+                            onCloseDelegateList = onCloseDelegateList,
+                            onCloseDelegationOverview = onCloseDelegationOverview,
+                            onOpenReservationManager = onOpenReservationManager,
+                            onUpdateDelegateListControls = onUpdateDelegateListControls,
+                            onApplyDelegateListPreset = onApplyDelegateListPreset,
+                            onOpenDelegateDetail = onOpenDelegateDetail,
+                            onCloseDelegateDetail = onCloseDelegateDetail,
+                            onNavigateToBoardPosition = onNavigateToBoardPosition,
+                            onDeactivateDelegate = onDeactivateDelegate,
+                            onReactivateDelegate = onReactivateDelegate,
+                            onAddDelegateComment = onAddDelegateComment,
+                            onUpdateDelegateComment = onUpdateDelegateComment,
+                            onDeleteDelegateComment = onDeleteDelegateComment,
+                            onAssignDelegateReservation = onAssignDelegateReservation,
+                            onRemoveDelegateReservation = onRemoveDelegateReservation,
+                            onOpenDelegateNoticeManager = onOpenDelegateNoticeManager,
+                            onOpenNoticeManager = onOpenNoticeManager,
+                            onCloseNoticeManager = onCloseNoticeManager,
+                            onResolveAnswerIssue = onResolveAnswerIssue,
+                            onUpdateAnswerIssueResolutionJustification = onUpdateAnswerIssueResolutionJustification,
+                            onUnresolveAnswerIssue = onUnresolveAnswerIssue,
+                            onClearBoardActionError = onClearBoardActionError,
+                        )
+                    }
                 }
             }
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp),
+            )
         }
     }
 
@@ -775,27 +776,9 @@ private fun LoadingState() {
 }
 
 @Composable
-private fun EmptyConferenceWorkspace(
-    loading: Boolean,
-    summary: UpdateSummary?,
-    issues: List<UpdateIssue>,
-    onOpenWorkbook: () -> Unit,
-) {
-    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-            Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("No MyMUN update data", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text("Drop an Excel workbook onto the window or open one manually to create committees, positions, delegates, and assignments.")
-                WithTooltip("Select a MyMUN Excel workbook to update this conference.") {
-                    Button(onClick = onOpenWorkbook, enabled = !loading) {
-                        Icon(Icons.Filled.UploadFile, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                    Text("Update")
-                    }
-                }
-            }
-        }
-        UpdateResultSurface(summary = summary, issues = issues)
+private fun EmptyConferenceWorkspace() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text("No data has been uploaded yet.", style = MaterialTheme.typography.titleMedium)
     }
 }
 
@@ -803,8 +786,6 @@ private fun EmptyConferenceWorkspace(
 private fun ConferenceWorkspace(
     conference: Conference,
     loading: Boolean,
-    summary: UpdateSummary?,
-    issues: List<UpdateIssue>,
     boardActionError: String?,
     boardScrollRequest: org.munika.assignment.ui.viewmodel.BoardScrollRequest?,
     selectedDelegateId: String?,
@@ -845,7 +826,6 @@ private fun ConferenceWorkspace(
     onClearBoardActionError: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        UpdateResultSurface(summary = summary, issues = issues)
         Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             AssignmentBoard(
                 board = conference.toAssignmentBoardUiState(),
@@ -916,28 +896,6 @@ private fun ConferenceWorkspace(
                     onResolveIssue = onResolveAnswerIssue,
                     onUnresolveIssue = onUnresolveAnswerIssue,
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun UpdateResultSurface(summary: UpdateSummary?, issues: List<UpdateIssue>) {
-    if (summary == null && issues.isEmpty()) return
-    Card(border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Latest MyMUN update", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            summary?.let {
-                Text(
-                    "${it.blockingErrorCount} errors, ${it.warningCount} warnings | " +
-                        "delegates +${it.delegatesCreated}/~${it.delegatesUpdated}/-${it.delegatesRemoved} | " +
-                        "positions +${it.positionsCreated}/~${it.positionsUpdated}/-${it.positionsRemoved} | " +
-                        "confirmed ${it.assignmentsConfirmed}",
-                )
-            }
-            issues.takeLast(8).forEach { issue ->
-                val marker = if (issue.severity == UpdateIssueSeverity.Error) "Error" else "Warning"
-                Text("$marker: ${issue.message}", color = if (issue.severity == UpdateIssueSeverity.Error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
             }
         }
     }
