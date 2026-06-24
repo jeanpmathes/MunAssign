@@ -18,8 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -27,6 +25,7 @@ import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
@@ -70,33 +69,20 @@ fun PositionCard(
     var pendingMoveRequest by remember(position.id) { mutableStateOf<PendingInterestedMoveRequest?>(null) }
     val highSchoolTone = position.highSchoolPositionTone()
 
-    Card(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
         border = BorderStroke(
             width = if (highlighted) 2.dp else 1.dp,
             color = if (highlighted) MaterialTheme.colorScheme.primary else highSchoolTone?.borderColor
                 ?: MaterialTheme.colorScheme.outlineVariant,
         ),
-        colors = CardDefaults.cardColors(
-            containerColor = if (highlighted) {
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.38f)
-            } else {
-                highSchoolTone?.containerColor ?: MaterialTheme.colorScheme.surface
-            },
-        ),
+        color = if (highlighted) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.38f)
+        } else {
+            highSchoolTone?.containerColor ?: MaterialTheme.colorScheme.surface
+        },
         shape = RoundedCornerShape(8.dp),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = when {
-                highlighted -> 5.dp
-                highSchoolTone != null -> 0.dp
-                else -> 1.dp
-            },
-            pressedElevation = if (highSchoolTone != null) 0.dp else 1.dp,
-            focusedElevation = if (highSchoolTone != null) 0.dp else 1.dp,
-            hoveredElevation = if (highSchoolTone != null) 0.dp else 1.dp,
-            draggedElevation = if (highSchoolTone != null) 0.dp else 4.dp,
-            disabledElevation = 0.dp,
-        ),
+        shadowElevation = 0.dp,
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -251,7 +237,7 @@ private fun MappedCommitteeSelector(
                 readOnly = true,
                 label = { Text("Corresponding committee") },
                 placeholder = { Text("Select correspondence") },
-                suffix = {
+                trailingIcon = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -285,9 +271,9 @@ private fun MappedCommitteeSelector(
                                 )
                             }
                         }
+                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
                     }
                 },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                 singleLine = true,
                 modifier = Modifier
                     .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = true)

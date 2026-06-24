@@ -70,7 +70,7 @@ fun SlotRow(
                     }
                 }
             }
-            .border(1.dp, style.borderColor, RoundedCornerShape(6.dp))
+            .border(1.dp, style.accentColor, RoundedCornerShape(6.dp))
             .background(style.containerColor, RoundedCornerShape(6.dp))
             .padding(end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
