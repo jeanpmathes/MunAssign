@@ -50,7 +50,7 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It k
 
 ## UI Requirements
 
-- The top bar shows conference name, active paid delegate count, unpaid delegate count, open slots, pending slots, assigned slots, high-school and university accept capacity after remaining reservations, and actions for delegate list, delegation overview, reservation manager, plus `.munassign` import/export.
+- The top bar shows conference name, active paid delegate count, unpaid delegate count, open slots, pending slots, assigned slots, high-school and university accept capacity after remaining reservations, and actions for delegate list, delegation overview, reservation manager, MyMUN update, and question configuration. `.munassign` import/export actions live in the conference manager.
 - The main view is a horizontally scrollable board of committee columns.
 - High-school committee columns show the total and remaining high-school reservation capacity reminder. University committee columns show the equivalent university reminder. The reminder opens the reservation manager and does not bind reservations to that committee.
 - Mapped committee columns use a distinct header tone and do not show a reservation reminder because capacity is derived position-by-position from their correspondences.
@@ -74,6 +74,8 @@ MyMUN update uses:
 `Chairs`, `Faculty Advisors`, and `Observers` are intentionally ignored for assignment.
 
 The parser should tolerate whitespace variation in headers and comma-separated `Countries.Delegates` values. Preference cells are expected to follow `Committee Name (Position Name)` and must resolve against positions from the `Countries` sheet.
+
+`.munassign` export writes one complete conference to a SQLite snapshot. Import remaps conference-owned IDs, can create a new conference with a duplicate visible name, or replace a selected conference while preserving the local conference name and display order. Older transfer files are migrated from a temporary copy before import; transfer files from newer schema versions are rejected.
 
 ## Implementation Notes
 

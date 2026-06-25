@@ -309,6 +309,79 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `conference export emits transfer notice`() {
+        val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val transfer = FakeConferenceTransferRunner()
+        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conference), conferenceTransfer = transfer)
+        waitUntil { viewModel.state.value.selectedConference === conference }
+
+        viewModel.exportConference("conference", Path.of("kamun.munassign"))
+
+        waitUntil { viewModel.state.value.transferNotice != null }
+        assertEquals("conference", transfer.exportedConferenceId)
+        assertEquals(Path.of("kamun.munassign"), transfer.exportDestinationPath)
+        assertEquals("Conference exported.", viewModel.state.value.transferNotice?.message)
+        assertFalse(viewModel.state.value.loading)
+        viewModel.close()
+    }
+
+    @Test
+    fun `import as new selects imported conference and emits transfer notice`() {
+        val existing = Conference(ConferenceId("existing"), "Existing", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val imported = Conference(ConferenceId("imported"), "Imported", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val repository = FakeConferenceRepository(initialConference = existing, conferences = listOf(existing, imported))
+        val transfer = FakeConferenceTransferRunner(importedId = "imported")
+        val viewModel = viewModelWith(repository, conferenceTransfer = transfer)
+        waitUntil { viewModel.state.value.selectedConference === existing }
+
+        viewModel.importConferenceAsNew(Path.of("import.munassign"))
+
+        waitUntil { viewModel.state.value.transferNotice != null }
+        assertEquals(Path.of("import.munassign"), transfer.importSourcePath)
+        assertEquals("imported", viewModel.state.value.selectedConferenceId)
+        assertSame(imported, viewModel.state.value.selectedConference)
+        assertEquals("Conference imported.", viewModel.state.value.transferNotice?.message)
+        assertFalse(viewModel.state.value.loading)
+        viewModel.close()
+    }
+
+    @Test
+    fun `replace selected keeps selected conference and emits transfer notice`() {
+        val original = Conference(ConferenceId("conference"), "Local", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val replaced = Conference(ConferenceId("conference"), "Local", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH.plusSeconds(1))
+        val repository = FakeConferenceRepository(initialConference = original, conferences = listOf(replaced))
+        val transfer = FakeConferenceTransferRunner(replacedId = "conference")
+        val viewModel = viewModelWith(repository, conferenceTransfer = transfer)
+        waitUntil { viewModel.state.value.selectedConference === replaced }
+
+        viewModel.replaceConference("conference", Path.of("replacement.munassign"))
+
+        waitUntil { viewModel.state.value.transferNotice != null }
+        assertEquals("conference", transfer.replacedConferenceId)
+        assertEquals(Path.of("replacement.munassign"), transfer.replaceSourcePath)
+        assertEquals("conference", viewModel.state.value.selectedConferenceId)
+        assertSame(replaced, viewModel.state.value.selectedConference)
+        assertEquals("Conference replaced.", viewModel.state.value.transferNotice?.message)
+        assertFalse(viewModel.state.value.loading)
+        viewModel.close()
+    }
+
+    @Test
+    fun `transfer failure emits concise transfer notice`() {
+        val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val transfer = FakeConferenceTransferRunner(exportError = IllegalStateException("Disk is full."))
+        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conference), conferenceTransfer = transfer)
+        waitUntil { viewModel.state.value.selectedConference === conference }
+
+        viewModel.exportConference("conference", Path.of("kamun.munassign"))
+
+        waitUntil { viewModel.state.value.transferNotice != null }
+        assertEquals("Export failed: Disk is full.", viewModel.state.value.transferNotice?.message)
+        assertFalse(viewModel.state.value.loading)
+        viewModel.close()
+    }
+
+    @Test
     fun `workbook success with warnings emits warning count notice`() {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conference)) { _, _ ->
@@ -509,10 +582,12 @@ class MainViewModelTest {
 
     private fun viewModelWith(
         repository: ConferenceRepository,
+        conferenceTransfer: ConferenceTransferRunner = FakeConferenceTransferRunner(),
         workbookUpdate: suspend (String, Path) -> UpdateResult = { _, _ -> UpdateResult(true, emptyList()) },
     ): MainViewModel = MainViewModel(
         repository,
         WorkbookUpdateRunner { conferenceId, path -> workbookUpdate(conferenceId, path) },
+        conferenceTransfer,
         CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
     )
 
@@ -522,6 +597,43 @@ class MainViewModelTest {
             Thread.sleep(20)
         }
         check(predicate()) { "Timed out waiting for ViewModel state." }
+    }
+}
+
+private class FakeConferenceTransferRunner(
+    private val importedId: String = "imported",
+    private val replacedId: String = "replaced",
+    private val exportError: Exception? = null,
+    private val importError: Exception? = null,
+) : ConferenceTransferRunner {
+    var exportedConferenceId: String? = null
+        private set
+    var exportDestinationPath: Path? = null
+        private set
+    var importSourcePath: Path? = null
+        private set
+    var replacedConferenceId: String? = null
+        private set
+    var replaceSourcePath: Path? = null
+        private set
+
+    override suspend fun exportConference(conferenceId: String, destinationPath: Path) {
+        exportError?.let { throw it }
+        exportedConferenceId = conferenceId
+        exportDestinationPath = destinationPath
+    }
+
+    override suspend fun importConferenceAsNew(sourcePath: Path): String {
+        importError?.let { throw it }
+        importSourcePath = sourcePath
+        return importedId
+    }
+
+    override suspend fun replaceConference(targetConferenceId: String, sourcePath: Path): String {
+        importError?.let { throw it }
+        replacedConferenceId = targetConferenceId
+        replaceSourcePath = sourcePath
+        return replacedId
     }
 }
 

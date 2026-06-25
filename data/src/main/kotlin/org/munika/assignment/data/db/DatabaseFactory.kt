@@ -26,6 +26,7 @@ import org.munika.assignment.domain.model.StandardQuestionRoles
  */
 object DatabaseFactory {
     private val logger = LoggerFactory.getLogger(DatabaseFactory::class.java)
+    const val CURRENT_SCHEMA_VERSION: Int = 9
 
     /** Returns the application database path beneath the supplied user [home]. */
     fun defaultDatabasePath(home: Path = Path(System.getProperty("user.home"))): Path =

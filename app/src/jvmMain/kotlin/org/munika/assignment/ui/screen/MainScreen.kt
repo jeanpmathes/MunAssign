@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Groups
@@ -165,6 +166,9 @@ fun MainScreen(
     onUpdateDelegateComment: (commentId: String, body: String) -> Unit,
     onDeleteDelegateComment: (commentId: String) -> Unit,
     onOpenWorkbook: () -> Unit,
+    onExportConference: (String, String) -> Unit,
+    onImportConferenceAsNew: () -> Unit,
+    onReplaceConference: (String, String) -> Unit,
     onClearConferenceActionError: () -> Unit,
     onClearBoardActionError: () -> Unit,
     onClearReservationActionError: () -> Unit = {},
@@ -177,6 +181,11 @@ fun MainScreen(
 
     LaunchedEffect(state.workbookUpdateNotice?.id) {
         val notice = state.workbookUpdateNotice ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(notice.message)
+    }
+
+    LaunchedEffect(state.transferNotice?.id) {
+        val notice = state.transferNotice ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(notice.message)
     }
 
@@ -317,6 +326,9 @@ fun MainScreen(
             onRenameConference = onRenameConference,
             onDeleteConference = onDeleteConference,
             onReorderConferences = onReorderConferences,
+            onExportConference = onExportConference,
+            onImportConferenceAsNew = onImportConferenceAsNew,
+            onReplaceConference = onReplaceConference,
             onClearConferenceActionError = onClearConferenceActionError,
         )
     }
@@ -947,12 +959,16 @@ private fun ConferenceManagementDialog(
     onRenameConference: (String, String) -> Boolean,
     onDeleteConference: (String) -> Unit,
     onReorderConferences: (List<String>) -> Boolean,
+    onExportConference: (String, String) -> Unit,
+    onImportConferenceAsNew: () -> Unit,
+    onReplaceConference: (String, String) -> Unit,
     onClearConferenceActionError: () -> Unit,
 ) {
     val orderedConferences = remember { state.conferences.toMutableStateList() }
     var createDialogOpen by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<Conference?>(null) }
     var deleteTarget by remember { mutableStateOf<Conference?>(null) }
+    var replaceTarget by remember { mutableStateOf<Conference?>(null) }
 
     LaunchedEffect(state.conferences) {
         orderedConferences.replaceAll(state.conferences)
@@ -979,6 +995,14 @@ private fun ConferenceManagementDialog(
                                 onClearConferenceActionError()
                                 deleteTarget = conference
                             },
+                            onExport = {
+                                onClearConferenceActionError()
+                                onExportConference(conference.id.value, conference.name)
+                            },
+                            onReplace = {
+                                onClearConferenceActionError()
+                                replaceTarget = conference
+                            },
                             onMoved = {
                                 onReorderConferences(orderedConferences.map { it.id.value })
                             },
@@ -986,17 +1010,31 @@ private fun ConferenceManagementDialog(
                     }
                 }
                 WithTooltip("Create a new conference.") {
-                    OutlinedButton(
-                        onClick = {
-                            onClearConferenceActionError()
-                            createDialogOpen = true
-                        },
-                        enabled = !state.loading,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Create conference")
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                onClearConferenceActionError()
+                                createDialogOpen = true
+                            },
+                            enabled = !state.loading,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Create conference")
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                onClearConferenceActionError()
+                                onImportConferenceAsNew()
+                            },
+                            enabled = !state.loading,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Icon(Icons.Filled.UploadFile, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Import as new")
+                        }
                     }
                 }
             }
@@ -1054,6 +1092,17 @@ private fun ConferenceManagementDialog(
             },
         )
     }
+
+    replaceTarget?.let { conference ->
+        ReplaceConferenceDialog(
+            conference = conference,
+            onDismiss = { replaceTarget = null },
+            onConfirm = {
+                onReplaceConference(conference.id.value, conference.name)
+                replaceTarget = null
+            },
+        )
+    }
 }
 
 @Composable
@@ -1064,6 +1113,8 @@ private fun ReorderableConferenceRow(
     reorderEnabled: Boolean,
     onRename: () -> Unit,
     onDelete: () -> Unit,
+    onExport: () -> Unit,
+    onReplace: () -> Unit,
     onMoved: () -> Unit,
 ) {
     var accumulatedDrag by remember { mutableFloatStateOf(0f) }
@@ -1104,6 +1155,18 @@ private fun ReorderableConferenceRow(
             Text(conference.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
         }
         TooltipIconButton(
+            tooltip = "Export ${conference.name}",
+            icon = Icons.Filled.FileDownload,
+            onClick = onExport,
+            enabled = reorderEnabled,
+        )
+        TooltipIconButton(
+            tooltip = "Replace ${conference.name} from .munassign",
+            icon = Icons.Filled.UploadFile,
+            onClick = onReplace,
+            enabled = reorderEnabled,
+        )
+        TooltipIconButton(
             tooltip = "Rename ${conference.name}",
             icon = Icons.Filled.Edit,
             onClick = onRename,
@@ -1117,6 +1180,36 @@ private fun ReorderableConferenceRow(
             tint = MaterialTheme.colorScheme.error,
         )
     }
+}
+
+@Composable
+private fun ReplaceConferenceDialog(
+    conference: Conference,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Replace ${conference.name}?") },
+        text = {
+            Text(
+                "This keeps the conference name and list position, but replaces its committees, positions, slots, delegates, preferences, answers, comments, reservations, and update history with the selected .munassign file.",
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+            ) {
+                Text("Replace")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
 }
 
 @Composable

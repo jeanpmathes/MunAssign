@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.munika.assignment.data.db.ConferenceTransferService
 import org.munika.assignment.data.excel.MymunWorkbookUpdater
 import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.Conference
@@ -22,24 +23,49 @@ internal fun interface WorkbookUpdateRunner {
     suspend fun applyUpdate(conferenceId: String, path: Path): UpdateResult
 }
 
+internal interface ConferenceTransferRunner {
+    suspend fun exportConference(conferenceId: String, destinationPath: Path)
+
+    suspend fun importConferenceAsNew(sourcePath: Path): String
+
+    suspend fun replaceConference(targetConferenceId: String, sourcePath: Path): String
+}
+
 /**
  * Main screen state holder.
  */
 class MainViewModel internal constructor(
     private val repository: ConferenceRepository,
     private val workbookUpdater: WorkbookUpdateRunner,
+    private val conferenceTransfer: ConferenceTransferRunner,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) : AutoCloseable {
-    constructor(repository: ConferenceRepository, workbookUpdater: MymunWorkbookUpdater) : this(
+    constructor(
+        repository: ConferenceRepository,
+        workbookUpdater: MymunWorkbookUpdater,
+        conferenceTransferService: ConferenceTransferService,
+    ) : this(
         repository = repository,
         workbookUpdater = WorkbookUpdateRunner { conferenceId, path ->
             workbookUpdater.applyUpdate(conferenceId, path)
+        },
+        conferenceTransfer = object : ConferenceTransferRunner {
+            override suspend fun exportConference(conferenceId: String, destinationPath: Path) {
+                conferenceTransferService.exportConference(conferenceId, destinationPath)
+            }
+
+            override suspend fun importConferenceAsNew(sourcePath: Path): String =
+                conferenceTransferService.importConferenceAsNew(sourcePath)
+
+            override suspend fun replaceConference(targetConferenceId: String, sourcePath: Path): String =
+                conferenceTransferService.replaceConference(targetConferenceId, sourcePath)
         },
     )
 
     private val _state = MutableStateFlow(MainUiState())
     val state: StateFlow<MainUiState> = _state.asStateFlow()
     private var workbookUpdateNoticeId: Long = 0
+    private var transferNoticeId: Long = 0
 
     init {
         refreshConferences()
@@ -64,6 +90,7 @@ class MainViewModel internal constructor(
                 selectedConference = null,
                 loading = false,
                 workbookUpdateNotice = null,
+                transferNotice = null,
                 boardActionError = null,
                 boardScrollRequest = null,
                 selectedDelegateId = null,
@@ -177,6 +204,10 @@ class MainViewModel internal constructor(
 
     fun clearConferenceActionError() {
         _state.update { it.copy(conferenceActionError = null) }
+    }
+
+    fun clearTransferNotice() {
+        _state.update { it.copy(transferNotice = null) }
     }
 
     fun clearBoardActionError() {
@@ -769,6 +800,91 @@ class MainViewModel internal constructor(
         }
     }
 
+    fun exportConference(conferenceId: String, destinationPath: Path) {
+        scope.launch {
+            _state.update { it.copy(loading = true, transferNotice = null, conferenceActionError = null) }
+            try {
+                conferenceTransfer.exportConference(conferenceId, destinationPath)
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        transferNotice = TransferNotice(nextTransferNoticeId(), "Conference exported."),
+                    )
+                }
+            } catch (exception: Exception) {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        transferNotice = TransferNotice(
+                            nextTransferNoticeId(),
+                            "Export failed: ${exception.readableMessage()}",
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    fun importConferenceAsNew(sourcePath: Path) {
+        scope.launch {
+            _state.update { it.copy(loading = true, transferNotice = null, conferenceActionError = null) }
+            try {
+                val importedId = conferenceTransfer.importConferenceAsNew(sourcePath)
+                val conferences = repository.listConferences()
+                val imported = repository.getConference(importedId)
+                _state.update {
+                    it.copy(
+                        conferences = conferences,
+                        selectedConferenceId = importedId,
+                        selectedConference = imported,
+                        loading = false,
+                        transferNotice = TransferNotice(nextTransferNoticeId(), "Conference imported."),
+                    )
+                }
+            } catch (exception: Exception) {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        transferNotice = TransferNotice(
+                            nextTransferNoticeId(),
+                            "Import failed: ${exception.readableMessage()}",
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    fun replaceConference(conferenceId: String, sourcePath: Path) {
+        scope.launch {
+            _state.update { it.copy(loading = true, transferNotice = null, conferenceActionError = null) }
+            try {
+                val replacedId = conferenceTransfer.replaceConference(conferenceId, sourcePath)
+                val conferences = repository.listConferences()
+                val replaced = repository.getConference(replacedId)
+                _state.update {
+                    it.copy(
+                        conferences = conferences,
+                        selectedConferenceId = replacedId,
+                        selectedConference = replaced,
+                        loading = false,
+                        transferNotice = TransferNotice(nextTransferNoticeId(), "Conference replaced."),
+                    )
+                }
+            } catch (exception: Exception) {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        transferNotice = TransferNotice(
+                            nextTransferNoticeId(),
+                            "Import failed: ${exception.readableMessage()}",
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
     private fun updateReservationState(
         expectedConferenceId: String,
         surface: ReservationActionSurface = ReservationActionSurface.Manager,
@@ -867,6 +983,11 @@ class MainViewModel internal constructor(
         return workbookUpdateNoticeId
     }
 
+    private fun nextTransferNoticeId(): Long {
+        transferNoticeId += 1
+        return transferNoticeId
+    }
+
     private fun Exception.readableMessage(): String =
         message?.takeIf { it.isNotBlank() } ?: "Please check the workbook and try again."
 
@@ -881,6 +1002,7 @@ data class MainUiState(
     val selectedConferenceId: String? = null,
     val selectedConference: Conference? = null,
     val workbookUpdateNotice: WorkbookUpdateNotice? = null,
+    val transferNotice: TransferNotice? = null,
     val conferenceActionError: String? = null,
     val boardActionError: String? = null,
     val boardScrollRequest: BoardScrollRequest? = null,
@@ -900,6 +1022,11 @@ data class MainUiState(
 )
 
 data class WorkbookUpdateNotice(
+    val id: Long,
+    val message: String,
+)
+
+data class TransferNotice(
     val id: Long,
     val message: String,
 )

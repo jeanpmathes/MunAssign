@@ -11,7 +11,13 @@ import org.munika.assignment.ui.screen.MainScreen
 import org.munika.assignment.ui.viewmodel.MainViewModel
 
 @Composable
-fun App(viewModel: MainViewModel, onOpenWorkbook: () -> Unit) {
+fun App(
+    viewModel: MainViewModel,
+    onOpenWorkbook: () -> Unit,
+    onExportConference: (String, String) -> Unit,
+    onImportConferenceAsNew: () -> Unit,
+    onReplaceConference: (String, String) -> Unit,
+) {
     val state by viewModel.state.collectAsState()
 
     MaterialTheme {
@@ -60,6 +66,9 @@ fun App(viewModel: MainViewModel, onOpenWorkbook: () -> Unit) {
                 onUpdateDelegateComment = viewModel::updateDelegateComment,
                 onDeleteDelegateComment = viewModel::deleteDelegateComment,
                 onOpenWorkbook = onOpenWorkbook,
+                onExportConference = onExportConference,
+                onImportConferenceAsNew = onImportConferenceAsNew,
+                onReplaceConference = onReplaceConference,
                 onClearConferenceActionError = viewModel::clearConferenceActionError,
                 onClearBoardActionError = viewModel::clearBoardActionError,
                 onClearReservationActionError = viewModel::clearReservationActionError,

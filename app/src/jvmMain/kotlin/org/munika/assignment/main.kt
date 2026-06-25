@@ -4,10 +4,13 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import java.awt.FileDialog
+import java.awt.Frame
 import java.awt.dnd.DnDConstants
 import java.awt.dnd.DropTarget
 import java.awt.dnd.DropTargetDropEvent
 import java.io.File
+import java.io.FilenameFilter
+import javax.swing.JOptionPane
 import org.koin.core.context.startKoin
 import org.koin.java.KoinJavaComponent.getKoin
 import org.munika.assignment.di.appModule
@@ -39,12 +42,62 @@ fun main() = application {
             }
         }
 
-        App(viewModel) {
-            val dialog = FileDialog(window, "Open MyMUN workbook", FileDialog.LOAD)
-            dialog.isVisible = true
-            if (dialog.file != null) {
-                viewModel.updateFromWorkbook(File(dialog.directory, dialog.file).toPath())
-            }
-        }
+        App(
+            viewModel = viewModel,
+            onOpenWorkbook = {
+                val dialog = FileDialog(window, "Open MyMUN workbook", FileDialog.LOAD)
+                dialog.isVisible = true
+                if (dialog.file != null) {
+                    viewModel.updateFromWorkbook(File(dialog.directory, dialog.file).toPath())
+                }
+            },
+            onExportConference = { conferenceId, conferenceName ->
+                val dialog = FileDialog(window, "Export $conferenceName", FileDialog.SAVE)
+                dialog.file = "${conferenceName.fileSafeName()}.munassign"
+                dialog.isVisible = true
+                val selected = dialog.selectedFileWithMunAssignExtension()
+                if (selected != null && (!selected.exists() || confirmOverwrite(selected))) {
+                    viewModel.exportConference(conferenceId, selected.toPath())
+                }
+            },
+            onImportConferenceAsNew = {
+                openMunAssignFile(window, "Import .munassign")?.let { selected ->
+                    viewModel.importConferenceAsNew(selected.toPath())
+                }
+            },
+            onReplaceConference = { conferenceId, conferenceName ->
+                openMunAssignFile(window, "Replace $conferenceName")?.let { selected ->
+                    viewModel.replaceConference(conferenceId, selected.toPath())
+                }
+            },
+        )
     }
 }
+
+private fun openMunAssignFile(parent: Frame, title: String): File? {
+    val dialog = FileDialog(parent, title, FileDialog.LOAD)
+    dialog.filenameFilter = FilenameFilter { _, name -> name.endsWith(".munassign", ignoreCase = true) }
+    dialog.isVisible = true
+    return if (dialog.file != null) File(dialog.directory, dialog.file) else null
+}
+
+private fun FileDialog.selectedFileWithMunAssignExtension(): File? {
+    val selectedFile = file ?: return null
+    val fileName = if (selectedFile.endsWith(".munassign", ignoreCase = true)) selectedFile else "$selectedFile.munassign"
+    return File(directory, fileName)
+}
+
+private fun confirmOverwrite(file: File): Boolean =
+    JOptionPane.showConfirmDialog(
+        null,
+        "Replace ${file.name}?",
+        "Overwrite export file",
+        JOptionPane.YES_NO_OPTION,
+        JOptionPane.WARNING_MESSAGE,
+    ) == JOptionPane.YES_OPTION
+
+private fun String.fileSafeName(): String =
+    trim()
+        .replace(Regex("[\\\\/:*?\"<>|]+"), "-")
+        .replace(Regex("\\s+"), " ")
+        .ifBlank { "conference" }

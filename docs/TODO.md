@@ -2,10 +2,7 @@
 
 ## Later - Transfer And Polish
 
-- Implement `.munassign` SQLite export for a single conference.
-- Implement `.munassign` SQLite import that can replace the selected conference or create a new conference.
 - Add export into markdown tables for all committee assignments.
-- Add file picker dialogs and user-facing error states for incompatible transfer files, write failures, and overwrite confirmation.
 - Configure native packaging metadata for MSI, DMG, and deb outputs.
 - The text when disabling a delegate is ugly.
 - Add a splash screen and loading indicator.
