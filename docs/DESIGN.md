@@ -77,6 +77,8 @@ The parser should tolerate whitespace variation in headers and comma-separated `
 
 `.munassign` export writes one complete conference to a SQLite snapshot. Import remaps conference-owned IDs, can create a new conference with a duplicate visible name, or replace a selected conference while preserving the local conference name and display order. Older transfer files are migrated from a temporary copy before import; transfer files from newer schema versions are rejected.
 
+Markdown safety exports are one-way recovery snapshots, not transfer files. The desktop app writes timestamped markdown files for every conference when it opens and closes, using one file per conference under `~/.munassign/markdown-exports`. These files summarize assignments, position interest, delegates, and high-level stats for human inspection after a failure; MunAssign does not import them.
+
 ## Implementation Notes
 
 - The application database lives at `~/.munassign/data.db`.

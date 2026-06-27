@@ -17,6 +17,7 @@ fun App(
     onExportConference: (String, String) -> Unit,
     onImportConferenceAsNew: () -> Unit,
     onReplaceConference: (String, String) -> Unit,
+    onOpenMarkdownExportFolder: () -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
 
@@ -69,6 +70,7 @@ fun App(
                 onExportConference = onExportConference,
                 onImportConferenceAsNew = onImportConferenceAsNew,
                 onReplaceConference = onReplaceConference,
+                onOpenMarkdownExportFolder = onOpenMarkdownExportFolder,
                 onClearConferenceActionError = viewModel::clearConferenceActionError,
                 onClearBoardActionError = viewModel::clearBoardActionError,
                 onClearReservationActionError = viewModel::clearReservationActionError,

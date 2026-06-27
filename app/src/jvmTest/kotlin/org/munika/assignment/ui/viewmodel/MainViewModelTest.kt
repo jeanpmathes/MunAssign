@@ -22,6 +22,10 @@ import org.munika.assignment.domain.repository.UpdateIssue
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
 import org.munika.assignment.domain.repository.UpdateResult
 import org.munika.assignment.domain.repository.UpdateSummary
+import org.munika.assignment.export.MarkdownSafetyExportFailure
+import org.munika.assignment.export.MarkdownSafetyExportResult
+import org.munika.assignment.export.MarkdownSafetyExportRunner
+import org.munika.assignment.export.MarkdownSafetyExportTrigger
 
 class MainViewModelTest {
     @Test
@@ -326,6 +330,59 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `startup markdown export writes all full conferences after initial load`() {
+        val conferenceA = Conference(ConferenceId("conference-a"), "Conference A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val conferenceB = Conference(ConferenceId("conference-b"), "Conference B", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val markdownExport = FakeMarkdownSafetyExportRunner()
+        val viewModel = viewModelWith(
+            FakeConferenceRepository(initialConference = conferenceA, conferences = listOf(conferenceA, conferenceB)),
+            markdownSafetyExport = markdownExport,
+        )
+
+        waitUntil { markdownExport.calls.any { it.trigger == MarkdownSafetyExportTrigger.Open } }
+
+        val startupCall = markdownExport.calls.first { it.trigger == MarkdownSafetyExportTrigger.Open }
+        assertEquals(listOf("conference-a", "conference-b"), startupCall.conferenceIds)
+        assertNull(viewModel.state.value.transferNotice)
+        viewModel.close()
+    }
+
+    @Test
+    fun `close markdown export writes all currently known conferences before cancelling scope`() {
+        val conferenceA = Conference(ConferenceId("conference-a"), "Conference A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val conferenceB = Conference(ConferenceId("conference-b"), "Conference B", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val markdownExport = FakeMarkdownSafetyExportRunner()
+        val viewModel = viewModelWith(
+            FakeConferenceRepository(initialConference = conferenceA, conferences = listOf(conferenceA, conferenceB)),
+            markdownSafetyExport = markdownExport,
+        )
+        waitUntil { markdownExport.calls.any { it.trigger == MarkdownSafetyExportTrigger.Open } }
+
+        viewModel.close()
+
+        val closeCall = markdownExport.calls.first { it.trigger == MarkdownSafetyExportTrigger.Close }
+        assertEquals(listOf("conference-a", "conference-b"), closeCall.conferenceIds)
+    }
+
+    @Test
+    fun `startup markdown export failure emits concise notice without blocking load`() {
+        val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val markdownExport = FakeMarkdownSafetyExportRunner(
+            failures = listOf(MarkdownSafetyExportFailure("KAMUN", "Disk is full.")),
+        )
+        val viewModel = viewModelWith(
+            FakeConferenceRepository(initialConference = conference),
+            markdownSafetyExport = markdownExport,
+        )
+
+        waitUntil { viewModel.state.value.transferNotice != null }
+
+        assertEquals("Markdown safety export failed for 1 conference.", viewModel.state.value.transferNotice?.message)
+        assertFalse(viewModel.state.value.loading)
+        viewModel.close()
+    }
+
+    @Test
     fun `import as new selects imported conference and emits transfer notice`() {
         val existing = Conference(ConferenceId("existing"), "Existing", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val imported = Conference(ConferenceId("imported"), "Imported", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
@@ -583,11 +640,13 @@ class MainViewModelTest {
     private fun viewModelWith(
         repository: ConferenceRepository,
         conferenceTransfer: ConferenceTransferRunner = FakeConferenceTransferRunner(),
+        markdownSafetyExport: MarkdownSafetyExportRunner = FakeMarkdownSafetyExportRunner(),
         workbookUpdate: suspend (String, Path) -> UpdateResult = { _, _ -> UpdateResult(true, emptyList()) },
     ): MainViewModel = MainViewModel(
         repository,
         WorkbookUpdateRunner { conferenceId, path -> workbookUpdate(conferenceId, path) },
         conferenceTransfer,
+        markdownSafetyExport,
         CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
     )
 
@@ -636,6 +695,34 @@ private class FakeConferenceTransferRunner(
         return replacedId
     }
 }
+
+private class FakeMarkdownSafetyExportRunner(
+    private val failures: List<MarkdownSafetyExportFailure> = emptyList(),
+    private val exportError: Exception? = null,
+) : MarkdownSafetyExportRunner {
+    val calls: MutableList<MarkdownSafetyExportCall> = mutableListOf()
+
+    override suspend fun exportAll(
+        conferences: List<Conference>,
+        trigger: MarkdownSafetyExportTrigger,
+    ): MarkdownSafetyExportResult {
+        exportError?.let { throw it }
+        calls += MarkdownSafetyExportCall(
+            conferenceIds = conferences.map { it.id.value },
+            trigger = trigger,
+        )
+        return MarkdownSafetyExportResult(
+            directory = Path.of("markdown-exports"),
+            writtenFiles = emptyList(),
+            failures = failures,
+        )
+    }
+}
+
+private data class MarkdownSafetyExportCall(
+    val conferenceIds: List<String>,
+    val trigger: MarkdownSafetyExportTrigger,
+)
 
 private class FakeConferenceRepository(
     private val initialConference: Conference? = null,

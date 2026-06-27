@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.munika.assignment.data.db.ConferenceTransferService
 import org.munika.assignment.data.excel.MymunWorkbookUpdater
 import org.munika.assignment.domain.model.CommitteeMode
@@ -18,6 +19,9 @@ import org.munika.assignment.domain.model.QuestionConfiguration
 import org.munika.assignment.domain.repository.ConferenceRepository
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
 import org.munika.assignment.domain.repository.UpdateResult
+import org.munika.assignment.export.MarkdownSafetyExportRunner
+import org.munika.assignment.export.MarkdownSafetyExportService
+import org.munika.assignment.export.MarkdownSafetyExportTrigger
 
 internal fun interface WorkbookUpdateRunner {
     suspend fun applyUpdate(conferenceId: String, path: Path): UpdateResult
@@ -38,12 +42,14 @@ class MainViewModel internal constructor(
     private val repository: ConferenceRepository,
     private val workbookUpdater: WorkbookUpdateRunner,
     private val conferenceTransfer: ConferenceTransferRunner,
+    private val markdownSafetyExport: MarkdownSafetyExportRunner,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) : AutoCloseable {
     constructor(
         repository: ConferenceRepository,
         workbookUpdater: MymunWorkbookUpdater,
         conferenceTransferService: ConferenceTransferService,
+        markdownSafetyExportService: MarkdownSafetyExportService,
     ) : this(
         repository = repository,
         workbookUpdater = WorkbookUpdateRunner { conferenceId, path ->
@@ -60,6 +66,7 @@ class MainViewModel internal constructor(
             override suspend fun replaceConference(targetConferenceId: String, sourcePath: Path): String =
                 conferenceTransferService.replaceConference(targetConferenceId, sourcePath)
         },
+        markdownSafetyExport = markdownSafetyExportService,
     )
 
     private val _state = MutableStateFlow(MainUiState())
@@ -68,10 +75,10 @@ class MainViewModel internal constructor(
     private var transferNoticeId: Long = 0
 
     init {
-        refreshConferences()
+        refreshConferences(exportMarkdownOnComplete = true)
     }
 
-    fun refreshConferences() {
+    fun refreshConferences(exportMarkdownOnComplete: Boolean = false) {
         scope.launch {
             val conferences = repository.listConferences()
             _state.update { current ->
@@ -79,7 +86,10 @@ class MainViewModel internal constructor(
                     ?: conferences.firstOrNull()?.id?.value
                 current.copy(conferences = conferences, selectedConferenceId = selectedId, loading = false)
             }
-            selectedIdOrNull()?.let { loadConference(it) }
+            selectedIdOrNull()?.let { loadConferenceNow(it) }
+            if (exportMarkdownOnComplete) {
+                exportMarkdownSnapshots(MarkdownSafetyExportTrigger.Open, showNotice = true)
+            }
         }
     }
 
@@ -923,12 +933,47 @@ class MainViewModel internal constructor(
 
     private fun loadConference(conferenceId: String) {
         scope.launch {
-            val conference = repository.getConference(conferenceId)
-            updateConferenceState(conferenceId) { it.copy(selectedConference = conference) }
+            loadConferenceNow(conferenceId)
         }
     }
 
+    private suspend fun loadConferenceNow(conferenceId: String) {
+        val conference = repository.getConference(conferenceId)
+        updateConferenceState(conferenceId) { it.copy(selectedConference = conference) }
+    }
+
     private fun selectedIdOrNull(): String? = _state.value.selectedConferenceId
+
+    private suspend fun exportMarkdownSnapshots(
+        trigger: MarkdownSafetyExportTrigger,
+        showNotice: Boolean,
+    ) {
+        try {
+            val fullConferences = repository.listConferences()
+                .mapNotNull { conference -> repository.getConference(conference.id.value) }
+            val result = markdownSafetyExport.exportAll(fullConferences, trigger)
+            if (showNotice && result.hasFailures) {
+                val count = result.failures.size
+                val message = if (count == 1) {
+                    "Markdown safety export failed for 1 conference."
+                } else {
+                    "Markdown safety export failed for $count conferences."
+                }
+                _state.update { it.copy(transferNotice = TransferNotice(nextTransferNoticeId(), message)) }
+            }
+        } catch (exception: Exception) {
+            if (showNotice) {
+                _state.update {
+                    it.copy(
+                        transferNotice = TransferNotice(
+                            nextTransferNoticeId(),
+                            "Markdown safety export failed: ${exception.readableMessage()}",
+                        ),
+                    )
+                }
+            }
+        }
+    }
 
     private fun updateConferenceState(
         expectedConferenceId: String,
@@ -992,6 +1037,9 @@ class MainViewModel internal constructor(
         message?.takeIf { it.isNotBlank() } ?: "Please check the workbook and try again."
 
     override fun close() {
+        runBlocking {
+            exportMarkdownSnapshots(MarkdownSafetyExportTrigger.Close, showNotice = false)
+        }
         scope.cancel()
     }
 }

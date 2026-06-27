@@ -3,6 +3,7 @@ package org.munika.assignment
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
+import java.awt.Desktop
 import java.awt.FileDialog
 import java.awt.Frame
 import java.awt.dnd.DnDConstants
@@ -10,10 +11,12 @@ import java.awt.dnd.DropTarget
 import java.awt.dnd.DropTargetDropEvent
 import java.io.File
 import java.io.FilenameFilter
+import java.nio.file.Files
 import javax.swing.JOptionPane
 import org.koin.core.context.startKoin
 import org.koin.java.KoinJavaComponent.getKoin
 import org.munika.assignment.di.appModule
+import org.munika.assignment.export.defaultExportDirectory
 import org.munika.assignment.ui.viewmodel.MainViewModel
 
 fun main() = application {
@@ -70,6 +73,24 @@ fun main() = application {
                     viewModel.replaceConference(conferenceId, selected.toPath())
                 }
             },
+            onOpenMarkdownExportFolder = {
+                openMarkdownExportFolder(window)
+            },
+        )
+    }
+}
+
+private fun openMarkdownExportFolder(parent: Frame) {
+    try {
+        val directory = defaultExportDirectory()
+        Files.createDirectories(directory)
+        Desktop.getDesktop().open(directory.toFile())
+    } catch (exception: Exception) {
+        JOptionPane.showMessageDialog(
+            parent,
+            "Could not open the markdown export folder: ${exception.message ?: exception::class.simpleName.orEmpty()}",
+            "Open export folder",
+            JOptionPane.ERROR_MESSAGE,
         )
     }
 }

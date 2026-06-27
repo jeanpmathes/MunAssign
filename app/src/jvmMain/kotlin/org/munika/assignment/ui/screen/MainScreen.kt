@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Groups
@@ -169,6 +170,7 @@ fun MainScreen(
     onExportConference: (String, String) -> Unit,
     onImportConferenceAsNew: () -> Unit,
     onReplaceConference: (String, String) -> Unit,
+    onOpenMarkdownExportFolder: () -> Unit,
     onClearConferenceActionError: () -> Unit,
     onClearBoardActionError: () -> Unit,
     onClearReservationActionError: () -> Unit = {},
@@ -213,6 +215,7 @@ fun MainScreen(
                     onOpenReservationManager = { onOpenReservationManager(null) },
                     onOpenQuestionConfiguration = onOpenQuestionConfiguration,
                     onOpenWorkbook = onOpenWorkbook,
+                    onOpenMarkdownExportFolder = onOpenMarkdownExportFolder,
                 )
                 Box(modifier = Modifier.fillMaxSize().padding(24.dp)) {
                     when {
@@ -379,6 +382,7 @@ private fun TopBar(
     onOpenReservationManager: () -> Unit,
     onOpenQuestionConfiguration: () -> Unit,
     onOpenWorkbook: (() -> Unit)? = null,
+    onOpenMarkdownExportFolder: () -> Unit,
 ) {
     Surface(shadowElevation = 2.dp, color = MaterialTheme.colorScheme.surface) {
         Row(
@@ -402,6 +406,12 @@ private fun TopBar(
                     tooltip = "Manage conferences",
                     icon = Icons.Filled.ManageAccounts,
                     onClick = onOpenManagement,
+                    enabled = !state.loading,
+                )
+                TooltipIconButton(
+                    tooltip = "Open markdown exports folder",
+                    icon = Icons.Filled.FolderOpen,
+                    onClick = onOpenMarkdownExportFolder,
                     enabled = !state.loading,
                 )
             }

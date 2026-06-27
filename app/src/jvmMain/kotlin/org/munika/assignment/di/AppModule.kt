@@ -8,6 +8,7 @@ import org.munika.assignment.data.db.repository.ConferenceRepositoryImpl
 import org.munika.assignment.data.excel.MymunWorkbookUpdater
 import org.munika.assignment.domain.repository.ConferenceRepository
 import org.munika.assignment.domain.usecase.ListConferencesUseCase
+import org.munika.assignment.export.MarkdownSafetyExportService
 import org.munika.assignment.ui.viewmodel.MainViewModel
 
 /**
@@ -17,6 +18,14 @@ val appModule: Module = module {
     single { ConferenceRepositoryImpl() } bind ConferenceRepository::class
     single { MymunWorkbookUpdater(get()) }
     single { ConferenceTransferService() }
+    single { MarkdownSafetyExportService() }
     single { ListConferencesUseCase(get()) }
-    single { MainViewModel(get<ConferenceRepository>(), get<MymunWorkbookUpdater>(), get<ConferenceTransferService>()) }
+    single {
+        MainViewModel(
+            get<ConferenceRepository>(),
+            get<MymunWorkbookUpdater>(),
+            get<ConferenceTransferService>(),
+            get<MarkdownSafetyExportService>(),
+        )
+    }
 }
