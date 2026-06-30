@@ -26,7 +26,7 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It k
 | Excel updates | Apache POI |
 | DI | Koin |
 | Build | Gradle Kotlin DSL |
-| Packaging | `compose.desktop.application` |
+| Packaging | `compose.desktop.application` portable Windows zip |
 
 `kotlinx.serialization` is not planned for conference transfer because `.munassign` uses the SQLite-backed schema directly.
 
@@ -77,11 +77,12 @@ The parser should tolerate whitespace variation in headers and comma-separated `
 
 `.munassign` export writes one complete conference to a SQLite snapshot. Import remaps conference-owned IDs, can create a new conference with a duplicate visible name, or replace a selected conference while preserving the local conference name and display order. Older transfer files are migrated from a temporary copy before import; transfer files from newer schema versions are rejected.
 
-Markdown safety exports are one-way recovery snapshots, not transfer files. The desktop app writes timestamped markdown files for every conference when it opens and closes, using one file per conference under `~/.munassign/markdown-exports`. These files summarize assignments, position interest, delegates, and high-level stats for human inspection after a failure; MunAssign does not import them.
+Markdown safety exports are one-way recovery snapshots, not transfer files. The desktop app writes timestamped markdown files for every conference when it opens and closes, using one file per conference under the active MunAssign data directory's `markdown-exports` folder. These files summarize assignments, position interest, delegates, and high-level stats for human inspection after a failure; MunAssign does not import them.
 
 ## Implementation Notes
 
-- The application database lives at `~/.munassign/data.db`.
+- The application database normally lives at `~/.munassign/data.db`. A packaged Windows build launched from a different drive than the user home directory uses an app-local `data/data.db` beside the portable app folder and does not copy existing home data automatically.
+- `:app:packagePortableZip` creates the no-installer Windows distribution zip with `MunAssign.exe`, `app/`, and `runtime/` at the archive root, and `:app:assemble` depends on it so normal Gradle-backed IDE builds create the zip. The packaged runtime includes the `java.sql` module required by SQLite/JDBC startup. MSI, DMG, and deb installers are intentionally out of scope until there is a concrete installer requirement.
 - Foreign keys should cascade for conference-owned data.
 - Assignment difficulty is computed from current state when needed; it is not stored on `Delegate`.
 - Accept capacity for each high-school/university bucket is computed from matching committee slot capacity minus active paid accepted or assigned delegates and minus remaining reservation capacity.

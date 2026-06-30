@@ -1,4 +1,4 @@
-import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.gradle.api.tasks.bundling.Zip
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -6,6 +6,8 @@ plugins {
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.composeHotReload)
 }
+
+val portablePackageVersion = "0.1.0"
 
 kotlin {
     jvmToolchain(21)
@@ -47,9 +49,24 @@ compose.desktop {
         mainClass = "org.munika.assignment.MainKt"
 
         nativeDistributions {
-            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-            packageName = "org.munika.assignment"
-            packageVersion = "1.0.0"
+            modules("java.sql")
+            packageName = "MunAssign"
+            packageVersion = portablePackageVersion
         }
     }
+}
+
+tasks.register<Zip>("packagePortableZip") {
+    group = "distribution"
+    description = "Creates a Windows portable MunAssign zip from the Compose app image."
+    dependsOn("createDistributable")
+
+    val appImageDirectory = layout.buildDirectory.dir("compose/binaries/main/app/MunAssign")
+    from(appImageDirectory)
+    destinationDirectory = layout.buildDirectory.dir("compose/binaries/main/zip")
+    archiveFileName = "MunAssign-$portablePackageVersion-windows-portable.zip"
+}
+
+tasks.named("assemble") {
+    dependsOn("packagePortableZip")
 }

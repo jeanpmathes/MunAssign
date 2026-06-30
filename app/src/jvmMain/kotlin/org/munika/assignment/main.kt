@@ -12,16 +12,17 @@ import java.awt.dnd.DropTargetDropEvent
 import java.io.File
 import java.io.FilenameFilter
 import java.nio.file.Files
+import java.nio.file.Path
 import javax.swing.JOptionPane
 import org.koin.core.context.startKoin
 import org.koin.java.KoinJavaComponent.getKoin
 import org.munika.assignment.di.appModule
-import org.munika.assignment.export.defaultExportDirectory
 import org.munika.assignment.ui.viewmodel.MainViewModel
 
 fun main() = application {
     startKoin { modules(appModule) }
     val viewModel = getKoin().get<MainViewModel>()
+    val appDataPaths = getKoin().get<AppDataPaths>()
 
     Window(
         onCloseRequest = ::exitApplication,
@@ -74,15 +75,14 @@ fun main() = application {
                 }
             },
             onOpenMarkdownExportFolder = {
-                openMarkdownExportFolder(window)
+                openMarkdownExportFolder(window, appDataPaths.markdownExportDirectory)
             },
         )
     }
 }
 
-private fun openMarkdownExportFolder(parent: Frame) {
+private fun openMarkdownExportFolder(parent: Frame, directory: Path) {
     try {
-        val directory = defaultExportDirectory()
         Files.createDirectories(directory)
         Desktop.getDesktop().open(directory.toFile())
     } catch (exception: Exception) {

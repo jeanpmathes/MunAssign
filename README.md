@@ -13,3 +13,14 @@ Run the desktop app with:
 ```shell
 .\gradlew.bat :app:run
 ```
+
+Build a portable Windows zip with:
+
+```shell
+.\gradlew.bat :app:packagePortableZip
+```
+
+The zip is also produced by normal Gradle assemble/build tasks. It is written
+under `app/build/compose/binaries/main/zip` and contains `MunAssign.exe`,
+`app/`, and `runtime/` at the archive root. The app does not install or
+register anything system-wide.

@@ -2,7 +2,6 @@
 
 ## Later - Transfer And Polish
 
-- Configure native packaging metadata for MSI, DMG, and deb outputs.
 - The text when disabling a delegate is ugly.
 - Add a splash screen and loading indicator.
 - Drag and drop of excel files.

@@ -1,5 +1,6 @@
 package org.munika.assignment.data.db.repository
 
+import java.nio.file.Path
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -98,6 +99,8 @@ import org.slf4j.LoggerFactory
 class ConferenceRepositoryImpl(
     private val database: Database = DatabaseFactory.connect(),
 ) : ConferenceRepository {
+    constructor(databasePath: Path) : this(DatabaseFactory.connect(databasePath))
+
     private val logger = LoggerFactory.getLogger(ConferenceRepositoryImpl::class.java)
 
     override suspend fun listConferences(): List<Conference> = db {
