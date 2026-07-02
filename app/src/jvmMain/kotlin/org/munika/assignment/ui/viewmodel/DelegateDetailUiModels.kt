@@ -225,7 +225,7 @@ fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiSta
             DelegateStatusChipUiState(
                 label = it,
                 tone = DelegateStatusTone.Blue,
-                tooltip = "MyMUN application status.",
+                tooltip = "Online application status.",
             )
         },
         inactiveMarker = if (delegate.active) {
@@ -234,7 +234,7 @@ fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiSta
             DelegateStatusChipUiState(
                 label = "Deactivated",
                 tone = DelegateStatusTone.Neutral,
-                tooltip = "This delegate is hidden from assignment views until reactivated.",
+                tooltip = "This delegate is unavailable for assignment and management. Reactivate them from the All view in the delegate list.",
             )
         },
         highSchooler = delegate.isHighSchooler,
@@ -249,7 +249,7 @@ fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiSta
                 dateOfBirthTooltip = delegate.profile.dateOfBirth
                     ?.format(dateFormatter)
                     ?.let { "Date of birth: $it" }
-                    ?: "Age derived from imported date of birth.",
+                    ?: "Age from the application date of birth.",
             )
         },
         diet = delegate.profile.diet?.takeIf { it.isNotBlank() },
@@ -290,7 +290,7 @@ fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiSta
         delegation = delegate.delegation?.let { delegation ->
             DelegateDelegationUiState(
                 label = delegation.displayLabel,
-                tooltip = "Delegation context from MyMUN.",
+                tooltip = "Online delegation linked to this delegate.",
             )
         },
         reservation = delegate.reservationLink?.let { link ->
@@ -340,7 +340,7 @@ private fun MunExperienceLevel.toUiState(): DelegateExperienceUiState =
             MunExperienceLevel.Intermediate -> 3
             MunExperienceLevel.Advanced -> 4
         },
-        tooltip = "Typed MUN experience derived from the configured experience question.",
+        tooltip = "Experience level from the delegate's application answers.",
     )
 
 private fun LanguageLevel.toUiState(): DelegateLanguageUiState =
@@ -351,7 +351,7 @@ private fun LanguageLevel.toUiState(): DelegateLanguageUiState =
             LanguageLevel.ProficientUserC1C2 -> "C1/C2"
         },
         tone = if (this == LanguageLevel.BeginnerA1A2) DelegateStatusTone.Red else DelegateStatusTone.Green,
-        tooltip = "Typed language level derived from the configured language question.",
+        tooltip = "Language level from the delegate's application answers.",
     )
 
 private fun Delegate.paymentStatusChip(): DelegateStatusChipUiState =
@@ -359,12 +359,12 @@ private fun Delegate.paymentStatusChip(): DelegateStatusChipUiState =
         PaymentStatus.Paid -> DelegateStatusChipUiState(
             label = "Paid",
             tone = DelegateStatusTone.Green,
-            tooltip = "Payment status from MyMUN: paid.",
+            tooltip = "Payment is marked as paid online.",
         )
         PaymentStatus.Unpaid -> DelegateStatusChipUiState(
             label = "Unpaid",
             tone = DelegateStatusTone.Red,
-            tooltip = "Payment status from MyMUN: unpaid.",
+            tooltip = "Payment is still marked as unpaid online.",
         )
     }
 
@@ -404,13 +404,13 @@ private fun Position.preferenceStatus(): PreferenceSlotStatusUiState {
             label = "Pending",
             detail = "Pending: ${occupiedSlot.delegate?.displayName.orEmpty()}",
             tone = DelegateStatusTone.Yellow,
-            tooltip = "This position has a pending MunAssign assignment.",
+            tooltip = "This position has a pending assignment.",
         )
         occupiedSlot.isAssigned -> PreferenceSlotStatusUiState(
             label = "Confirmed",
             detail = "Assigned: ${occupiedSlot.delegate?.displayName.orEmpty()}",
             tone = DelegateStatusTone.Blue,
-            tooltip = "This position has a MyMUN-confirmed assignment.",
+            tooltip = "This position has a confirmed assignment.",
         )
         else -> PreferenceSlotStatusUiState(
             label = "Occupied",

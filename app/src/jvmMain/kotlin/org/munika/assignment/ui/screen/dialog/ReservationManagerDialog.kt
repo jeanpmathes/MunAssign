@@ -95,7 +95,7 @@ fun ReservationManagerDialog(
                         )
                     }
                 }
-                BoardTooltip("Create a reservation for high-school and/or university delegate capacity.") {
+                BoardTooltip("Reserve high-school and/or university capacity for accepted delegates.") {
                     OutlinedButton(onClick = { createOpen = true }, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
@@ -234,7 +234,7 @@ private fun ReservationDelegationLink(
 @Composable
 private fun ConsumerSection(consumers: List<ReservationConsumerUiState>) {
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Text("Assigned delegates", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        Text("Reserved delegates", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
         if (consumers.isEmpty()) {
             Text("None", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
@@ -257,7 +257,7 @@ private fun ConsumerPill(consumer: ReservationConsumerUiState) {
         val suffix = if (consumer.sourceLabel == "Delegation") " (by delegation)" else ""
         Text("${consumer.delegateName}$suffix", style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (consumer.isHighSchooler) {
-            Icon(Icons.Filled.School, contentDescription = "High school delegate", tint = HighSchoolColor, modifier = Modifier.size(14.dp))
+            Icon(Icons.Filled.School, contentDescription = "High-school delegate", tint = HighSchoolColor, modifier = Modifier.size(14.dp))
         }
     }
 }
@@ -303,7 +303,7 @@ private fun ReservationEditorDialog(
                     OutlinedTextField(
                         value = highSchoolCount,
                         onValueChange = { highSchoolCount = it.filter(Char::isDigit) },
-                        label = { Text("HS count") },
+                        label = { Text("High-school count") },
                         singleLine = true,
                         isError = countError,
                         modifier = Modifier.weight(1f),
@@ -311,7 +311,7 @@ private fun ReservationEditorDialog(
                     OutlinedTextField(
                         value = universityCount,
                         onValueChange = { universityCount = it.filter(Char::isDigit) },
-                        label = { Text("Uni count") },
+                        label = { Text("University count") },
                         singleLine = true,
                         isError = countError,
                         modifier = Modifier.weight(1f),

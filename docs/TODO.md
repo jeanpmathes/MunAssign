@@ -2,12 +2,12 @@
 
 ## Later - Transfer And Polish
 
-- The text when disabling a delegate is ugly.
 - Add a splash screen and loading indicator.
 - Drag and drop of excel files.
 - Warning for low language level.
 - Improve tooltips.
 - Larger window size / use size at last close.
+- Export nice PNGs with current assignment status.
 - Stress tests with many people.
 
 ## Experimental

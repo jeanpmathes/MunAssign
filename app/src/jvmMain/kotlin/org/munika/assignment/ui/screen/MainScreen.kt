@@ -409,7 +409,7 @@ private fun TopBar(
                     enabled = !state.loading,
                 )
                 TooltipIconButton(
-                    tooltip = "Open markdown exports folder",
+                    tooltip = "Open textual exports folder",
                     icon = Icons.Filled.FolderOpen,
                     onClick = onOpenMarkdownExportFolder,
                     enabled = !state.loading,
@@ -421,7 +421,7 @@ private fun TopBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                WithTooltip("Select a MyMUN Excel workbook to update the selected conference.") {
+                WithTooltip("Choose the online Excel file for this conference update.") {
                     Button(
                         onClick = { onOpenWorkbook?.invoke() },
                         enabled = !state.loading && state.selectedConferenceId != null && onOpenWorkbook != null,
@@ -431,7 +431,7 @@ private fun TopBar(
                         Text("Update")
                     }
                 }
-                WithTooltip("Configure imported MyMUN questions.") {
+                WithTooltip("Choose how application questions are shown and checked.") {
                     OutlinedButton(
                         onClick = onOpenQuestionConfiguration,
                         enabled = !state.loading && state.selectedConference?.questions?.isNotEmpty() == true,
@@ -451,7 +451,7 @@ private fun TopBar(
                 val issueManager = state.selectedConference?.toIssueManagerUiState()
                 val openIssueCount = (issueManager?.openWarningCount ?: 0) + (issueManager?.openNoticeCount ?: 0)
                 NoticeIconButton(
-                    tooltip = "Open issues ($openIssueCount open)",
+                    tooltip = "Open issues ($openIssueCount unresolved)",
                     warningCount = issueManager?.openWarningCount ?: 0,
                     noticeCount = issueManager?.openNoticeCount ?: 0,
                     onClick = onOpenNoticeManager,
@@ -579,17 +579,17 @@ private fun ConferenceStats(conference: Conference) {
         StatGroup(
             label = "Applications",
             value = "${acceptedApplications.size} accepted · $paidApplications/$unpaidApplications paid/unpaid · $submittedApplications submitted",
-            tooltip = "Accepted means MyMUN applications with Accepted or Assigned status. Paid/unpaid is counted within accepted applications. Submitted counts applications with a submission date that are not accepted yet.",
+            tooltip = "Accepted paid delegates can be assigned. Unpaid accepted delegates are counted separately because they are not confirmed for assignment yet. Submitted delegates still need an online acceptance decision.",
         )
         StatGroup(
             label = "Delegates",
             value = "$assignedActivePaidDelegates / $activePaidDelegates assigned · $pendingActivePaidDelegates pending",
-            tooltip = "Active paid delegates assigned to any pending or confirmed slot out of all active paid delegates. Pending counts app-created assignments still waiting for MyMUN confirmation.",
+            tooltip = "Shows how many usable delegates already have a pending or confirmed assignment. Pending assignments still need confirmation in a later update.",
         )
         StatGroup(
             label = "Slots",
             value = "$filledSlots / $totalSlots filled",
-            tooltip = "Slots with pending app assignments or confirmed MyMUN assignments out of all available slots.",
+            tooltip = "Shows filled assignment places out of all available places. Filled includes pending and confirmed assignments.",
         )
         CapacityStatGroup(acceptanceCapacity)
     }
@@ -644,7 +644,7 @@ private fun CapacityStatGroup(capacity: AcceptanceCapacityUiState) {
         positionProvider = TooltipDefaults.rememberTooltipPositionProvider(positioning = TooltipAnchorPosition.Above),
         tooltip = {
             PlainTooltip {
-                Text("Acceptance capacity after accepted paid active delegates and remaining reservations are subtracted from high-school and university committee slots.")
+                Text("Remaining high-school and university places after accepted paid delegates and reservation holds are counted.")
             }
         },
         state = rememberTooltipState(),
@@ -800,7 +800,7 @@ private fun LoadingState() {
 @Composable
 private fun EmptyConferenceWorkspace() {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("No data has been uploaded yet.", style = MaterialTheme.typography.titleMedium)
+        Text("No update has been loaded yet.", style = MaterialTheme.typography.titleMedium)
     }
 }
 
@@ -1203,7 +1203,7 @@ private fun ReplaceConferenceDialog(
         title = { Text("Replace ${conference.name}?") },
         text = {
             Text(
-                "This keeps the conference name and list position, but replaces its committees, positions, slots, delegates, preferences, answers, comments, reservations, and update history with the selected .munassign file.",
+                "This imports a .munassign file over this conference. The current conference data will be replaced.",
             )
         },
         confirmButton = {

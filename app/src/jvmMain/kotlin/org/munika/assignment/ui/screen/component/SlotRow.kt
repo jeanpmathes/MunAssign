@@ -99,10 +99,10 @@ fun SlotRow(
             overflow = TextOverflow.Ellipsis,
         )
         if (slot.delegateIsHighSchooler) {
-            BoardTooltip("High school delegate.") {
+            BoardTooltip("High-school delegate") {
                 Icon(
                     Icons.Filled.School,
-                    contentDescription = "High school delegate",
+                    contentDescription = "High-school delegate",
                     tint = HighSchoolColor,
                     modifier = Modifier.size(18.dp),
                 )
@@ -158,7 +158,7 @@ private fun SlotBoardStatus.style(): SlotStyle =
         SlotBoardStatus.Empty -> SlotStyle(
             label = "Open",
             emptyText = "Available",
-            tooltip = "Open slot with no delegate assigned.",
+            tooltip = "Available slot with no delegate assigned.",
             icon = Icons.Filled.RadioButtonUnchecked,
             accentColor = MaterialTheme.colorScheme.outline,
             borderColor = MaterialTheme.colorScheme.outlineVariant,
@@ -169,7 +169,7 @@ private fun SlotBoardStatus.style(): SlotStyle =
         SlotBoardStatus.Pending -> SlotStyle(
             label = "Pending",
             emptyText = "",
-            tooltip = "Pending assignment created in MunAssign and waiting for MyMUN confirmation.",
+            tooltip = "Pending assignment. Confirm it online, then load a later update.",
             icon = Icons.Filled.HourglassEmpty,
             accentColor = Color(0xFFB26A00),
             borderColor = Color(0xFFB26A00).copy(alpha = 0.46f),
@@ -180,7 +180,7 @@ private fun SlotBoardStatus.style(): SlotStyle =
         SlotBoardStatus.Assigned -> SlotStyle(
             label = "Confirmed",
             emptyText = "",
-            tooltip = "Confirmed assignment from MyMUN update data.",
+            tooltip = "Confirmed assignment.",
             icon = Icons.Filled.CheckCircle,
             accentColor = MaterialTheme.colorScheme.primary,
             borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),

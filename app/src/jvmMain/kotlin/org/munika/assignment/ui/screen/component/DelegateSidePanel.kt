@@ -235,7 +235,7 @@ fun DelegateSidePanel(
             onDismissRequest = { deactivateDialogOpen = false },
             title = { Text("Deactivate ${detail.name}?") },
             text = {
-                Text("This hides the delegate from assignment views. If they have a pending MunAssign assignment, it will be cleared.")
+                Text("This prevents usage of this delegate for assignment and management, and will remove any pending assignments. Use after deleting a delegate online. To undo deactivation, find the delegate in the All view in the delegates list.")
             },
             confirmButton = {
                 Button(
@@ -310,10 +310,10 @@ private fun Header(detail: DelegateDetailUiState, onClose: () -> Unit) {
             detail.applicationStatus?.let { StatusChip(it) }
             detail.inactiveMarker?.let { StatusChip(it) }
             if (detail.highSchooler) {
-                BoardTooltip("Typed high schooler status from the configured high-schooler question.") {
+                BoardTooltip("High-school status from the delegate's application answers.") {
                     Icon(
                         Icons.Filled.School,
-                        contentDescription = "High school delegate",
+                        contentDescription = "High-school delegate",
                         tint = Color(0xFF8E24AA),
                         modifier = Modifier.size(22.dp),
                     )
@@ -324,7 +324,7 @@ private fun Header(detail: DelegateDetailUiState, onClose: () -> Unit) {
                     DelegateStatusChipUiState(
                         label = "Head delegate",
                         tone = DelegateStatusTone.Neutral,
-                        tooltip = "This delegate is marked as a head delegate in MyMUN.",
+                        tooltip = "This delegate is marked as a head delegate online.",
                     ),
                 )
             }
@@ -403,7 +403,7 @@ private fun ReservationCard(
                         }
                     }
                     if (reservation.sourceLabel == ManualReservationSourceLabel) {
-                        BoardTooltip("Remove this manual reservation link from the delegate.") {
+                        BoardTooltip("Remove this delegate from the reservation.") {
                             TextButton(
                                 onClick = onRemoveReservation,
                                 enabled = !loading,
@@ -550,7 +550,7 @@ private fun ProfileContent(
         detail.language == null
     ) {
         if (detail.profileIssues.isEmpty() && detail.resolvedProfileIssues.isEmpty()) {
-            Text("No imported profile details", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("No profile details available", color = MaterialTheme.colorScheme.onSurfaceVariant)
             return
         }
     }
@@ -562,12 +562,12 @@ private fun ProfileContent(
             }
         }
         detail.nationality?.let {
-            BoardTooltip("Nationality from MyMUN.") {
+            BoardTooltip("Nationality from the application.") {
                 MetricBlock("Nationality", it, Modifier.weight(1f))
             }
         }
         detail.diet?.let {
-            BoardTooltip("Dietary information from MyMUN.") {
+            BoardTooltip("Dietary information from the application.") {
                 MetricBlock("Diet", it, Modifier.weight(1f))
             }
         }
@@ -608,7 +608,7 @@ private fun ProfileContent(
     }
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
         detail.email?.let {
-            BoardTooltip("Email address from MyMUN.") {
+            BoardTooltip("Email address from the application.") {
                 EmailBlock(
                     email = it,
                     modifier = Modifier.weight(1f),
@@ -617,18 +617,18 @@ private fun ProfileContent(
             }
         }
         detail.phone?.let {
-            BoardTooltip("Phone number from MyMUN.") {
+            BoardTooltip("Phone number from the application.") {
                 MetricBlock("Phone", it, Modifier.weight(1f))
             }
         }
     }
     detail.address?.let {
-        BoardTooltip("Address combined from imported country, zip code, city, and street fields.") {
+        BoardTooltip("Address from the application profile.") {
             MetricBlock("Address", it, Modifier.fillMaxWidth())
         }
     }
     ValidationIssueBlock(
-        title = "Validation",
+        title = "Checks",
         issues = detail.profileIssues,
         resolvedIssues = detail.resolvedProfileIssues,
         onOpenIssues = onOpenIssues,
@@ -908,9 +908,9 @@ private fun ActionFooter(
         if (detail.active) {
             BoardTooltip(
                 if (detail.canDeactivate) {
-                    "Deactivate this delegate and clear any pending assignment."
+                    "Deactivate this delegate and remove any pending assignments."
                 } else {
-                    "Confirmed MyMUN-assigned delegates cannot be deactivated."
+                    "Delegates with confirmed assignments cannot be deactivated."
                 },
             ) {
                 OutlinedButton(
@@ -923,7 +923,7 @@ private fun ActionFooter(
                 }
             }
         } else {
-            BoardTooltip("Reactivate this delegate for assignment workflows.") {
+            BoardTooltip("Reactivate this delegate for assignment and management.") {
                 Button(onClick = { onReactivate(detail.id) }, enabled = !loading) {
                     Icon(Icons.Filled.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))

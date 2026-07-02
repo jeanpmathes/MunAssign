@@ -263,7 +263,7 @@ private fun QuestionRow(
                 Spacer(modifier = Modifier.weight(1f))
                 TooltipIconButton("Edit label", Icons.AutoMirrored.Filled.Label, enabled = true, tint = actionIconTint, onClick = onOpenLabel)
                 VisibilityButton(state = state, tint = actionIconTint, onToggle = { onChange(state.copy(visibleInDelegateDetail = !state.visibleInDelegateDetail)) })
-                TooltipIconButton("Edit mappings", Icons.Filled.Settings, enabled = state.selectedRole != null, tint = actionIconTint, onClick = onOpenMappings)
+                TooltipIconButton("Edit answer mappings", Icons.Filled.Settings, enabled = state.selectedRole != null, tint = actionIconTint, onClick = onOpenMappings)
                 ReorderButton("Move up", Icons.Filled.ArrowUpward, enabled = canMoveUp, tint = actionIconTint) { onMove(-1) }
                 ReorderButton("Move down", Icons.Filled.ArrowDownward, enabled = canMoveDown, tint = actionIconTint) { onMove(1) }
             }
@@ -278,7 +278,7 @@ private fun QuestionRow(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(handlingLabel(state.handlingTypeId), style = MaterialTheme.typography.labelSmall, color = validationColor)
                     TooltipIconButton(
-                        tooltip = "Set handling and validation",
+                        tooltip = "Set checks",
                         icon = Icons.Filled.VerifiedUser,
                         enabled = true,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -328,10 +328,10 @@ private fun RoleCapsule(selectedRoleId: String?, onSelect: (String?) -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier.padding(start = 12.dp, end = 2.dp, top = 0.dp, bottom = 0.dp),
         ) {
-            Text(role?.name ?: "No Role", style = MaterialTheme.typography.labelMedium)
-            TooltipIconButton("Set role", Icons.Filled.KeyboardArrowDown, enabled = true) { expanded = true }
+            Text(role?.name ?: "No profile field", style = MaterialTheme.typography.labelMedium)
+            TooltipIconButton("Set profile field", Icons.Filled.KeyboardArrowDown, enabled = true) { expanded = true }
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                DropdownMenuItem(text = { Text("No Role") }, onClick = {
+                DropdownMenuItem(text = { Text("No profile field") }, onClick = {
                     expanded = false
                     onSelect(null)
                 })
@@ -354,7 +354,7 @@ private fun VisibilityButton(state: EditableQuestionConfigurationUiState, tint: 
         else -> Icons.Filled.VisibilityOff
     }
     val tooltip = when {
-        state.isSpecial -> "Special questions are not shown in the answer overview"
+        state.isSpecial -> "Profile fields are shown in the profile section"
         state.visibleInDelegateDetail -> "Shown in delegate detail"
         else -> "Hidden from delegate detail"
     }
@@ -398,25 +398,25 @@ private fun LabelDialog(label: String, onChange: (String) -> Unit, onDismiss: ()
 private fun HandlingDialog(selectedHandlingId: String, onSelect: (String) -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Handling") },
+        title = { Text("Checks") },
         text = {
             Column(modifier = Modifier.width(520.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 HandlingOption(
                     selected = selectedHandlingId == StandardQuestionHandlingTypes.Default.id,
-                    title = "No special validation",
+                    title = "No special checks",
                     body = "Show the answer without adding warnings or notices.",
                     onClick = { onSelect(StandardQuestionHandlingTypes.Default.id) },
                 )
                 HandlingOption(
                     selected = selectedHandlingId == StandardQuestionHandlingTypes.VisaSupport.id,
-                    title = "Visa",
+                    title = "Visa support",
                     body = "Notify when delegates require visa assistance.",
                     onClick = { onSelect(StandardQuestionHandlingTypes.VisaSupport.id) },
                 )
                 HandlingOption(
                     selected = selectedHandlingId == StandardQuestionHandlingTypes.CommitteeChoiceExplanation.id,
-                    title = "Explanation",
-                    body = "Warn when delegates have not provided a thorough enough explaination.",
+                    title = "Committee choice explanation",
+                    body = "Warn when the explanation is too short.",
                     onClick = { onSelect(StandardQuestionHandlingTypes.CommitteeChoiceExplanation.id) },
                 )
             }
@@ -606,9 +606,9 @@ private fun defaultRulesForHandling(handlingId: String): List<AnswerRule> =
 
 private fun handlingLabel(handlingId: String): String =
     when (handlingId) {
-        StandardQuestionHandlingTypes.CommitteeChoiceExplanation.id -> "Explanation validation"
-        StandardQuestionHandlingTypes.VisaSupport.id -> "Visa validation"
-        else -> "No special validation"
+        StandardQuestionHandlingTypes.CommitteeChoiceExplanation.id -> "Explanation check"
+        StandardQuestionHandlingTypes.VisaSupport.id -> "Visa support check"
+        else -> "No special checks"
     }
 
 private fun String.isValidationHandling(): Boolean =

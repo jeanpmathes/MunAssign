@@ -183,7 +183,7 @@ private fun CommitteeHeader(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            BoardTooltip("Open committee settings.") {
+            BoardTooltip("Open committee settings") {
                 IconButton(
                     onClick = { settingsOpen = true },
                     enabled = !loading,
@@ -194,15 +194,15 @@ private fun CommitteeHeader(
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            CommitteeMetric(label = "Open", value = committee.openSlotCount, tooltip = "Empty slots in this committee.")
-            CommitteeMetric(label = "Pending", value = committee.pendingSlotCount, tooltip = "Slots assigned in MunAssign but not yet confirmed by a MyMUN update.")
-            CommitteeMetric(label = "Assigned", value = committee.assignedSlotCount, tooltip = "Slots confirmed by MyMUN update data.")
+            CommitteeMetric(label = "Open", value = committee.openSlotCount, tooltip = "Available slots in this committee.")
+            CommitteeMetric(label = "Pending", value = committee.pendingSlotCount, tooltip = "Slots with pending assignments. They still need confirmation in a later update.")
+            CommitteeMetric(label = "Confirmed", value = committee.assignedSlotCount, tooltip = "Slots with confirmed assignments.")
             when (committee.mode) {
                 CommitteeMode.HighSchool -> if (committee.universityAssignedCount > 0) {
                     CommitteeMetric(
                         label = "Uni",
                         value = committee.universityAssignedCount,
-                        tooltip = "University-level delegates assigned in this high-school committee.",
+                        tooltip = "University delegates placed in this high-school committee.",
                         warning = true,
                     )
                 }
@@ -222,7 +222,7 @@ private fun CommitteeHeader(
                 val reminderText = committee.reservationReminders.joinToString(" · ") { reminder ->
                     "${reminder.label}: ${reminder.remainingCount} open"
                 }
-                BoardTooltip("Open reservation manager. These reservations reserve acceptance capacity for this committee type, but do not attach to specific slots.") {
+                BoardTooltip("Open reservation manager. These reservations hold capacity for this delegate level, not for specific slots.") {
                     Text(
                         text = reminderText,
                         style = if (committee.mode == CommitteeMode.Mapped) {
@@ -252,10 +252,10 @@ private fun CommitteeHeader(
                 val mappedPositions = committee.positions.filter { it.mappedCommittee != null }
                 if (committee.mode == CommitteeMode.Mapped && mode != CommitteeMode.Mapped && mappedPositions.isNotEmpty()) {
                     blockedModeChangeMessage =
-                        "Cannot change ${committee.name} to ${mode.label} because correspondences are set for " +
+                        "Cannot change ${committee.name} to ${mode.label} because linked committees are set for " +
                             mappedPositions.joinToString(limit = 3) { position ->
                                 "${position.name} (${position.mappedCommittee?.name})"
-                            } + ". Remove all correspondences first."
+                            } + ". Clear all linked committees first."
                     settingsOpen = false
                 } else {
                     onSetMode(mode)
@@ -379,7 +379,7 @@ private fun SlotCountStepper(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(6.dp)),
     ) {
-        BoardTooltip("Decrease slots per position. If trailing slots are occupied, MunAssign will explain why it cannot reduce the count.") {
+        BoardTooltip("Decrease slots per position. If occupied slots would be removed, the app will explain what must be cleared first.") {
             IconButton(
                 onClick = onDecrease,
                 enabled = enabled && value > 1,

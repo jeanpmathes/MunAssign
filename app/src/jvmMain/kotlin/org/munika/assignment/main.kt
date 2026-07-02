@@ -49,7 +49,7 @@ fun main() = application {
         App(
             viewModel = viewModel,
             onOpenWorkbook = {
-                val dialog = FileDialog(window, "Open MyMUN workbook", FileDialog.LOAD)
+                val dialog = FileDialog(window, "Select update file", FileDialog.LOAD)
                 dialog.isVisible = true
                 if (dialog.file != null) {
                     viewModel.updateFromWorkbook(File(dialog.directory, dialog.file).toPath())
@@ -88,8 +88,8 @@ private fun openMarkdownExportFolder(parent: Frame, directory: Path) {
     } catch (exception: Exception) {
         JOptionPane.showMessageDialog(
             parent,
-            "Could not open the markdown export folder: ${exception.message ?: exception::class.simpleName.orEmpty()}",
-            "Open export folder",
+            "Could not open the textual exports folder: ${exception.message ?: exception::class.simpleName.orEmpty()}",
+            "Open textual exports folder",
             JOptionPane.ERROR_MESSAGE,
         )
     }
@@ -111,8 +111,8 @@ private fun FileDialog.selectedFileWithMunAssignExtension(): File? {
 private fun confirmOverwrite(file: File): Boolean =
     JOptionPane.showConfirmDialog(
         null,
-        "Replace ${file.name}?",
-        "Overwrite export file",
+        "Overwrite ${file.name}?",
+        "Export file already exists",
         JOptionPane.YES_NO_OPTION,
         JOptionPane.WARNING_MESSAGE,
     ) == JOptionPane.YES_OPTION

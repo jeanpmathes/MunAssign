@@ -59,10 +59,10 @@ data class EditableQuestionConfigurationUiState(
     fun validationErrors(): List<String> {
         val errors = mutableListOf<String>()
         if (StandardQuestionHandlingTypes.all.none { it.id == handlingTypeId }) {
-            errors += "Select a handling type."
+            errors += "Select a check type."
         }
         if (roleId != null && StandardQuestionRoles.fromId(roleId) == null) {
-            errors += "Select a valid role."
+            errors += "Select a valid profile field."
         }
         val mappings = selectedMappings()
         errors += mappings.validationErrors(selectedRole?.name ?: "Mapping")

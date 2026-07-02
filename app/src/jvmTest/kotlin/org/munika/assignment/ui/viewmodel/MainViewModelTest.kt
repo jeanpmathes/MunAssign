@@ -307,7 +307,7 @@ class MainViewModelTest {
         viewModel.updateFromWorkbook(Path.of("conference.xlsx"))
 
         waitUntil { viewModel.state.value.workbookUpdateNotice != null }
-        assertEquals("MyMUN update complete.", viewModel.state.value.workbookUpdateNotice?.message)
+        assertEquals("Update complete.", viewModel.state.value.workbookUpdateNotice?.message)
         assertFalse(viewModel.state.value.loading)
         viewModel.close()
     }
@@ -377,7 +377,7 @@ class MainViewModelTest {
 
         waitUntil { viewModel.state.value.transferNotice != null }
 
-        assertEquals("Markdown safety export failed for 1 conference.", viewModel.state.value.transferNotice?.message)
+        assertEquals("Textual safety export failed for 1 conference.", viewModel.state.value.transferNotice?.message)
         assertFalse(viewModel.state.value.loading)
         viewModel.close()
     }
@@ -456,7 +456,7 @@ class MainViewModelTest {
         viewModel.updateFromWorkbook(Path.of("conference.xlsx"))
 
         waitUntil { viewModel.state.value.workbookUpdateNotice != null }
-        assertEquals("MyMUN update complete with 2 warnings.", viewModel.state.value.workbookUpdateNotice?.message)
+        assertEquals("Update complete with 2 warnings.", viewModel.state.value.workbookUpdateNotice?.message)
         assertFalse(viewModel.state.value.loading)
         viewModel.close()
     }
@@ -476,7 +476,7 @@ class MainViewModelTest {
         viewModel.updateFromWorkbook(Path.of("conference.xlsx"))
 
         waitUntil { viewModel.state.value.workbookUpdateNotice != null }
-        assertEquals("MyMUN update failed: Countries sheet is missing.", viewModel.state.value.workbookUpdateNotice?.message)
+        assertEquals("Update failed: Countries sheet is missing.", viewModel.state.value.workbookUpdateNotice?.message)
         assertFalse(viewModel.state.value.loading)
         viewModel.close()
     }
@@ -492,7 +492,7 @@ class MainViewModelTest {
         viewModel.updateFromWorkbook(Path.of("conference.xlsx"))
 
         waitUntil { viewModel.state.value.workbookUpdateNotice != null }
-        assertEquals("MyMUN update failed: File could not be read.", viewModel.state.value.workbookUpdateNotice?.message)
+        assertEquals("Update failed: File could not be read.", viewModel.state.value.workbookUpdateNotice?.message)
         assertFalse(viewModel.state.value.loading)
         viewModel.close()
     }

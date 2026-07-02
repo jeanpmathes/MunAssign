@@ -150,7 +150,7 @@ private fun IssueManagerHeader(onClose: () -> Unit) {
     ) {
         Icon(Icons.Filled.Notifications, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         Text("Issue manager", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-        TooltipIconButton("Close issue manager.") {
+        TooltipIconButton("Close issue manager") {
             IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {
                 Icon(Icons.Filled.Close, contentDescription = "Close issue manager")
             }
@@ -232,8 +232,8 @@ private fun IssueRow(
                     modifier = Modifier.clickable(onClick = onOpenDelegate),
                 )
                 if (issue.delegateIsHighSchooler) {
-                    TooltipIcon("High school delegate.") {
-                        Icon(Icons.Filled.School, contentDescription = "High school delegate", modifier = Modifier.size(16.dp), tint = HighSchoolColor)
+                    TooltipIcon("High-school delegate") {
+                        Icon(Icons.Filled.School, contentDescription = "High-school delegate", modifier = Modifier.size(16.dp), tint = HighSchoolColor)
                     }
                 }
             }
@@ -249,24 +249,24 @@ private fun IssueRow(
             }
         }
         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            TooltipIconButton("Open delegate profile.") {
+            TooltipIconButton("Open delegate profile") {
                 IconButton(onClick = onOpenDelegate, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Open delegate profile", modifier = Modifier.size(17.dp))
                 }
             }
             if (issue.resolved) {
-                TooltipIconButton("Edit justification.") {
+                TooltipIconButton("Edit justification") {
                     IconButton(onClick = onEdit, modifier = Modifier.size(32.dp), enabled = issue.resolutionId != null) {
                         Icon(Icons.Filled.Edit, contentDescription = "Edit justification", modifier = Modifier.size(17.dp))
                     }
                 }
-                TooltipIconButton("Reopen issue.") {
+                TooltipIconButton("Reopen issue") {
                     IconButton(onClick = onUnresolve, modifier = Modifier.size(32.dp), enabled = issue.resolutionId != null) {
                         Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Reopen issue", modifier = Modifier.size(17.dp))
                     }
                 }
             } else {
-                TooltipIconButton("Resolve issue.") {
+                TooltipIconButton("Resolve issue") {
                     IconButton(onClick = onResolve, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Filled.Check, contentDescription = "Resolve issue", modifier = Modifier.size(17.dp))
                     }

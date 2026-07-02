@@ -49,7 +49,7 @@ fun SlotContextMenu(
                                     if (delegate.isHighSchooler) {
                                         Icon(
                                             Icons.Filled.School,
-                                            contentDescription = "High school delegate",
+                                            contentDescription = "High-school delegate",
                                             tint = Color(0xFF8E24AA),
                                             modifier = Modifier.size(16.dp),
                                         )
@@ -74,7 +74,7 @@ fun SlotContextMenu(
             }
             SlotBoardStatus.Pending -> {
                 DropdownMenuItem(
-                    text = { Text("Replace assignment...") },
+                    text = { Text("Replace pending assignment...") },
                     onClick = {
                         onDismiss()
                         onOpenManualAssignment()
@@ -90,7 +90,7 @@ fun SlotContextMenu(
             }
             SlotBoardStatus.Assigned -> {
                 DropdownMenuItem(
-                    text = { Text("Confirmed by MyMUN update") },
+                    text = { Text("Confirmed assignment") },
                     enabled = false,
                     onClick = {},
                 )

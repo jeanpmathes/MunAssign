@@ -105,7 +105,7 @@ private fun Header(onClose: () -> Unit) {
     ) {
         Icon(Icons.Filled.Groups, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         Text("Delegations", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-        BoardTooltip("Close delegation overview.") {
+        BoardTooltip("Close delegation overview") {
             IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {
                 Icon(Icons.Filled.Close, contentDescription = "Close delegation overview")
             }
@@ -149,20 +149,20 @@ private fun DelegationCard(
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 InfoChip("Expected ${delegation.expectedDelegateCount?.toString() ?: "-"}")
-                InfoChip("MyMUN ${delegation.currentDelegateCountFromMymun?.toString() ?: "-"}")
-                InfoChip("Active paid ${delegation.activePaidAcceptedDelegateCount}")
+                InfoChip("Online ${delegation.currentDelegateCountFromMymun?.toString() ?: "-"}")
+                InfoChip("Usable ${delegation.activePaidAcceptedDelegateCount}")
             }
             ReservationSection(delegation.linkedReservations, onOpenReservationManager)
             DelegateSection(
                 title = "Accepted / assigned",
-                emptyLabel = "No accepted delegates linked by MyMUN",
+                emptyLabel = "No accepted delegates linked online",
                 delegates = delegation.acceptedDelegates,
                 showAssignment = true,
                 onOpenDelegateDetail = onOpenDelegateDetail,
             )
             DelegateSection(
                 title = "Submitted",
-                emptyLabel = "No submitted delegates linked by MyMUN",
+                emptyLabel = "No submitted delegates linked online",
                 delegates = delegation.submittedDelegates,
                 showAssignment = false,
                 onOpenDelegateDetail = onOpenDelegateDetail,
@@ -244,8 +244,8 @@ private fun DelegateSection(
                         Text(reservationName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     if (delegate.isHighSchooler) {
-                        BoardTooltip("High school delegate.") {
-                            Icon(Icons.Filled.School, contentDescription = "High school delegate", tint = HighSchoolColor, modifier = Modifier.size(16.dp))
+                        BoardTooltip("High-school delegate") {
+                            Icon(Icons.Filled.School, contentDescription = "High-school delegate", tint = HighSchoolColor, modifier = Modifier.size(16.dp))
                         }
                     }
                 }

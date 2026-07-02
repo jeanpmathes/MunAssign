@@ -419,14 +419,14 @@ class MainViewModel internal constructor(
                 updateConferenceState(selectedId) {
                     it.copy(
                         loading = false,
-                        boardActionError = exception.message ?: "Position correspondence could not be changed.",
+                        boardActionError = exception.message ?: "Linked committee could not be changed.",
                     )
                 }
             } catch (exception: Exception) {
                 updateConferenceState(selectedId) {
                     it.copy(
                         loading = false,
-                        boardActionError = "Position correspondence update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
+                        boardActionError = "Linked committee update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
                     )
                 }
             }
@@ -801,7 +801,7 @@ class MainViewModel internal constructor(
                     it.copy(
                         workbookUpdateNotice = WorkbookUpdateNotice(
                             id = nextWorkbookUpdateNoticeId(),
-                            message = "MyMUN update failed: ${exception.readableMessage()}",
+                            message = "Update failed: ${exception.readableMessage()}",
                         ),
                         loading = false,
                     )
@@ -887,7 +887,7 @@ class MainViewModel internal constructor(
                         loading = false,
                         transferNotice = TransferNotice(
                             nextTransferNoticeId(),
-                            "Import failed: ${exception.readableMessage()}",
+                            "Replace failed: ${exception.readableMessage()}",
                         ),
                     )
                 }
@@ -955,9 +955,9 @@ class MainViewModel internal constructor(
             if (showNotice && result.hasFailures) {
                 val count = result.failures.size
                 val message = if (count == 1) {
-                    "Markdown safety export failed for 1 conference."
+                    "Textual safety export failed for 1 conference."
                 } else {
-                    "Markdown safety export failed for $count conferences."
+                    "Textual safety export failed for $count conferences."
                 }
                 _state.update { it.copy(transferNotice = TransferNotice(nextTransferNoticeId(), message)) }
             }
@@ -967,7 +967,7 @@ class MainViewModel internal constructor(
                     it.copy(
                         transferNotice = TransferNotice(
                             nextTransferNoticeId(),
-                            "Markdown safety export failed: ${exception.readableMessage()}",
+                            "Textual safety export failed: ${exception.readableMessage()}",
                         ),
                     )
                 }
@@ -1008,17 +1008,17 @@ class MainViewModel internal constructor(
     private fun UpdateResult.toWorkbookUpdateNotice(): WorkbookUpdateNotice {
         if (!success || summary.blockingErrorCount > 0) {
             val message = issues.firstOrNull { it.severity == UpdateIssueSeverity.Error }?.message
-                ?: "Please check the workbook and try again."
+                ?: "Please check the file and try again."
             return WorkbookUpdateNotice(
                 id = nextWorkbookUpdateNoticeId(),
-                message = "MyMUN update failed: $message",
+                message = "Update failed: $message",
             )
         }
         val warningCount = maxOf(summary.warningCount, issues.count { it.severity == UpdateIssueSeverity.Warning })
         val message = when (warningCount) {
-            0 -> "MyMUN update complete."
-            1 -> "MyMUN update complete with 1 warning."
-            else -> "MyMUN update complete with $warningCount warnings."
+            0 -> "Update complete."
+            1 -> "Update complete with 1 warning."
+            else -> "Update complete with $warningCount warnings."
         }
         return WorkbookUpdateNotice(id = nextWorkbookUpdateNoticeId(), message = message)
     }
@@ -1034,7 +1034,7 @@ class MainViewModel internal constructor(
     }
 
     private fun Exception.readableMessage(): String =
-        message?.takeIf { it.isNotBlank() } ?: "Please check the workbook and try again."
+    message?.takeIf { it.isNotBlank() } ?: "Please check the file and try again."
 
     override fun close() {
         runBlocking {

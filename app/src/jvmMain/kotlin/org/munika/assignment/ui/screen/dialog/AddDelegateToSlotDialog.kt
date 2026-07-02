@@ -148,7 +148,7 @@ private fun DelegateCandidateRow(
                 if (candidate.isHighSchooler) {
                     Icon(
                         Icons.Filled.School,
-                        contentDescription = "High school delegate",
+                        contentDescription = "High-school delegate",
                         tint = Color(0xFF8E24AA),
                         modifier = Modifier.size(16.dp),
                     )

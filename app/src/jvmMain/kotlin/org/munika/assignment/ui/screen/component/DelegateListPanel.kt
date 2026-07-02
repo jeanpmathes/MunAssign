@@ -135,7 +135,7 @@ private fun Header(onClose: () -> Unit) {
     ) {
         Icon(Icons.Filled.People, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         Text("Delegates", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-        BoardTooltip("Close delegate list.") {
+        BoardTooltip("Close delegate list") {
             IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {
                 Icon(Icons.Filled.Close, contentDescription = "Close delegate list")
             }
@@ -345,10 +345,10 @@ private fun DelegateRow(
         ) {
             Text(row.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             if (row.isHighSchooler) {
-                BoardTooltip("High school delegate.") {
+                BoardTooltip("High-school delegate") {
                     Icon(
                         Icons.Filled.School,
-                        contentDescription = "High school delegate",
+                        contentDescription = "High-school delegate",
                         tint = Color(0xFF8E24AA),
                         modifier = Modifier.size(16.dp),
                     )
@@ -441,7 +441,7 @@ private val DelegateListAssignmentStatus.label: String
 
 private val DelegateListSchoolLevel.label: String
     get() = when (this) {
-        DelegateListSchoolLevel.HighSchool -> "High schoolers"
+        DelegateListSchoolLevel.HighSchool -> "High-school delegates"
         DelegateListSchoolLevel.University -> "University level"
     }
 

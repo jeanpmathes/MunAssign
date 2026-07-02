@@ -235,8 +235,8 @@ private fun MappedCommitteeSelector(
                 value = mappedCommittee?.name.orEmpty(),
                 onValueChange = {},
                 readOnly = true,
-                label = { Text("Corresponding committee") },
-                placeholder = { Text("Select correspondence") },
+                label = { Text("Linked committee") },
+                placeholder = { Text("Select linked committee") },
                 trailingIcon = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -250,23 +250,23 @@ private fun MappedCommitteeSelector(
                             )
                         }
                         if (mappedCommittee != null) {
-                            BoardTooltip("Clear correspondence.") {
+                            BoardTooltip("Clear linked committee") {
                                 IconButton(
                                     onClick = { onSetPositionMappedCommittee(position.id, null) },
                                     modifier = Modifier.size(24.dp),
                                 ) {
                                     Icon(
                                         Icons.Filled.Close,
-                                        contentDescription = "Clear correspondence",
+                                        contentDescription = "Clear linked committee",
                                         modifier = Modifier.size(16.dp),
                                     )
                                 }
                             }
                         } else {
-                            BoardTooltip("No corresponding committee selected.") {
+                            BoardTooltip("Select the committee this mapped position should count toward.") {
                                 Icon(
                                     Icons.Filled.Warning,
-                                    contentDescription = "Correspondence missing",
+                                    contentDescription = "Linked committee missing",
                                     tint = MissingMappingColor,
                                 )
                             }
@@ -321,7 +321,7 @@ private fun PositionBoardUiState.highSchoolPositionTone(): PositionModeTone? =
 
 @Composable
 private fun HighSchoolPositionIcon() {
-    BoardTooltip("High-school position inherited from the corresponding committee.") {
+    BoardTooltip("Counts as high-school because of the linked committee.") {
         Icon(
             Icons.Filled.School,
             contentDescription = "High-school position",
@@ -414,10 +414,10 @@ private fun InterestedDelegateChip(
                 textDecoration = if (confirmedAssignmentLabel != null) TextDecoration.LineThrough else TextDecoration.None,
             )
             if (delegate.isHighSchooler) {
-                BoardTooltip("High school delegate.") {
+                BoardTooltip("High-school delegate") {
                     Icon(
                         Icons.Filled.School,
-                        contentDescription = "High school delegate",
+                        contentDescription = "High-school delegate",
                         tint = Color(0xFF8E24AA),
                         modifier = Modifier.height(14.dp),
                     )
