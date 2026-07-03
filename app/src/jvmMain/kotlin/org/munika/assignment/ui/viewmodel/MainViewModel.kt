@@ -81,15 +81,21 @@ class MainViewModel internal constructor(
     fun refreshConferences(exportMarkdownOnComplete: Boolean = false) {
         scope.launch {
             val conferences = repository.listConferences()
+            val selectedId = _state.value.selectedConferenceId?.takeIf { selected -> conferences.any { it.id.value == selected } }
+                ?: conferences.firstOrNull()?.id?.value
             _state.update { current ->
-                val selectedId = current.selectedConferenceId?.takeIf { selected -> conferences.any { it.id.value == selected } }
-                    ?: conferences.firstOrNull()?.id?.value
-                current.copy(conferences = conferences, selectedConferenceId = selectedId, loading = false)
+                current.copy(
+                    conferences = conferences,
+                    selectedConferenceId = selectedId,
+                    selectedConference = null,
+                    loading = !exportMarkdownOnComplete,
+                )
             }
-            selectedIdOrNull()?.let { loadConferenceNow(it) }
+            selectedId?.let { loadConferenceNow(it) }
             if (exportMarkdownOnComplete) {
                 exportMarkdownSnapshots(MarkdownSafetyExportTrigger.Open, showNotice = true)
             }
+            _state.update { it.copy(startupLoading = false, loading = false) }
         }
     }
 
@@ -1045,6 +1051,7 @@ class MainViewModel internal constructor(
 }
 
 data class MainUiState(
+    val startupLoading: Boolean = true,
     val loading: Boolean = true,
     val conferences: List<Conference> = emptyList(),
     val selectedConferenceId: String? = null,

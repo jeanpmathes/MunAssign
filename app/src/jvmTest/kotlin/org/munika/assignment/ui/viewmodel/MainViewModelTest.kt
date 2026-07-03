@@ -330,6 +330,58 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `startup loading remains visible until selected conference and safety export finish`() {
+        val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val conferenceLoadStarted = CompletableDeferred<Unit>()
+        val loadedConference = CompletableDeferred<Conference?>()
+        val exportStarted = CompletableDeferred<Unit>()
+        val exportResult = CompletableDeferred<MarkdownSafetyExportResult>()
+        val markdownExport = FakeMarkdownSafetyExportRunner(
+            exportStarted = exportStarted,
+            exportResultDeferred = exportResult,
+        )
+        val viewModel = viewModelWith(
+            FakeConferenceRepository(
+                initialConference = conference,
+                getConferenceStarted = conferenceLoadStarted,
+                getConferenceDeferred = loadedConference,
+            ),
+            markdownSafetyExport = markdownExport,
+        )
+
+        runBlocking { conferenceLoadStarted.await() }
+
+        assertTrue(viewModel.state.value.startupLoading)
+        assertEquals("conference", viewModel.state.value.selectedConferenceId)
+        assertNull(viewModel.state.value.selectedConference)
+
+        loadedConference.complete(conference)
+        runBlocking { exportStarted.await() }
+
+        assertTrue(viewModel.state.value.startupLoading)
+        assertSame(conference, viewModel.state.value.selectedConference)
+
+        exportResult.complete(MarkdownSafetyExportResult(Path.of("markdown-exports"), emptyList(), emptyList()))
+
+        waitUntil { !viewModel.state.value.startupLoading }
+        assertFalse(viewModel.state.value.loading)
+        viewModel.close()
+    }
+
+    @Test
+    fun `startup without conferences completes into empty conference state`() {
+        val viewModel = viewModelWith(FakeConferenceRepository())
+
+        waitUntil { !viewModel.state.value.startupLoading }
+
+        assertTrue(viewModel.state.value.conferences.isEmpty())
+        assertNull(viewModel.state.value.selectedConferenceId)
+        assertNull(viewModel.state.value.selectedConference)
+        assertFalse(viewModel.state.value.loading)
+        viewModel.close()
+    }
+
+    @Test
     fun `startup markdown export writes all full conferences after initial load`() {
         val conferenceA = Conference(ConferenceId("conference-a"), "Conference A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val conferenceB = Conference(ConferenceId("conference-b"), "Conference B", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
@@ -378,6 +430,7 @@ class MainViewModelTest {
         waitUntil { viewModel.state.value.transferNotice != null }
 
         assertEquals("Textual safety export failed for 1 conference.", viewModel.state.value.transferNotice?.message)
+        assertFalse(viewModel.state.value.startupLoading)
         assertFalse(viewModel.state.value.loading)
         viewModel.close()
     }
@@ -699,6 +752,8 @@ private class FakeConferenceTransferRunner(
 private class FakeMarkdownSafetyExportRunner(
     private val failures: List<MarkdownSafetyExportFailure> = emptyList(),
     private val exportError: Exception? = null,
+    private val exportStarted: CompletableDeferred<Unit>? = null,
+    private val exportResultDeferred: CompletableDeferred<MarkdownSafetyExportResult>? = null,
 ) : MarkdownSafetyExportRunner {
     val calls: MutableList<MarkdownSafetyExportCall> = mutableListOf()
 
@@ -711,6 +766,8 @@ private class FakeMarkdownSafetyExportRunner(
             conferenceIds = conferences.map { it.id.value },
             trigger = trigger,
         )
+        exportStarted?.complete(Unit)
+        exportResultDeferred?.let { return it.await() }
         return MarkdownSafetyExportResult(
             directory = Path.of("markdown-exports"),
             writtenFiles = emptyList(),
@@ -740,6 +797,8 @@ private class FakeConferenceRepository(
     private val committeeModeResultDeferred: CompletableDeferred<Result<Conference>>? = null,
     private val committeeModeStarted: CompletableDeferred<Unit>? = null,
     private val positionMappedConference: Conference? = initialConference,
+    private val getConferenceStarted: CompletableDeferred<Unit>? = null,
+    private val getConferenceDeferred: CompletableDeferred<Conference?>? = null,
 ) : ConferenceRepository {
     private var conferenceCreated: Boolean = false
     var resolvedDelegateId: String? = null
@@ -916,7 +975,11 @@ private class FakeConferenceRepository(
 
     override suspend fun unresolveAnswerIssue(conferenceId: String, resolutionId: String): Conference = unsupported()
 
-    override suspend fun getConference(conferenceId: String): Conference? = conferences.firstOrNull { it.id.value == conferenceId }
+    override suspend fun getConference(conferenceId: String): Conference? {
+        getConferenceStarted?.complete(Unit)
+        getConferenceDeferred?.let { return it.await() }
+        return conferences.firstOrNull { it.id.value == conferenceId }
+    }
 
     private fun unsupported(): Nothing = error("Not needed for this test.")
 }
