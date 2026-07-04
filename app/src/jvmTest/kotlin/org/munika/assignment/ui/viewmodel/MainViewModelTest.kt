@@ -551,6 +551,19 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `rejected workbook selection emits notice without changing loading state`() {
+        val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conference))
+        waitUntil { viewModel.state.value.selectedConference === conference }
+
+        viewModel.rejectWorkbookUpdate("Drop only one Excel file.")
+
+        assertEquals("Drop only one Excel file.", viewModel.state.value.workbookUpdateNotice?.message)
+        assertFalse(viewModel.state.value.loading)
+        viewModel.close()
+    }
+
+    @Test
     fun `delayed workbook success does not alter newly selected conference`() {
         val conferenceA = Conference(ConferenceId("conference-a"), "Conference A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val conferenceB = Conference(ConferenceId("conference-b"), "Conference B", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)

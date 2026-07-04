@@ -816,6 +816,17 @@ class MainViewModel internal constructor(
         }
     }
 
+    fun rejectWorkbookUpdate(message: String) {
+        _state.update {
+            it.copy(
+                workbookUpdateNotice = WorkbookUpdateNotice(
+                    id = nextWorkbookUpdateNoticeId(),
+                    message = message,
+                ),
+            )
+        }
+    }
+
     fun exportConference(conferenceId: String, destinationPath: Path) {
         scope.launch {
             _state.update { it.copy(loading = true, transferNotice = null, conferenceActionError = null) }

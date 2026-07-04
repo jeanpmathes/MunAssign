@@ -12,20 +12,27 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import java.awt.BorderLayout
 import java.awt.Color
+import java.awt.Component
+import java.awt.Container
 import java.awt.Desktop
 import java.awt.Dimension
 import java.awt.FileDialog
 import java.awt.Font
 import java.awt.Frame
+import java.awt.datatransfer.DataFlavor
 import java.awt.dnd.DnDConstants
 import java.awt.dnd.DropTarget
+import java.awt.dnd.DropTargetDragEvent
 import java.awt.dnd.DropTargetDropEvent
+import java.awt.dnd.DropTargetEvent
 import java.io.File
 import java.io.FilenameFilter
+import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.swing.BorderFactory
 import javax.swing.JLabel
+import javax.swing.JFrame
 import javax.swing.JPanel
 import javax.swing.JOptionPane
 import javax.swing.JProgressBar
@@ -36,7 +43,10 @@ import kotlinx.coroutines.delay
 import org.koin.core.context.startKoin
 import org.koin.java.KoinJavaComponent.getKoin
 import org.munika.assignment.di.appModule
+import org.munika.assignment.ui.screen.WorkbookDropFeedback
 import org.munika.assignment.ui.viewmodel.MainViewModel
+
+private val UriListFlavor = DataFlavor("text/uri-list;class=java.lang.String")
 
 fun main() {
     val splashWindow = ImmediateSplashWindow()
@@ -61,6 +71,7 @@ private fun MunAssignApplication(
     var splashMinimumVisible by remember { mutableStateOf(true) }
     var mainWindowComposed by remember { mutableStateOf(false) }
     var splashClosed by remember { mutableStateOf(false) }
+    var workbookDropFeedback by remember { mutableStateOf<WorkbookDropFeedback?>(null) }
 
     LaunchedEffect(Unit) {
         delay(300)
@@ -92,29 +103,40 @@ private fun MunAssignApplication(
         }
 
         DisposableEffect(window) {
-            val dropTarget = object : DropTarget() {
-                override fun drop(event: DropTargetDropEvent) {
-                    event.acceptDrop(DnDConstants.ACTION_COPY)
-                    val payload = event.transferable.getTransferData(java.awt.datatransfer.DataFlavor.javaFileListFlavor)
-                    @Suppress("UNCHECKED_CAST")
-                    val files = payload as? List<File>
-                    files?.firstOrNull()?.toPath()?.let(viewModel::updateFromWorkbook)
-                    event.dropComplete(true)
-                }
+            val dropTargets = window.workbookDropTargetComponents()
+            val previousDropTargets = dropTargets.associateWith { it.dropTarget }
+            dropTargets.forEach { component ->
+                component.dropTarget = createWorkbookDropTarget(
+                    viewModel = viewModel,
+                    onFeedback = { workbookDropFeedback = it },
+                )
             }
-            window.dropTarget = dropTarget
             onDispose {
-                window.dropTarget = null
+                workbookDropFeedback = null
+                previousDropTargets.forEach { (component, dropTarget) ->
+                    component.dropTarget = dropTarget
+                }
             }
         }
 
         App(
             viewModel = viewModel,
+            workbookDropFeedback = workbookDropFeedback,
             onOpenWorkbook = {
                 val dialog = FileDialog(window, "Select update file", FileDialog.LOAD)
+                dialog.filenameFilter = FilenameFilter { _, name -> name.hasWorkbookUpdateExtension() }
                 dialog.isVisible = true
                 if (dialog.file != null) {
-                    viewModel.updateFromWorkbook(File(dialog.directory, dialog.file).toPath())
+                    when (
+                        val selection = selectWorkbookUpdateFile(
+                            files = listOf(File(dialog.directory, dialog.file)),
+                            hasSelectedConference = viewModel.state.value.selectedConferenceId != null,
+                            loading = viewModel.state.value.loading,
+                        )
+                    ) {
+                        is WorkbookUpdateFileSelection.Accepted -> viewModel.updateFromWorkbook(selection.file.toPath())
+                        is WorkbookUpdateFileSelection.Rejected -> viewModel.rejectWorkbookUpdate(selection.message)
+                    }
                 }
             },
             onExportConference = { conferenceId, conferenceName ->
@@ -141,6 +163,118 @@ private fun MunAssignApplication(
             }
         )
     }
+}
+
+private fun createWorkbookDropTarget(
+    viewModel: MainViewModel,
+    onFeedback: (WorkbookDropFeedback?) -> Unit,
+): DropTarget =
+    object : DropTarget() {
+        override fun dragEnter(event: DropTargetDragEvent) {
+            updateWorkbookDropFeedback(event, viewModel, onFeedback)
+        }
+
+        override fun dragOver(event: DropTargetDragEvent) {
+            updateWorkbookDropFeedback(event, viewModel, onFeedback)
+        }
+
+        override fun dragExit(event: DropTargetEvent) {
+            onFeedback(null)
+        }
+
+        override fun drop(event: DropTargetDropEvent) {
+            onFeedback(null)
+            event.acceptDrop(DnDConstants.ACTION_COPY)
+            val files = event.workbookDropFiles()
+            val selection = selectWorkbookUpdateFile(
+                files = files,
+                hasSelectedConference = viewModel.state.value.selectedConferenceId != null,
+                loading = viewModel.state.value.loading,
+            )
+            when (selection) {
+                is WorkbookUpdateFileSelection.Accepted -> viewModel.updateFromWorkbook(selection.file.toPath())
+                is WorkbookUpdateFileSelection.Rejected -> viewModel.rejectWorkbookUpdate(selection.message)
+            }
+            event.dropComplete(true)
+        }
+    }
+
+private fun JFrame.workbookDropTargetComponents(): List<Component> =
+    listOf(this, rootPane, layeredPane, contentPane, glassPane)
+        .flatMap { component -> component.withDescendants() }
+        .distinct()
+
+private fun Component.withDescendants(): List<Component> {
+    if (this !is Container) {
+        return listOf(this)
+    }
+    return listOf(this) + components.flatMap { it.withDescendants() }
+}
+
+private fun updateWorkbookDropFeedback(
+    event: DropTargetDragEvent,
+    viewModel: MainViewModel,
+    onFeedback: (WorkbookDropFeedback?) -> Unit,
+) {
+    val files = event.workbookDragFiles()
+    val selection = selectWorkbookUpdateFile(
+        files = files,
+        hasSelectedConference = viewModel.state.value.selectedConferenceId != null,
+        loading = viewModel.state.value.loading,
+    )
+    val feedback = when (selection) {
+        is WorkbookUpdateFileSelection.Accepted -> WorkbookDropFeedback.Accepted
+        is WorkbookUpdateFileSelection.Rejected -> WorkbookDropFeedback.Rejected
+    }
+    onFeedback(feedback)
+    event.acceptDrag(DnDConstants.ACTION_COPY)
+}
+
+private fun DropTargetDragEvent.workbookDragFiles(): List<File> {
+    return transferable.fileListOrEmpty()
+}
+
+private fun DropTargetDropEvent.workbookDropFiles(): List<File> {
+    return transferable.fileListOrEmpty()
+}
+
+private fun java.awt.datatransfer.Transferable.fileListOrEmpty(): List<File> =
+    when {
+        isDataFlavorSupported(DataFlavor.javaFileListFlavor) -> javaFileListOrEmpty()
+        isDataFlavorSupported(UriListFlavor) -> textFlavorFilesOrEmpty(UriListFlavor)
+        isDataFlavorSupported(DataFlavor.stringFlavor) -> textFlavorFilesOrEmpty(DataFlavor.stringFlavor)
+        else -> emptyList()
+    }
+
+private fun java.awt.datatransfer.Transferable.javaFileListOrEmpty(): List<File> =
+    runCatching {
+        @Suppress("UNCHECKED_CAST")
+        getTransferData(DataFlavor.javaFileListFlavor) as? List<File> ?: emptyList()
+    }.getOrDefault(emptyList())
+
+private fun java.awt.datatransfer.Transferable.textFlavorFilesOrEmpty(flavor: DataFlavor): List<File> =
+    runCatching {
+        (getTransferData(flavor) as? String).orEmpty().toDroppedFiles()
+    }.getOrDefault(emptyList())
+
+private fun String.toDroppedFiles(): List<File> =
+    lineSequence()
+        .map { it.trim() }
+        .filter { it.isNotBlank() && !it.startsWith("#") }
+        .mapNotNull { it.toDroppedFileOrNull() }
+        .toList()
+
+private fun String.toDroppedFileOrNull(): File? {
+    runCatching {
+        val uri = URI(this)
+        if (uri.scheme.equals("file", ignoreCase = true)) {
+            return File(uri)
+        }
+    }
+    if (startsWith("file:", ignoreCase = true)) {
+        return null
+    }
+    return File(this)
 }
 
 private fun startDependencies(): MainDependencies {

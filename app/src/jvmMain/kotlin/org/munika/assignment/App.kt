@@ -8,11 +8,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import org.munika.assignment.ui.screen.MainScreen
+import org.munika.assignment.ui.screen.WorkbookDropFeedback
 import org.munika.assignment.ui.viewmodel.MainViewModel
 
 @Composable
 fun App(
     viewModel: MainViewModel,
+    workbookDropFeedback: WorkbookDropFeedback? = null,
     onOpenWorkbook: () -> Unit,
     onExportConference: (String, String) -> Unit,
     onImportConferenceAsNew: () -> Unit,
@@ -25,6 +27,7 @@ fun App(
         Surface(modifier = Modifier.fillMaxSize()) {
             MainScreen(
                 state = state,
+                workbookDropFeedback = workbookDropFeedback,
                 onSelectConference = viewModel::selectConference,
                 onCreateConference = viewModel::createConference,
                 onRenameConference = viewModel::renameConference,

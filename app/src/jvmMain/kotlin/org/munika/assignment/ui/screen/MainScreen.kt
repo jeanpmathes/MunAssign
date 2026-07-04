@@ -105,9 +105,15 @@ import org.munika.assignment.ui.viewmodel.toDelegationOverviewUiState
 import org.munika.assignment.ui.viewmodel.toAssignmentBoardUiState
 import org.munika.assignment.ui.viewmodel.toReservationManagerUiState
 
+enum class WorkbookDropFeedback {
+    Accepted,
+    Rejected,
+}
+
 @Composable
 fun MainScreen(
     state: MainUiState,
+    workbookDropFeedback: WorkbookDropFeedback? = null,
     onSelectConference: (String) -> Unit,
     onCreateConference: (String) -> Boolean,
     onRenameConference: (String, String) -> Boolean,
@@ -279,6 +285,12 @@ fun MainScreen(
                 hostState = snackbarHostState,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp),
             )
+            workbookDropFeedback?.let { feedback ->
+                WorkbookDropOverlay(
+                    feedback = feedback,
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
         }
     }
 
@@ -366,6 +378,49 @@ fun MainScreen(
                 onClearReservationActionError()
             },
         )
+    }
+}
+
+@Composable
+private fun WorkbookDropOverlay(
+    feedback: WorkbookDropFeedback,
+    modifier: Modifier = Modifier,
+) {
+    val accepted = feedback == WorkbookDropFeedback.Accepted
+    val background = if (accepted) {
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+    } else {
+        MaterialTheme.colorScheme.error.copy(alpha = 0.10f)
+    }
+    val borderColor = if (accepted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+    val containerColor = if (accepted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer
+    val contentColor = if (accepted) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
+    val message = if (accepted) {
+        "Drop to update this conference"
+    } else {
+        "Drop one Excel file"
+    }
+    Box(
+        modifier = modifier
+            .background(background)
+            .border(2.dp, borderColor),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            color = containerColor,
+            contentColor = contentColor,
+            shape = RoundedCornerShape(8.dp),
+            shadowElevation = 6.dp,
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(Icons.Filled.UploadFile, contentDescription = null, modifier = Modifier.size(22.dp))
+                Text(message, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            }
+        }
     }
 }
 
