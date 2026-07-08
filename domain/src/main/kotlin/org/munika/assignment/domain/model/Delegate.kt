@@ -56,8 +56,8 @@ class Delegate(
 
     fun applicationSubmittedText(now: Instant = Instant.now(), zoneId: ZoneId = ZoneId.systemDefault()): String? {
         val submittedDate = submittedAt?.atZone(zoneId)?.toLocalDate() ?: return null
-        val days = ChronoUnit.DAYS.between(submittedDate, now.atZone(zoneId).toLocalDate())
-        return "Application submitted $days days ago"
+        val days = ChronoUnit.DAYS.between(submittedDate, now.atZone(zoneId).toLocalDate()).coerceAtLeast(0)
+        return if (days == 1L) "Application submitted 1 day ago" else "Application submitted $days days ago"
     }
 
     fun resolutionFor(questionId: QuestionId?, issue: AnswerIssue): AnswerIssueResolution? =

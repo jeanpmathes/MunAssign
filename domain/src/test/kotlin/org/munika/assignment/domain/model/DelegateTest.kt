@@ -2,6 +2,7 @@ package org.munika.assignment.domain.model
 
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -71,6 +72,37 @@ class DelegateTest {
             delegateWithAgeAndHighSchoolStatus(17, null).profileIssues(Today),
         )
         assertTrue(delegateWithAgeAndHighSchoolStatus(null, HighSchoolerStatus.Yes).profileIssues(Today).isEmpty())
+    }
+
+    @Test
+    fun `application submitted text uses singular day and clamps clock skew to zero`() {
+        val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val zoneId = ZoneId.of("UTC")
+        val now = Instant.parse("2026-05-15T00:00:00Z")
+
+        fun delegateSubmittedAt(instant: Instant) = Delegate(
+            id = DelegateId("delegate"),
+            conference = conference,
+            name = PersonName("Ada", "Lovelace"),
+            email = "ada@example.test",
+            profile = DelegateProfile(null, null, null, null, null, null, null, null, null, null),
+            paymentStatus = PaymentStatus.Paid,
+            isHeadDelegate = false,
+            submittedAt = instant,
+        )
+
+        assertEquals(
+            "Application submitted 1 day ago",
+            delegateSubmittedAt(now.minus(1, java.time.temporal.ChronoUnit.DAYS)).applicationSubmittedText(now, zoneId),
+        )
+        assertEquals(
+            "Application submitted 3 days ago",
+            delegateSubmittedAt(now.minus(3, java.time.temporal.ChronoUnit.DAYS)).applicationSubmittedText(now, zoneId),
+        )
+        assertEquals(
+            "Application submitted 0 days ago",
+            delegateSubmittedAt(now.plus(1, java.time.temporal.ChronoUnit.DAYS)).applicationSubmittedText(now, zoneId),
+        )
     }
 
     @Test
