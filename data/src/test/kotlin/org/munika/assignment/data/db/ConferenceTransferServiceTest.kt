@@ -4,6 +4,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.DriverManager
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -129,6 +130,37 @@ class ConferenceTransferServiceTest {
 
         assertNotNull(targetRepository.getConference(importedId))
         assertEquals(DatabaseFactory.CURRENT_SCHEMA_VERSION - 1, maxSchemaVersion(transferPath))
+    }
+
+    @Test
+    fun `import succeeds despite a brief concurrent write lock thanks to busy timeout`() = runBlocking {
+        val sourcePath = tempDatabase("munassign-busy-source")
+        val sourceRepository = ConferenceRepositoryImpl(DatabaseFactory.connect(sourcePath))
+        val sourceConference = populatedConference(sourceRepository, DatabaseFactory.connect(sourcePath), "KAMUN")
+        val transferPath = Files.createTempDirectory("munassign-busy-file").resolve("kamun.munassign")
+        ConferenceTransferService(sourcePath).exportConference(sourceConference.id.value, transferPath)
+
+        val targetPath = tempDatabase("munassign-busy-target")
+        val targetRepository = ConferenceRepositoryImpl(DatabaseFactory.connect(targetPath))
+        targetRepository.createConference("Existing")
+
+        val lockHeld = CountDownLatch(1)
+        val lockThread = Thread {
+            DriverManager.getConnection("jdbc:sqlite:${targetPath.toAbsolutePath()}").use { connection ->
+                connection.autoCommit = false
+                connection.createStatement().use { it.executeUpdate("UPDATE conferences SET name = name") }
+                lockHeld.countDown()
+                Thread.sleep(800)
+                connection.commit()
+            }
+        }
+        lockThread.start()
+        lockHeld.await()
+
+        val importedId = ConferenceTransferService(targetPath).importConferenceAsNew(transferPath)
+
+        lockThread.join()
+        assertTrue(targetRepository.getConference(importedId) != null)
     }
 
     @Test

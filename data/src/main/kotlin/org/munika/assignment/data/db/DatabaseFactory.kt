@@ -2,6 +2,7 @@ package org.munika.assignment.data.db
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.sql.DriverManager
 import kotlin.io.path.Path
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.SchemaUtils
@@ -20,13 +21,16 @@ import org.munika.assignment.data.db.tables.ReservationTable
 import org.munika.assignment.data.db.tables.SchemaMigrationTable
 import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
+import org.sqlite.SQLiteConfig
 
 /**
  * Creates SQLite connections for the local MunAssign database.
  */
 object DatabaseFactory {
     private val logger = LoggerFactory.getLogger(DatabaseFactory::class.java)
-    const val CURRENT_SCHEMA_VERSION: Int = 9
+
+    /** Highest applied migration version; derived so it cannot drift from the migrations list. */
+    val CURRENT_SCHEMA_VERSION: Int by lazy { migrations.maxOf { it.version } }
 
     /** Returns the application database path beneath the supplied user [home]. */
     fun defaultDatabasePath(home: Path = Path(System.getProperty("user.home"))): Path =
@@ -35,7 +39,13 @@ object DatabaseFactory {
     /** Opens the SQLite database at [path], applies migrations, and seeds stable lookup rows. */
     fun connect(path: Path = defaultDatabasePath()): Database {
         Files.createDirectories(path.parent)
-        val database = Database.connect("jdbc:sqlite:${path.toAbsolutePath()}?foreign_keys=on", driver = "org.sqlite.JDBC")
+        val url = "jdbc:sqlite:${path.toAbsolutePath()}"
+        val config = SQLiteConfig().apply {
+            enforceForeignKeys(true)
+            setBusyTimeout(5000)
+            setTransactionMode(SQLiteConfig.TransactionMode.IMMEDIATE)
+        }
+        val database = Database.connect(getNewConnection = { DriverManager.getConnection(url, config.toProperties()) })
         transaction(database) {
             migrateSchema()
             seedLookups()

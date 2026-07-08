@@ -9,6 +9,8 @@ import java.sql.ResultSet
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.jetbrains.exposed.v1.jdbc.transactions.TransactionManager
+import org.sqlite.SQLiteConfig
 
 /**
  * Imports and exports one conference as a self-contained `.munassign` SQLite snapshot.
@@ -27,7 +29,7 @@ class ConferenceTransferService(
         val tempPath = Files.createTempFile(destinationPath.toAbsolutePath().parent, "munassign-export-", ".tmp")
         Files.deleteIfExists(tempPath)
         try {
-            DatabaseFactory.connect(tempPath)
+            TransactionManager.closeAndUnregister(DatabaseFactory.connect(tempPath))
             sqliteConnection(databasePath).use { source ->
                 sqliteConnection(tempPath).use { target ->
                     target.transaction {
@@ -59,7 +61,7 @@ class ConferenceTransferService(
         try {
             Files.copy(sourcePath, tempPath, StandardCopyOption.REPLACE_EXISTING)
             validateTransferSchemaVersion(tempPath)
-            DatabaseFactory.connect(tempPath)
+            TransactionManager.closeAndUnregister(DatabaseFactory.connect(tempPath))
             sqliteConnection(tempPath).use { source ->
                 sqliteConnection(databasePath).use { target ->
                     return target.transaction {
@@ -311,10 +313,14 @@ class ConferenceTransferService(
         connection.deleteWhere("committees", "conference_id = ?", listOf(conferenceId))
     }
 
-    private fun sqliteConnection(path: Path): Connection =
-        DriverManager.getConnection("jdbc:sqlite:${path.toAbsolutePath()}?foreign_keys=on").also { connection ->
-            connection.createStatement().use { it.execute("PRAGMA foreign_keys = ON") }
+    private fun sqliteConnection(path: Path): Connection {
+        val config = SQLiteConfig().apply {
+            enforceForeignKeys(true)
+            setBusyTimeout(5000)
+            setTransactionMode(SQLiteConfig.TransactionMode.IMMEDIATE)
         }
+        return DriverManager.getConnection("jdbc:sqlite:${path.toAbsolutePath()}", config.toProperties())
+    }
 
     private fun <T> Connection.transaction(block: () -> T): T {
         val previousAutoCommit = autoCommit
@@ -378,12 +384,14 @@ private fun Connection.idMapIn(table: String, column: String, ids: Set<String>):
 private fun Connection.insertRow(table: String, row: DbRow) {
     val columns = row.keys.toList()
     val placeholders = columns.joinToString(",") { "?" }
-    val columnNames = columns.joinToString(",")
+    val columnNames = columns.joinToString(",") { it.quoteIdentifier() }
     prepareStatement("INSERT INTO $table ($columnNames) VALUES ($placeholders)").use { statement ->
         columns.forEachIndexed { index, column -> statement.setObject(index + 1, row[column]) }
         statement.executeUpdate()
     }
 }
+
+private fun String.quoteIdentifier(): String = "\"${replace("\"", "\"\"")}\""
 
 private fun Connection.deleteWhere(table: String, where: String, args: List<Any?>) {
     prepareStatement("DELETE FROM $table WHERE $where").use { statement ->
