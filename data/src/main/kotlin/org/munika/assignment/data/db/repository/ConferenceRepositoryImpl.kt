@@ -846,6 +846,26 @@ class ConferenceRepositoryImpl(
             .where { DelegateQuestionTable.conferenceId eq conferenceId }
             .associateBy { normalize(it[DelegateQuestionTable.normalizedQuestionText]) }
 
+        val resolvedIdByRow: Map<Int, String?> = snapshot.delegates.associate { delegate ->
+            delegate.rowNumber to resolveExistingDelegate(delegate, existingDelegates)?.id
+        }
+        resolvedIdByRow.entries
+            .filter { it.value != null }
+            .groupBy({ it.value!! }, { it.key })
+            .filterValues { it.size > 1 }
+            .forEach { (existingDelegateId, rowNumbers) ->
+                val existingName = existingDelegateRowsById[existingDelegateId]?.let {
+                    "${it[DelegateTable.firstName]} ${it[DelegateTable.lastName]}"
+                } ?: "an existing delegate"
+                issues += UpdateIssue(
+                    severity = UpdateIssueSeverity.Error,
+                    code = "ambiguous_delegate_match",
+                    message = "Delegates rows ${rowNumbers.sorted().joinToString()} all match $existingName and cannot be " +
+                        "told apart. Add a distinguishing email, zip code, or date of birth before updating.",
+                    sheetName = "Delegates",
+                )
+            }
+
         val requiredSlotsByCommittee = snapshot.confirmedAssignmentCandidates
             .groupBy { normalize(it.committeeName) }
             .mapValues { (_, candidates) -> candidates.maxOfOrNull { it.slotIndex } ?: 1 }
@@ -1079,7 +1099,7 @@ class ConferenceRepositoryImpl(
 
         snapshot.delegates.forEach { delegate ->
             val matchingIdentity = delegate.matchingIdentity
-            val delegateId = resolveExistingDelegate(delegate, existingDelegates)?.id ?: UUID.randomUUID().toString()
+            val delegateId = resolvedIdByRow[delegate.rowNumber] ?: UUID.randomUUID().toString()
             delegateIdsByRow[delegate.rowNumber] = delegateId
             delegateIdsByIdentity[matchingIdentity] = delegateId
             retainedDelegateIds += delegateId

@@ -1103,6 +1103,136 @@ class ConferenceRepositoryImplTest {
     }
 
     @Test
+    fun `MyMUN update rejects two incoming rows that match the same existing delegate by name only`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-ambiguous-delegate-match").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        assertTrue(
+            repository.applyMymunUpdateSnapshot(
+                conference.id.value,
+                snapshotWithDelegates(listOf(delegate(rowNumber = 2, firstName = "Alex", lastName = "Kim", email = "seed@example.test"))),
+            ).success,
+        )
+
+        val result = repository.applyMymunUpdateSnapshot(
+            conferenceId = conference.id.value,
+            snapshot = snapshotWithDelegates(
+                listOf(
+                    delegate(rowNumber = 2, firstName = "Alex", lastName = "Kim", email = "new1@example.test"),
+                    delegate(rowNumber = 3, firstName = "Alex", lastName = "Kim", email = "new2@example.test"),
+                ),
+            ),
+            sourceFilename = "ambiguous-delegate.xlsx",
+        )
+
+        assertFalse(result.success)
+        val issue = result.issues.single { it.code == "ambiguous_delegate_match" }
+        assertTrue("2" in issue.message && "3" in issue.message)
+
+        val unchanged = repository.getConference(conference.id.value)!!
+        assertEquals(1, unchanged.delegates.size)
+        assertEquals("seed@example.test", unchanged.delegates.single().email)
+    }
+
+    @Test
+    fun `MyMUN update creates two distinct new delegates that share a name`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-same-name-new").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        val result = repository.applyMymunUpdateSnapshot(
+            conferenceId = conference.id.value,
+            snapshot = snapshotWithDelegates(
+                listOf(
+                    delegate(rowNumber = 2, firstName = "Alex", lastName = "Kim", email = "alex1@example.test"),
+                    delegate(rowNumber = 3, firstName = "Alex", lastName = "Kim", email = "alex2@example.test"),
+                ),
+            ),
+        )
+
+        assertTrue(result.success)
+        assertEquals(2, result.summary.delegatesCreated)
+        val conferenceAfter = repository.getConference(conference.id.value)!!
+        assertEquals(setOf("alex1@example.test", "alex2@example.test"), conferenceAfter.delegates.map { it.email }.toSet())
+    }
+
+    @Test
+    fun `MyMUN update resolves two same-named incoming rows against two existing delegates by email`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-same-name-resolved").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        assertTrue(
+            repository.applyMymunUpdateSnapshot(
+                conference.id.value,
+                snapshotWithDelegates(
+                    listOf(
+                        delegate(rowNumber = 2, firstName = "Alex", lastName = "Kim", email = "alex1@example.test"),
+                        delegate(rowNumber = 3, firstName = "Alex", lastName = "Kim", email = "alex2@example.test"),
+                    ),
+                ),
+            ).success,
+        )
+
+        val result = repository.applyMymunUpdateSnapshot(
+            conferenceId = conference.id.value,
+            snapshot = snapshotWithDelegates(
+                listOf(
+                    delegate(rowNumber = 2, firstName = "Alex", lastName = "Kim", email = "alex1@example.test", feePaid = false),
+                    delegate(rowNumber = 3, firstName = "Alex", lastName = "Kim", email = "alex2@example.test", feePaid = false),
+                ),
+            ),
+        )
+
+        assertTrue(result.success)
+        assertEquals(2, result.summary.delegatesUpdated)
+        val conferenceAfter = repository.getConference(conference.id.value)!!
+        assertEquals(2, conferenceAfter.delegates.size)
+        assertEquals(setOf("alex1@example.test", "alex2@example.test"), conferenceAfter.delegates.map { it.email }.toSet())
+    }
+
+    @Test
+    fun `MyMUN update cites only the truly ambiguous rows when a third row disambiguates by email`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-partial-ambiguous").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        assertTrue(
+            repository.applyMymunUpdateSnapshot(
+                conference.id.value,
+                snapshotWithDelegates(
+                    listOf(
+                        delegate(rowNumber = 2, firstName = "Alex", lastName = "Kim", email = "shared@example.test"),
+                        delegate(rowNumber = 3, firstName = "Alex", lastName = "Kim", email = "other@example.test"),
+                    ),
+                ),
+            ).success,
+        )
+
+        val result = repository.applyMymunUpdateSnapshot(
+            conferenceId = conference.id.value,
+            snapshot = snapshotWithDelegates(
+                listOf(
+                    delegate(rowNumber = 2, firstName = "Alex", lastName = "Kim", email = "shared@example.test"),
+                    delegate(rowNumber = 3, firstName = "Alex", lastName = "Kim", email = "shared@example.test"),
+                    delegate(rowNumber = 4, firstName = "Alex", lastName = "Kim", email = "other@example.test"),
+                ),
+            ),
+            sourceFilename = "partial-ambiguous.xlsx",
+        )
+
+        assertFalse(result.success)
+        val issue = result.issues.single { it.code == "ambiguous_delegate_match" }
+        assertTrue("2" in issue.message && "3" in issue.message)
+        assertFalse("4" in issue.message)
+    }
+
+    @Test
     fun `MyMUN update aborts when confirmed assignments exceed configured slot count`() = runBlocking {
         val dbPath = Files.createTempDirectory("munassign-slot-mismatch").resolve("data.db")
         val database = DatabaseFactory.connect(dbPath)
@@ -1733,6 +1863,19 @@ class ConferenceRepositoryImplTest {
 
         assertEquals(listOf("Question: B", "Question: A"), reordered.questions.sortedBy { it.displayOrder }.map { it.questionText })
     }
+
+    private fun snapshotWithDelegates(delegates: List<MymunDelegateRow>): MymunWorkbookSnapshot =
+        MymunWorkbookSnapshot(
+            workbookName = "test.xlsx",
+            delegates = delegates,
+            countryPositions = emptyList(),
+            delegations = emptyList(),
+            questionColumns = emptyList(),
+            questionAnswers = emptyList(),
+            preferenceCandidates = emptyList(),
+            confirmedAssignmentCandidates = emptyList(),
+            issues = emptyList(),
+        )
 
     private fun duplicateAssignmentSnapshot(
         delegates: List<MymunDelegateRow> = listOf(delegate()),
