@@ -4,6 +4,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.DriverManager
 import kotlin.io.path.Path
+import org.jetbrains.exposed.v1.core.IntegerColumnType
+import org.jetbrains.exposed.v1.core.VarCharColumnType
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.SchemaUtils
 import org.jetbrains.exposed.v1.jdbc.insert
@@ -126,7 +128,10 @@ object DatabaseFactory {
                 }.toList()
             }.orEmpty()
             conferenceIds.forEachIndexed { index, id ->
-                TransactionManager.current().exec("UPDATE conferences SET display_order = $index WHERE id = '$id'")
+                TransactionManager.current().exec(
+                    "UPDATE conferences SET display_order = ? WHERE id = ?",
+                    args = listOf(IntegerColumnType() to index, VarCharColumnType() to id),
+                )
             }
         },
         SchemaMigration(version = 4, name = "add_question_display_order") {
