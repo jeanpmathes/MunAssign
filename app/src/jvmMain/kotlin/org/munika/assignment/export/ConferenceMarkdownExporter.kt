@@ -55,7 +55,7 @@ object ConferenceMarkdownExporter {
         appendLine()
         appendBullet("Delegates", conference.delegates.size)
         appendBullet("Active paid delegates", activePaidCount)
-        appendBullet("Unpaid delegates", unpaidCount)
+        appendBullet("Unpaid delegates (all applications)", unpaidCount)
         appendBullet("Inactive delegates", inactiveCount)
         appendBullet("Committees", conference.committees.size)
         appendBullet("Positions", conference.positions.size)

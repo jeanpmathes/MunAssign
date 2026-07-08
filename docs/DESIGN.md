@@ -10,7 +10,7 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It k
 - MyMUN-confirmed assignments come from the `Countries.Delegates` column.
 - App-created assignments are pending until a later MyMUN update confirms them.
 - Email is stored and used as a discriminator during updates, but it is not a unique delegate key.
-- Unpaid and inactive delegates are hidden from assignment views and the default delegate list. Unpaid delegates are counted separately in the top bar.
+- Unpaid and inactive delegates are hidden from assignment views and the default delegate list. The top bar counts unpaid delegates among accepted applications only, since unpaid-but-not-accepted delegates aren't actionable yet; the markdown safety export separately counts unpaid delegates across all applications and labels that bullet accordingly so the two counts are never confused side-by-side.
 - Reservations are organizer-managed accept-capacity holds. They can reserve high-school and/or university places, optionally link to one MyMUN delegation, and are not tied to specific committees, positions, or slots.
 - A delegate can consume at most one reservation. Manual delegate links are explicit organizer choices. Automatic delegation links are persisted rows rebuilt from active, paid, accepted delegates in submission-date order, skipping delegates that already consume a reservation.
 - Deactivated delegates never consume reservations. Extra delegates in a linked delegation simply stop consuming reservation capacity once the reservation count is full; there is no over-use state.
@@ -50,7 +50,7 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It k
 
 ## UI Requirements
 
-- The top bar shows conference name, active paid delegate count, unpaid delegate count, open slots, pending slots, assigned slots, high-school and university accept capacity after remaining reservations, and actions for delegate list, delegation overview, reservation manager, MyMUN update, and question configuration. `.munassign` import/export actions live in the conference manager.
+- The top bar shows conference name, active paid delegate count, unpaid-among-accepted delegate count, open slots, pending slots, assigned slots, high-school and university accept capacity after remaining reservations, and actions for delegate list, delegation overview, reservation manager, MyMUN update, and question configuration. `.munassign` import/export actions live in the conference manager.
 - The main view is a horizontally scrollable board of committee columns.
 - High-school committee columns show the total and remaining high-school reservation capacity reminder. University committee columns show the equivalent university reminder. The reminder opens the reservation manager and does not bind reservations to that committee.
 - Mapped committee columns use a distinct header tone and do not show a reservation reminder because capacity is derived position-by-position from their correspondences.
@@ -58,7 +58,7 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It k
 - Each position shows slot rows, interested delegate count, and interested delegates inline when the position has no assignment.
 - Confirmed-assigned delegates are greyed out where they appear as interested delegates elsewhere.
 - Clicking a delegate opens a side panel with profile data, assignment state, reservation usage, preferences, configured question answers, comment history, and deactivate/reactivate controls. Manual reservation links can be assigned, changed, or removed there; automatic delegation links can be changed by assigning a manual reservation.
-- The delegate list panel shows active paid delegates by default, with search, assignment/payment/active/committee filters, presets, and sorting by submitted date, difficulty, name, assignment status, and warning/notice count. Difficulty is a sort key only.
+- The delegate list panel shows active paid delegates by default, with search, assignment/payment/active/committee filters, presets, and sorting by submitted date, difficulty, name, assignment status, and warning/notice count. Difficulty is a sort key only. The difficulty sort is intentionally ascending (easiest-to-place delegates first), so organizers clear easy delegates and are left with only the hard ones.
 - The delegation overview is a non-modal workspace panel similar to the delegate overview. It shows delegation membership, accepted active paid counts, linked reservation capacity, and current consumption.
 - The reservation manager is a compact modal for creating, editing, deleting, and linking reservations to delegations.
 - Slot count is committee-level; every position in a committee has the same number of slots. Changing the count requires confirmation.
