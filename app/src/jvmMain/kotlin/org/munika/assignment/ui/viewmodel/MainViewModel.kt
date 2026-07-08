@@ -1,6 +1,7 @@
 package org.munika.assignment.ui.viewmodel
 
 import java.nio.file.Path
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -11,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import org.munika.assignment.data.db.ConferenceTransferService
 import org.munika.assignment.data.excel.MymunWorkbookUpdater
 import org.munika.assignment.domain.model.CommitteeMode
@@ -1082,9 +1084,18 @@ class MainViewModel internal constructor(
 
     override fun close() {
         runBlocking {
-            exportMarkdownSnapshots(MarkdownSafetyExportTrigger.Close, showNotice = false)
+            val completed = withTimeoutOrNull(ShutdownExportTimeout) {
+                exportMarkdownSnapshots(MarkdownSafetyExportTrigger.Close, showNotice = false)
+            }
+            if (completed == null) {
+                System.err.println("Textual safety export on close timed out after $ShutdownExportTimeout; shutting down anyway.")
+            }
         }
         scope.cancel()
+    }
+
+    private companion object {
+        val ShutdownExportTimeout = 5.seconds
     }
 }
 
