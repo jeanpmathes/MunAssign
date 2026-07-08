@@ -12,6 +12,7 @@ import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.greater
 import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.neq
+import org.jetbrains.exposed.v1.core.notInList
 import org.jetbrains.exposed.v1.core.or
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.SortOrder
@@ -103,6 +104,8 @@ class ConferenceRepositoryImpl(
     constructor(databasePath: Path) : this(DatabaseFactory.connect(databasePath))
 
     private val logger = LoggerFactory.getLogger(ConferenceRepositoryImpl::class.java)
+
+    private val MaxRetainedUpdateRunsPerConference = 20
 
     override suspend fun listConferences(): List<Conference> = db {
         ConferenceTable.selectAll()
@@ -1303,6 +1306,7 @@ class ConferenceRepositoryImpl(
         MymunUpdateRunTable.update({ MymunUpdateRunTable.id eq updateRunId }) {
             it[MymunUpdateRunTable.completedAtEpochMillis] = Instant.now().toEpochMilli()
         }
+        pruneOldUpdateRuns(conferenceId)
 
         val summary = delta.toSummary(issues)
         logger.info(
@@ -1738,6 +1742,21 @@ class ConferenceRepositoryImpl(
         }
         retainedQuestionIds.forEach { questionId ->
             DelegateQuestionAnswerTable.deleteWhere { DelegateQuestionAnswerTable.questionId eq questionId }
+        }
+    }
+
+    /** Keeps only the newest [MaxRetainedUpdateRunsPerConference] update runs; issues cascade via FK. */
+    private fun pruneOldUpdateRuns(conferenceId: String) {
+        val retainedRunIds = MymunUpdateRunTable
+            .selectAll()
+            .where { MymunUpdateRunTable.conferenceId eq conferenceId }
+            .orderBy(MymunUpdateRunTable.startedAtEpochMillis to SortOrder.DESC)
+            .limit(MaxRetainedUpdateRunsPerConference)
+            .map { it[MymunUpdateRunTable.id] }
+            .toSet()
+
+        MymunUpdateRunTable.deleteWhere {
+            (MymunUpdateRunTable.conferenceId eq conferenceId) and (MymunUpdateRunTable.id notInList retainedRunIds)
         }
     }
 

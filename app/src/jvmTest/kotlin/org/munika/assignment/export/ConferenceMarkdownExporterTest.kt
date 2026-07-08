@@ -163,6 +163,30 @@ class ConferenceMarkdownExporterTest {
         assertEquals(emptyList(), result.failures)
     }
 
+    @Test
+    fun `service prunes exports beyond the retention limit per conference and trigger`() {
+        val directory = Files.createTempDirectory("munassign-markdown-retention-test")
+        val conference = sampleConference()
+        val baseInstant = Instant.parse("2026-06-25T12:30:00Z")
+
+        repeat(25) { index ->
+            val service = MarkdownSafetyExportService(
+                exportDirectory = directory,
+                clock = Clock.fixed(baseInstant.plusSeconds(index.toLong()), ZoneId.of("UTC")),
+                zoneId = ZoneId.of("UTC"),
+            )
+            kotlinx.coroutines.runBlocking {
+                service.exportAll(listOf(conference), MarkdownSafetyExportTrigger.Open)
+            }
+        }
+
+        val remaining = Files.newDirectoryStream(directory).use { stream -> stream.toList() }
+        assertEquals(20, remaining.size)
+        assertTrue(remaining.all { it.fileName.toString().contains("-open-kamun") })
+        assertTrue(remaining.none { it.fileName.toString().startsWith("20260625-123000-") })
+        assertTrue(remaining.any { it.fileName.toString().startsWith("20260625-123024-") })
+    }
+
     private fun sampleConference(): Conference {
         val conference = Conference(
             id = ConferenceId("conference"),

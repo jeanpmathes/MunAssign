@@ -60,6 +60,7 @@ class MarkdownSafetyExportService(
                 val path = nextAvailablePath(conference.name, exportedAt, trigger)
                 Files.writeString(path, markdown)
                 writtenFiles.add(path)
+                pruneOldExports(conference.name, trigger)
             } catch (exception: Exception) {
                 failures += MarkdownSafetyExportFailure(
                     conferenceName = conference.name,
@@ -94,8 +95,24 @@ class MarkdownSafetyExportService(
     private fun timestampLabel(exportedAt: Instant): String =
         TimestampFormatter.withZone(zoneId).format(exportedAt)
 
+    /** Keeps only the newest [MaxRetainedExportsPerConferenceTrigger] files for this conference/trigger pair. */
+    private fun pruneOldExports(conferenceName: String, trigger: MarkdownSafetyExportTrigger) {
+        try {
+            val pattern = Regex(
+                "^\\d{8}-\\d{6}-${Regex.escape(trigger.fileLabel)}-${Regex.escape(conferenceName.fileSafeName())}(-\\d+)?\\.md$",
+            )
+            val matches = Files.newDirectoryStream(exportDirectory).use { stream ->
+                stream.filter { pattern.matches(it.fileName.toString()) }
+            }.sortedBy { it.fileName.toString() }
+            matches.dropLast(MaxRetainedExportsPerConferenceTrigger).forEach { Files.deleteIfExists(it) }
+        } catch (_: Exception) {
+            // Retention is best-effort; a pruning failure must not affect the export that just succeeded.
+        }
+    }
+
     private companion object {
         val TimestampFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
+        const val MaxRetainedExportsPerConferenceTrigger = 20
     }
 }
 

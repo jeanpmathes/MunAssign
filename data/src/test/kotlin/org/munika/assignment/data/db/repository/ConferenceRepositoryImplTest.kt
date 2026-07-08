@@ -28,6 +28,7 @@ import org.munika.assignment.data.db.tables.HighSchoolerAnswerMappingTable
 import org.munika.assignment.data.db.tables.LanguageLevelAnswerMappingTable
 import org.munika.assignment.data.db.tables.MunExperienceAnswerMappingTable
 import org.munika.assignment.data.db.tables.MymunUpdateIssueTable
+import org.munika.assignment.data.db.tables.MymunUpdateRunTable
 import org.munika.assignment.data.db.tables.PositionTable
 import org.munika.assignment.data.db.tables.QuestionHandlingTypeTable
 import org.munika.assignment.data.db.tables.QuestionRoleTable
@@ -1519,6 +1520,24 @@ class ConferenceRepositoryImplTest {
         assertEquals(0, result.summary.delegatesUpdated)
         assertEquals(0, result.summary.questionsUpdated)
         assertEquals(0, result.summary.assignmentsConfirmed)
+    }
+
+    @Test
+    fun `old update runs are pruned beyond the retention limit`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-update-run-retention").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val snapshot = snapshotWithDelegates(emptyList())
+
+        repeat(25) { index ->
+            assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshot, "update-$index.xlsx").success)
+        }
+
+        val remainingRunCount = transaction(database) {
+            MymunUpdateRunTable.selectAll().where { MymunUpdateRunTable.conferenceId eq conference.id.value }.count()
+        }
+        assertEquals(20, remainingRunCount)
     }
 
     @Test
