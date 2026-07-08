@@ -227,7 +227,10 @@ private fun updateWorkbookDropFeedback(
         is WorkbookUpdateFileSelection.Rejected -> WorkbookDropFeedback.Rejected
     }
     onFeedback(feedback)
-    event.acceptDrag(DnDConstants.ACTION_COPY)
+    when (selection) {
+        is WorkbookUpdateFileSelection.Accepted -> event.acceptDrag(DnDConstants.ACTION_COPY)
+        is WorkbookUpdateFileSelection.Rejected -> event.rejectDrag()
+    }
 }
 
 private fun DropTargetDragEvent.workbookDragFiles(): List<File> {
