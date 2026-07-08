@@ -11,6 +11,7 @@ import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 import java.util.Locale
 
@@ -411,9 +412,7 @@ class MyMunWorkbookParser {
         val text = text().trim()
         if (text.isEmpty()) return null
 
-        return try {
-            LocalDate.parse(text)
-        } catch (_: DateTimeParseException) {
+        return parseTolerantLocalDate(text) ?: run {
             issues += MymunValidationIssue(
                 severity = MymunValidationSeverity.Error,
                 code = "invalid_date",
@@ -422,6 +421,17 @@ class MyMunWorkbookParser {
             )
             null
         }
+    }
+
+    private fun parseTolerantLocalDate(text: String): LocalDate? {
+        ToleratedDateFormats.forEach { formatter ->
+            try {
+                return LocalDate.parse(text, formatter)
+            } catch (_: DateTimeParseException) {
+                // Try the next tolerated format.
+            }
+        }
+        return null
     }
 
     private val Row.excelRowNumber: Int get() = rowNum + 1
@@ -493,6 +503,13 @@ class MyMunWorkbookParser {
         val Whitespace = Regex("\\s+")
         val PreferenceHeader = Regex("""Preference\s+(\d+)""", RegexOption.IGNORE_CASE)
         val PreferenceValue = Regex("""(.+?)\s*\((.+)\)\s*""")
+
+        val ToleratedDateFormats: List<DateTimeFormatter> = listOf(
+            DateTimeFormatter.ISO_LOCAL_DATE,
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"),
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"),
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"),
+        )
 
         fun normalizeHeader(value: String): String =
             value.trim().replace(Whitespace, " ").lowercase(Locale.ROOT)

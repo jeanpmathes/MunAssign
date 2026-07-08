@@ -141,6 +141,56 @@ class MyMunWorkbookParserTest {
     }
 
     @Test
+    fun `datetime-suffixed date cells parse using their date component`() {
+        val workbookBytes = ByteArrayOutputStream().use { output ->
+            XSSFWorkbook().use { workbook ->
+                val countries = workbook.createSheet("Countries")
+                countries.createRow(0).apply {
+                    createCell(0).setCellValue("Committee Name")
+                    createCell(1).setCellValue("Member Name")
+                    createCell(2).setCellValue("Delegation Name")
+                    createCell(3).setCellValue("Delegates")
+                }
+                countries.createRow(1).apply {
+                    createCell(0).setCellValue("GA")
+                    createCell(1).setCellValue("France")
+                }
+
+                val delegates = workbook.createSheet("Delegates")
+                delegates.createRow(0).apply {
+                    createCell(0).setCellValue("First Name")
+                    createCell(1).setCellValue("Last Name")
+                    createCell(2).setCellValue("Email")
+                    createCell(3).setCellValue("Fee Paid")
+                    createCell(4).setCellValue("Date of Birth")
+                    createCell(5).setCellValue("Submitted At")
+                    createCell(6).setCellValue("Created At")
+                }
+                delegates.createRow(1).apply {
+                    createCell(0).setCellValue("Alex")
+                    createCell(1).setCellValue("Kim")
+                    createCell(2).setCellValue("alex@example.test")
+                    createCell(3).setCellValue("yes")
+                    createCell(4).setCellValue("2006-01-02T00:00:00")
+                    createCell(5).setCellValue("2025-12-05 14:30:00")
+                    createCell(6).setCellValue("2025-12-05 14:30")
+                }
+
+                workbook.write(output)
+            }
+            output.toByteArray()
+        }
+
+        val snapshot = parser.parse(ByteArrayInputStream(workbookBytes), "datetime-dates.xlsx")
+
+        assertTrue(snapshot.issues.none { it.severity == MymunValidationSeverity.Error }, snapshot.issues.joinToString("\n") { it.message })
+        val delegate = snapshot.delegates.single()
+        assertEquals(java.time.LocalDate.of(2006, 1, 2), delegate.dateOfBirth)
+        assertEquals(java.time.LocalDate.of(2025, 12, 5), delegate.submittedAt)
+        assertEquals(java.time.LocalDate.of(2025, 12, 5), delegate.createdAt)
+    }
+
+    @Test
     fun `duplicate question columns become a blocking validation issue`() {
         val workbookBytes = ByteArrayOutputStream().use { output ->
             XSSFWorkbook().use { workbook ->
