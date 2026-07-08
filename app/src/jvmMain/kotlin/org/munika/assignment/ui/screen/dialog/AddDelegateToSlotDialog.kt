@@ -97,7 +97,7 @@ fun AddDelegateToSlotDialog(
             title = { Text("Move pending assignment?") },
             text = {
                 Text(
-                    "${candidate.name} is already pending for ${candidate.pendingAssignmentLabel}. Move that pending assignment to ${slot.positionName} slot ${slot.index}?",
+                    "${candidate.name} already has a pending assignment for ${candidate.pendingAssignmentLabel}. Move it to ${slot.positionName} slot ${slot.index} instead?",
                 )
             },
             confirmButton = {

@@ -195,7 +195,7 @@ fun PositionCard(
             title = { Text("Move pending assignment?") },
             text = {
                 Text(
-                    "${request.delegate.name} is already pending for ${request.delegate.pendingAssignmentLabel}. Move that pending assignment to ${request.slot.positionName} slot ${request.slot.index}?",
+                    "${request.delegate.name} already has a pending assignment for ${request.delegate.pendingAssignmentLabel}. Move it to ${request.slot.positionName} slot ${request.slot.index} instead?",
                 )
             },
             confirmButton = {
