@@ -1746,13 +1746,23 @@ class ConferenceRepositoryImpl(
                 committees++
             }
 
-        DelegateTable.selectAll().where { DelegateTable.conferenceId eq conferenceId }
+        val delegateIdsToRemove = DelegateTable.selectAll().where { DelegateTable.conferenceId eq conferenceId }
             .map { it[DelegateTable.id] }
             .filterNot { it in retainedDelegateIds }
-            .forEach { delegateId ->
+        if (delegateIdsToRemove.isNotEmpty()) {
+            // The assignedDelegateId FK cascade (ON DELETE SET NULL) only clears that column when
+            // the delegate row below is deleted; clear assignmentSource here too so no slot is left
+            // half-cleared (assignedDelegateId null but assignmentSource still set).
+            SlotTable.update({ SlotTable.assignedDelegateId inList delegateIdsToRemove }) {
+                it[SlotTable.assignedDelegateId] = null
+                it[SlotTable.assignmentSource] = null
+                it[SlotTable.updatedAtEpochMillis] = Instant.now().toEpochMilli()
+            }
+            delegateIdsToRemove.forEach { delegateId ->
                 DelegateTable.deleteWhere { DelegateTable.id eq delegateId }
                 delegates++
             }
+        }
 
         DelegationTable.selectAll().where { DelegationTable.conferenceId eq conferenceId }
             .map { it[DelegationTable.id] }

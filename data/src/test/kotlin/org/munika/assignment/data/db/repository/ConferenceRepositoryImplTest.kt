@@ -1550,6 +1550,43 @@ class ConferenceRepositoryImplTest {
     }
 
     @Test
+    fun `MyMUN update fully clears a slot when its pending delegate is removed from the workbook`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-removed-delegate-slot").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val delegates = listOf(
+            delegate(rowNumber = 2, firstName = "Alex", lastName = "Kim", email = "alex@example.test"),
+            delegate(rowNumber = 3, firstName = "Blake", lastName = "Roy", email = "blake@example.test"),
+        )
+
+        assertTrue(
+            repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(delegates = delegates, confirmedAssignments = emptyList())).success,
+        )
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val blake = loaded.delegates.single { it.name.firstName == "Blake" }
+        val germanySlot = loaded.positions.single { it.name == "Germany" }.slots.single()
+        repository.assignDelegateToSlot(conference.id.value, germanySlot.id.value, blake.id.value, moveExistingPending = false)
+
+        val result = repository.applyMymunUpdateSnapshot(
+            conferenceId = conference.id.value,
+            snapshot = snapshotWithAssignments(
+                delegates = listOf(delegates[0]),
+                confirmedAssignments = emptyList(),
+            ),
+            sourceFilename = "remove-blake.xlsx",
+        )
+
+        assertTrue(result.success, result.issues.joinToString("; ") { it.message })
+        assertEquals(1, result.summary.delegatesRemoved)
+        transaction(database) {
+            val slotRow = SlotTable.selectAll().where { SlotTable.id eq germanySlot.id.value }.single()
+            assertNull(slotRow[SlotTable.assignedDelegateId])
+            assertNull(slotRow[SlotTable.assignmentSource])
+        }
+    }
+
+    @Test
     fun `organizer managed question rules and typed mappings survive repeated updates`() = runBlocking {
         val dbPath = Files.createTempDirectory("munassign-question-config").resolve("data.db")
         val database = DatabaseFactory.connect(dbPath)
