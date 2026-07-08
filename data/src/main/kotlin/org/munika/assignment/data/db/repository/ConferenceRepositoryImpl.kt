@@ -450,9 +450,9 @@ class ConferenceRepositoryImpl(
         ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
             it[updatedAtEpochMillis] = now
         }
-        reconcileReservations(conferenceId, now)
+        val conference = reconcileReservations(conferenceId, now)
         logger.info("Deactivated delegate={} conference={} clearedPending={}", delegateId, conferenceId, assignedSlot != null)
-        loadConferenceGraph(conferenceId)
+        conference
     }
 
     override suspend fun reactivateDelegate(conferenceId: String, delegateId: String): Conference = db {
@@ -464,9 +464,9 @@ class ConferenceRepositoryImpl(
         ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
             it[updatedAtEpochMillis] = now
         }
-        reconcileReservations(conferenceId, now)
+        val conference = reconcileReservations(conferenceId, now)
         logger.info("Reactivated delegate={} conference={}", delegateId, conferenceId)
-        loadConferenceGraph(conferenceId)
+        conference
     }
 
     override suspend fun createReservation(
@@ -492,7 +492,6 @@ class ConferenceRepositoryImpl(
             it[updatedAtEpochMillis] = now
         }
         reconcileReservations(conferenceId, now)
-        loadConferenceGraph(conferenceId)
     }
 
     override suspend fun updateReservation(
@@ -533,7 +532,6 @@ class ConferenceRepositoryImpl(
             it[updatedAtEpochMillis] = now
         }
         reconcileReservations(conferenceId, now)
-        loadConferenceGraph(conferenceId)
     }
 
     override suspend fun deleteReservation(conferenceId: String, reservationId: String): Conference = db {
@@ -544,7 +542,6 @@ class ConferenceRepositoryImpl(
             it[updatedAtEpochMillis] = now
         }
         reconcileReservations(conferenceId, now)
-        loadConferenceGraph(conferenceId)
     }
 
     override suspend fun assignDelegateReservation(
@@ -588,7 +585,6 @@ class ConferenceRepositoryImpl(
             it[updatedAtEpochMillis] = now
         }
         reconcileReservations(conferenceId, now)
-        loadConferenceGraph(conferenceId)
     }
 
     override suspend fun removeDelegateReservation(conferenceId: String, delegateId: String): Conference = db {
@@ -607,7 +603,6 @@ class ConferenceRepositoryImpl(
             it[updatedAtEpochMillis] = now
         }
         reconcileReservations(conferenceId, now)
-        loadConferenceGraph(conferenceId)
     }
 
     override suspend fun addDelegateComment(conferenceId: String, delegateId: String, body: String): Conference = db {
@@ -1489,7 +1484,8 @@ class ConferenceRepositoryImpl(
         }
     }
 
-    private fun reconcileReservations(conferenceId: String, nowEpochMillis: Long) {
+    /** Reconciles reservation links and returns the already-loaded, now-reconciled conference graph. */
+    private fun reconcileReservations(conferenceId: String, nowEpochMillis: Long): Conference {
         val conference = loadConferenceGraph(conferenceId)
         val currentLinks = conference.reservations.flatMap { it.delegateLinks }
         val result = ReservationReconciler.reconcile(
@@ -1504,6 +1500,7 @@ class ConferenceRepositoryImpl(
         result.links.forEach { link ->
             upsertReservationDelegateLink(link)
         }
+        return conference
     }
 
     private fun clearInvalidPositionMappings(conferenceId: String) {
