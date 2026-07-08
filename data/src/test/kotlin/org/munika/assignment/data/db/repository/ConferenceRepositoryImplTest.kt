@@ -1379,6 +1379,129 @@ class ConferenceRepositoryImplTest {
     }
 
     @Test
+    fun `MyMUN update places a confirmed delegate in a free slot instead of overwriting a pending assignment at the same index`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-pending-not-displaced").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val delegates = listOf(
+            delegate(rowNumber = 2, firstName = "Alex", lastName = "Kim", email = "alex@example.test"),
+            delegate(rowNumber = 3, firstName = "Blake", lastName = "Roy", email = "blake@example.test"),
+        )
+
+        assertTrue(
+            repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(delegates = delegates, confirmedAssignments = emptyList())).success,
+        )
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val committee = loaded.committees.single()
+        repository.setCommitteeSlotsPerPosition(conference.id.value, committee.id.value, 2)
+        val alex = loaded.delegates.single { it.name.firstName == "Alex" }
+        val franceSlot1 = requireNotNull(repository.getConference(conference.id.value))
+            .positions.single { it.name == "France" }.slots.single { it.index == 1 }
+        repository.assignDelegateToSlot(conference.id.value, franceSlot1.id.value, alex.id.value, moveExistingPending = false)
+
+        val result = repository.applyMymunUpdateSnapshot(
+            conferenceId = conference.id.value,
+            snapshot = snapshotWithAssignments(
+                delegates = delegates,
+                confirmedAssignments = listOf(assignment(rowNumber = 2, positionName = "France", slotIndex = 1, delegateName = "Blake Roy")),
+            ),
+            sourceFilename = "confirm-blake.xlsx",
+        )
+
+        assertTrue(result.success, result.issues.joinToString("; ") { it.message })
+        assertTrue(result.issues.none { it.code == "pending_assignment_displaced" })
+        assertEquals(0, result.summary.pendingAssignmentsDisplaced)
+
+        val reloaded = requireNotNull(repository.getConference(conference.id.value))
+        val france = reloaded.positions.single { it.name == "France" }
+        val pendingSlot = france.slots.single { it.isPending }
+        val assignedSlot = france.slots.single { it.isAssigned }
+        assertEquals("Alex", pendingSlot.delegate?.name?.firstName)
+        assertEquals("Blake", assignedSlot.delegate?.name?.firstName)
+    }
+
+    @Test
+    fun `MyMUN update warns and displaces a pending delegate when confirmed delegates fill every slot`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-forced-displacement").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val delegates = listOf(
+            delegate(rowNumber = 2, firstName = "Alex", lastName = "Kim", email = "alex@example.test"),
+            delegate(rowNumber = 3, firstName = "Blake", lastName = "Roy", email = "blake@example.test"),
+            delegate(rowNumber = 4, firstName = "Casey", lastName = "Lee", email = "casey@example.test"),
+        )
+
+        assertTrue(
+            repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(delegates = delegates, confirmedAssignments = emptyList())).success,
+        )
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val committee = loaded.committees.single()
+        repository.setCommitteeSlotsPerPosition(conference.id.value, committee.id.value, 2)
+        val casey = loaded.delegates.single { it.name.firstName == "Casey" }
+        val franceSlot1 = requireNotNull(repository.getConference(conference.id.value))
+            .positions.single { it.name == "France" }.slots.single { it.index == 1 }
+        repository.assignDelegateToSlot(conference.id.value, franceSlot1.id.value, casey.id.value, moveExistingPending = false)
+
+        val result = repository.applyMymunUpdateSnapshot(
+            conferenceId = conference.id.value,
+            snapshot = snapshotWithAssignments(
+                delegates = delegates,
+                confirmedAssignments = listOf(
+                    assignment(rowNumber = 2, positionName = "France", slotIndex = 1, delegateName = "Alex Kim"),
+                    assignment(rowNumber = 3, positionName = "France", slotIndex = 2, delegateName = "Blake Roy"),
+                ),
+            ),
+            sourceFilename = "force-displace.xlsx",
+        )
+
+        assertTrue(result.success, result.issues.joinToString("; ") { it.message })
+        val warning = result.issues.single { it.code == "pending_assignment_displaced" }
+        assertTrue("Casey" in warning.message)
+        assertEquals(1, result.summary.pendingAssignmentsDisplaced)
+
+        val reloaded = requireNotNull(repository.getConference(conference.id.value))
+        val france = reloaded.positions.single { it.name == "France" }
+        assertEquals(setOf("Alex", "Blake"), france.slots.mapNotNull { it.delegate?.name?.firstName }.toSet())
+        assertNull(reloaded.delegates.single { it.name.firstName == "Casey" }.currentSlot)
+    }
+
+    @Test
+    fun `MyMUN update flips a pending delegate's own slot to confirmed without a warning`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-self-confirm").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val delegates = listOf(delegate(rowNumber = 2, firstName = "Alex", lastName = "Kim", email = "alex@example.test"))
+
+        assertTrue(
+            repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(delegates = delegates, confirmedAssignments = emptyList())).success,
+        )
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val alex = loaded.delegates.single()
+        val franceSlot = loaded.positions.single { it.name == "France" }.slots.single()
+        repository.assignDelegateToSlot(conference.id.value, franceSlot.id.value, alex.id.value, moveExistingPending = false)
+
+        val result = repository.applyMymunUpdateSnapshot(
+            conferenceId = conference.id.value,
+            snapshot = snapshotWithAssignments(
+                delegates = delegates,
+                confirmedAssignments = listOf(assignment(rowNumber = 2, positionName = "France", slotIndex = 1, delegateName = "Alex Kim")),
+            ),
+            sourceFilename = "self-confirm.xlsx",
+        )
+
+        assertTrue(result.success, result.issues.joinToString("; ") { it.message })
+        assertTrue(result.issues.none { it.code == "pending_assignment_displaced" })
+        assertEquals(0, result.summary.pendingAssignmentsDisplaced)
+        val reloaded = requireNotNull(repository.getConference(conference.id.value))
+        val slot = reloaded.positions.single { it.name == "France" }.slots.single()
+        assertTrue(slot.isAssigned)
+        assertEquals("Alex", slot.delegate?.name?.firstName)
+    }
+
+    @Test
     fun `MyMUN update counts only actual changed rows in summary`() = runBlocking {
         val dbPath = Files.createTempDirectory("munassign-no-op-summary").resolve("data.db")
         val database = DatabaseFactory.connect(dbPath)

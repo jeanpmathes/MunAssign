@@ -24,6 +24,7 @@ data class UpdateSummary(
     val assignmentsConfirmed: Int = 0,
     val pendingAssignmentsPreserved: Int = 0,
     val pendingAssignmentsCleared: Int = 0,
+    val pendingAssignmentsDisplaced: Int = 0,
     val questionsCreated: Int = 0,
     val questionsUpdated: Int = 0,
     val questionsRemoved: Int = 0,

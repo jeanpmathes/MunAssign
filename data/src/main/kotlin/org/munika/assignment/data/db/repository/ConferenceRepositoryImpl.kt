@@ -1183,18 +1183,71 @@ class ConferenceRepositoryImpl(
             delta.answersWritten++
         }
 
-        assignmentResolutions.forEach { (confirmed, delegate) ->
-            val delegateId = delegateIdsByIdentity[delegate.matchingIdentity] ?: return@forEach
-            val positionId = positionIds[normalize(confirmed.committeeName) to normalize(confirmed.positionName)] ?: return@forEach
-            clearOtherAssignments(delegateId, positionId, confirmed.slotIndex)
-            SlotTable.update({ (SlotTable.positionId eq positionId) and (SlotTable.slotIndex eq confirmed.slotIndex) }) {
+        val resolvedAssignmentsByPosition: Map<String, List<String>> = assignmentResolutions
+            .mapNotNull { (confirmed, delegate) ->
+                val delegateId = delegateIdsByIdentity[delegate.matchingIdentity] ?: return@mapNotNull null
+                val positionId = positionIds[normalize(confirmed.committeeName) to normalize(confirmed.positionName)] ?: return@mapNotNull null
+                positionId to delegateId
+            }
+            .groupBy({ it.first }, { it.second })
+
+        fun placeConfirmedDelegate(positionId: String, delegateId: String, slotIndex: Int) {
+            clearOtherAssignments(delegateId, positionId, slotIndex)
+            SlotTable.update({ (SlotTable.positionId eq positionId) and (SlotTable.slotIndex eq slotIndex) }) {
                 it[SlotTable.assignedDelegateId] = delegateId
                 it[SlotTable.assignmentSource] = AssignmentSource.Mymun.name
                 it[SlotTable.updatedAtEpochMillis] = Instant.now().toEpochMilli()
             }
-            if (existingSlotAssignments[positionId to confirmed.slotIndex] != SlotAssignment(delegateId, AssignmentSource.Mymun.name)) {
+            if (existingSlotAssignments[positionId to slotIndex] != SlotAssignment(delegateId, AssignmentSource.Mymun.name)) {
                 delta.assignmentsConfirmed++
             }
+        }
+
+        resolvedAssignmentsByPosition.forEach { (positionId, confirmedDelegateIds) ->
+            val positionSlotRows = SlotTable.selectAll().where { SlotTable.positionId eq positionId }
+                .sortedBy { it[SlotTable.slotIndex] }
+                .toList()
+            val confirmedDelegateIdSet = confirmedDelegateIds.toSet()
+
+            // MyMUN-sourced slots for this position were already cleared above, so any occupied
+            // slot found here is Application-sourced (pending). A pending delegate who is also
+            // confirmed for this position keeps their current slot instead of being displaced.
+            val alreadyPlacedSlotIndexByDelegateId = positionSlotRows.mapNotNull { row ->
+                val occupant = row[SlotTable.assignedDelegateId]
+                if (occupant != null && occupant in confirmedDelegateIdSet) occupant to row[SlotTable.slotIndex] else null
+            }.toMap()
+
+            val emptySlotIndexes = positionSlotRows
+                .filter { it[SlotTable.assignedDelegateId] == null }
+                .map { it[SlotTable.slotIndex] }
+            val pendingSlotIndexToOccupant = positionSlotRows
+                .filter { row -> row[SlotTable.assignedDelegateId]?.let { it !in confirmedDelegateIdSet } == true }
+                .associate { it[SlotTable.slotIndex] to it[SlotTable.assignedDelegateId]!! }
+            val placementOrder = (emptySlotIndexes + pendingSlotIndexToOccupant.keys.sorted()).iterator()
+
+            alreadyPlacedSlotIndexByDelegateId.forEach { (delegateId, slotIndex) ->
+                placeConfirmedDelegate(positionId, delegateId, slotIndex)
+            }
+
+            confirmedDelegateIds
+                .filterNot { it in alreadyPlacedSlotIndexByDelegateId }
+                .forEach { delegateId ->
+                    if (!placementOrder.hasNext()) return@forEach
+                    val slotIndex = placementOrder.next()
+                    val displacedDelegateId = pendingSlotIndexToOccupant[slotIndex]
+                    if (displacedDelegateId != null) {
+                        val warning = UpdateIssue(
+                            severity = UpdateIssueSeverity.Warning,
+                            code = "pending_assignment_displaced",
+                            message = "Pending assignment for '${delegateDisplayName(displacedDelegateId)}' was cleared to make " +
+                                "room for a MyMUN-confirmed delegate in the same position.",
+                        )
+                        issues += warning
+                        insertUpdateIssue(updateRunId, warning)
+                        delta.pendingAssignmentsDisplaced++
+                    }
+                    placeConfirmedDelegate(positionId, delegateId, slotIndex)
+                }
         }
 
         val pruned = pruneRemovedRows(
@@ -1228,7 +1281,7 @@ class ConferenceRepositoryImpl(
 
         val summary = delta.toSummary(issues)
         logger.info(
-            "MyMUN update completed for conference={} source={} errors={} warnings={} delegates(+{}/~{}/-{}) committees(+{}/~{}/-{}) positions(+{}/~{}/-{}) slotsCreated={} confirmedAssignments={} pendingPreserved={} pendingCleared={} questions(+{}/~{}/-{}) delegations(+{}/~{}/-{}) preferences={} answers={}",
+            "MyMUN update completed for conference={} source={} errors={} warnings={} delegates(+{}/~{}/-{}) committees(+{}/~{}/-{}) positions(+{}/~{}/-{}) slotsCreated={} confirmedAssignments={} pendingPreserved={} pendingCleared={} pendingDisplaced={} questions(+{}/~{}/-{}) delegations(+{}/~{}/-{}) preferences={} answers={}",
             conferenceId,
             sourceFilename,
             summary.blockingErrorCount,
@@ -1246,6 +1299,7 @@ class ConferenceRepositoryImpl(
             summary.assignmentsConfirmed,
             summary.pendingAssignmentsPreserved,
             summary.pendingAssignmentsCleared,
+            summary.pendingAssignmentsDisplaced,
             summary.questionsCreated,
             summary.questionsUpdated,
             summary.questionsRemoved,
@@ -1337,6 +1391,11 @@ class ConferenceRepositoryImpl(
                 .where { (DelegateTable.id eq delegateId) and (DelegateTable.conferenceId eq conferenceId) }
                 .singleOrNull(),
         ) { "Delegate $delegateId does not belong to conference $conferenceId." }
+
+    private fun delegateDisplayName(delegateId: String): String =
+        DelegateTable.selectAll().where { DelegateTable.id eq delegateId }.singleOrNull()?.let {
+            "${it[DelegateTable.firstName]} ${it[DelegateTable.lastName]}"
+        } ?: "Unknown delegate"
 
     private fun requireCommitteeInConference(conferenceId: String, committeeId: String): ResultRow =
         requireNotNull(
@@ -2177,6 +2236,7 @@ class ConferenceRepositoryImpl(
         var assignmentsConfirmed: Int = 0,
         var pendingAssignmentsPreserved: Int = 0,
         var pendingAssignmentsCleared: Int = 0,
+        var pendingAssignmentsDisplaced: Int = 0,
         var questionsCreated: Int = 0,
         var questionsUpdated: Int = 0,
         var questionsRemoved: Int = 0,
@@ -2203,6 +2263,7 @@ class ConferenceRepositoryImpl(
                 assignmentsConfirmed = assignmentsConfirmed,
                 pendingAssignmentsPreserved = pendingAssignmentsPreserved,
                 pendingAssignmentsCleared = pendingAssignmentsCleared,
+                pendingAssignmentsDisplaced = pendingAssignmentsDisplaced,
                 questionsCreated = questionsCreated,
                 questionsUpdated = questionsUpdated,
                 questionsRemoved = questionsRemoved,
