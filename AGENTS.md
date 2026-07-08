@@ -65,8 +65,10 @@ The default shell `JAVA_HOME` may point to JDK 25, which currently makes Gradle/
 ```powershell
 $env:JAVA_HOME='C:\Users\jeanp\.jdks\temurin-24.0.2'
 $env:PATH="$env:JAVA_HOME\bin;$env:PATH"
-.\gradlew test
+.\gradlew check
 ```
+
+Use `gradlew check` (not `gradlew test`) as the canonical full-verification command: `:app` is a Kotlin Multiplatform module with no `test` task of its own (only `jvmTest`/`allTests`), so `gradlew test` silently skips it and only runs `:domain:test` + `:data:test`. `check` depends on `allTests` and correctly covers all three modules.
 
 If sandboxing blocks access to that JDK or the Gradle cache, request escalation and rerun the same command. Do not report Gradle as blocked until this JDK override has been tried.
 
