@@ -41,8 +41,8 @@ class Reservation(
         get() = activeLinks.count { !it.delegate.isHighSchooler }
 
     val remainingHighSchoolCount: Int
-        get() = highSchoolCount - usedHighSchoolCount
+        get() = (highSchoolCount - usedHighSchoolCount).coerceAtLeast(0)
 
     val remainingUniversityCount: Int
-        get() = universityCount - usedUniversityCount
+        get() = (universityCount - usedUniversityCount).coerceAtLeast(0)
 }
