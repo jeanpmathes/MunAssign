@@ -6,6 +6,7 @@ import org.munika.assignment.domain.model.Committee
 import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.Delegate
+import org.munika.assignment.domain.model.DelegateId
 import org.munika.assignment.domain.model.PaymentStatus
 import org.munika.assignment.domain.model.Position
 import org.munika.assignment.domain.model.Reservation
@@ -119,8 +120,15 @@ data class BoardScrollRequest(
     val requestId: Long = System.nanoTime(),
 )
 
-fun Conference.toAssignmentBoardUiState(): AssignmentBoardUiState =
-    AssignmentBoardUiState(
+private data class DelegateIssueCounts(val warningCount: Int, val noticeCount: Int)
+
+fun Conference.toAssignmentBoardUiState(): AssignmentBoardUiState {
+    val slotByDelegateId: Map<DelegateId, Slot> = slots.mapNotNull { slot -> slot.delegate?.let { it.id to slot } }.toMap()
+    val issueCountsByDelegateId: Map<DelegateId, DelegateIssueCounts> = delegates.associate { delegate ->
+        delegate.id to DelegateIssueCounts(warningCount = delegate.warningCount(), noticeCount = delegate.noticeCount())
+    }
+
+    return AssignmentBoardUiState(
         conferenceId = id.value,
         committees = committees.map { committee ->
             val reservationReminders = when (committee.mode) {
@@ -140,10 +148,11 @@ fun Conference.toAssignmentBoardUiState(): AssignmentBoardUiState =
                 highSchoolerAssignedCount = committee.slots.count { it.delegate?.isHighSchooler == true },
                 universityAssignedCount = committee.slots.count { it.delegate != null && it.delegate?.isHighSchooler != true },
                 reservationReminders = reservationReminders,
-                positions = committee.positions.map { it.toBoardUiState() },
+                positions = committee.positions.map { it.toBoardUiState(slotByDelegateId, issueCountsByDelegateId) },
             )
         },
     )
+}
 
 private fun List<Reservation>.toReservationReminderUiState(isHighSchool: Boolean): ReservationReminderUiState? {
     val totalCount = if (isHighSchool) {
@@ -164,7 +173,10 @@ private fun List<Reservation>.toReservationReminderUiState(isHighSchool: Boolean
     )
 }
 
-private fun Position.toBoardUiState(): PositionBoardUiState =
+private fun Position.toBoardUiState(
+    slotByDelegateId: Map<DelegateId, Slot>,
+    issueCountsByDelegateId: Map<DelegateId, DelegateIssueCounts>,
+): PositionBoardUiState =
     PositionBoardUiState(
         id = id.value,
         name = name,
@@ -183,31 +195,34 @@ private fun Position.toBoardUiState(): PositionBoardUiState =
             .filter { it.visibleOnAssignmentBoard() }
             .mapNotNull { delegate ->
                 val rank = delegate.preferences.firstOrNull { it.position === this }?.rank ?: return@mapNotNull null
+                val currentSlot = slotByDelegateId[delegate.id]
                 InterestedDelegateUiState(
                     id = delegate.id.value,
                     name = delegate.displayName,
                     isHighSchooler = delegate.isHighSchooler,
                     preferenceRank = rank,
-                    pendingAssignmentLabel = delegate.pendingAssignmentLabel(),
-                    pendingAssignmentSlotId = delegate.pendingAssignmentSlotId(),
-                    confirmedAssignmentLabel = delegate.confirmedAssignmentLabel(),
-                    confirmedAssignmentSlotId = delegate.confirmedAssignmentSlotId(),
+                    pendingAssignmentLabel = delegate.pendingAssignmentLabel(currentSlot),
+                    pendingAssignmentSlotId = currentSlot?.takeIf { it.isPending }?.id?.value,
+                    confirmedAssignmentLabel = delegate.confirmedAssignmentLabel(currentSlot),
+                    confirmedAssignmentSlotId = currentSlot?.takeIf { it.isAssigned }?.id?.value,
                 )
             }
             .sortedWith(compareBy<InterestedDelegateUiState> { it.preferenceRank }.thenBy { it.name }),
         assignmentCandidates = conference.delegates
             .filter { it.visibleOnAssignmentBoard() }
-            .filter { it.currentSlot?.isAssigned != true }
+            .filter { slotByDelegateId[it.id]?.isAssigned != true }
             .map { delegate ->
+                val currentSlot = slotByDelegateId[delegate.id]
+                val issueCounts = issueCountsByDelegateId[delegate.id]
                 AssignmentDelegateCandidateUiState(
                     id = delegate.id.value,
                     name = delegate.displayName,
                     preferenceRank = delegate.preferences.firstOrNull { it.position === this }?.rank,
-                    pendingAssignmentLabel = delegate.pendingAssignmentLabel(),
-                    confirmedAssignmentLabel = delegate.confirmedAssignmentLabel(),
+                    pendingAssignmentLabel = delegate.pendingAssignmentLabel(currentSlot),
+                    confirmedAssignmentLabel = delegate.confirmedAssignmentLabel(currentSlot),
                     isHighSchooler = delegate.isHighSchooler,
-                    warningCount = delegate.warningCount(),
-                    noticeCount = delegate.noticeCount(),
+                    warningCount = issueCounts?.warningCount ?: 0,
+                    noticeCount = issueCounts?.noticeCount ?: 0,
                 )
             }
             .sortedWith(
@@ -266,23 +281,17 @@ private fun Delegate.visibleOnAssignmentBoard(): Boolean =
         paymentStatus == PaymentStatus.Paid &&
         profile.isUsableForAssignment
 
-private fun Delegate.confirmedAssignmentLabel(): String? {
-    val assignedPosition = currentPosition ?: return null
+private fun Delegate.confirmedAssignmentLabel(currentSlot: Slot?): String? {
     if (currentSlot?.isAssigned != true) return null
-    return "${assignedPosition.committee.displayName} (${assignedPosition.name})"
+    val position = currentSlot.position
+    return "${position.committee.displayName} (${position.name})"
 }
 
-private fun Delegate.confirmedAssignmentSlotId(): String? =
-    currentSlot?.takeIf { it.isAssigned }?.id?.value
-
-private fun Delegate.pendingAssignmentLabel(): String? {
-    val assignedPosition = currentPosition ?: return null
+private fun Delegate.pendingAssignmentLabel(currentSlot: Slot?): String? {
     if (currentSlot?.isPending != true) return null
-    return "${assignedPosition.committee.displayName} (${assignedPosition.name})"
+    val position = currentSlot.position
+    return "${position.committee.displayName} (${position.name})"
 }
-
-private fun Delegate.pendingAssignmentSlotId(): String? =
-    currentSlot?.takeIf { it.isPending }?.id?.value
 
 private fun Delegate.warningCount(): Int =
     answers.sumOf { answer -> answer.openIssues.count { it.severity == AnswerIssueSeverity.Warning } } +

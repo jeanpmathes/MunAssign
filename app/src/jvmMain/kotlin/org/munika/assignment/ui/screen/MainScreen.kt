@@ -905,7 +905,7 @@ private fun ConferenceWorkspace(
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             AssignmentBoard(
-                board = conference.toAssignmentBoardUiState(),
+                board = remember(conference) { conference.toAssignmentBoardUiState() },
                 loading = loading,
                 actionError = boardActionError,
                 scrollRequest = boardScrollRequest,
@@ -921,7 +921,7 @@ private fun ConferenceWorkspace(
             )
             if (delegateListOpen) {
                 DelegateListPanel(
-                    list = conference.toDelegateListUiState(delegateListControls),
+                    list = remember(conference, delegateListControls) { conference.toDelegateListUiState(delegateListControls) },
                     controls = delegateListControls,
                     onControlsChange = onUpdateDelegateListControls,
                     onApplyPreset = onApplyDelegateListPreset,

@@ -227,6 +227,32 @@ class AssignmentBoardUiModelsTest {
     }
 
     @Test
+    fun `assignment candidates keep distinct labels and issue counts per delegate across positions`() {
+        val board = board(slotCount = 2)
+        board.france.slots[0].assign(board.available, AssignmentSource.Application, Instant.EPOCH)
+        board.germanySlot.assign(board.confirmedElsewhere, AssignmentSource.Mymun, Instant.EPOCH)
+        val warningQuestion = Question(QuestionId("warning"), "Warning", rules = listOf(RequiredAnswer("Missing")))
+        board.conference.questions += warningQuestion
+        board.available.answers += QuestionAnswer(QuestionAnswerId("warning-answer"), board.available, warningQuestion, null)
+
+        val boardUiState = board.conference.toAssignmentBoardUiState()
+        val france = boardUiState.committees.single().positions.single { it.name == "France" }
+        val germany = boardUiState.committees.single().positions.single { it.name == "Germany" }
+
+        val availableInGermany = germany.assignmentCandidates.single { it.name == "Available Delegate" }
+        assertEquals("GA (France)", availableInGermany.pendingAssignmentLabel)
+        assertEquals(1, availableInGermany.warningCount)
+
+        val neutralInGermany = germany.assignmentCandidates.single { it.name == "Neutral Delegate" }
+        assertNull(neutralInGermany.pendingAssignmentLabel)
+        assertEquals(0, neutralInGermany.warningCount)
+
+        val confirmedInFrance = france.interestedDelegates.single { it.name == "Confirmed Elsewhere" }
+        assertEquals("GA (Germany)", confirmedInFrance.confirmedAssignmentLabel)
+        assertEquals("germany-1", confirmedInFrance.confirmedAssignmentSlotId)
+    }
+
+    @Test
     fun `committee state exposes high school mismatch counts`() {
         val board = board()
         board.germanySlot.assign(board.available, AssignmentSource.Application, Instant.EPOCH)
