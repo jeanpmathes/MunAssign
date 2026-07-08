@@ -654,6 +654,44 @@ class ConferenceRepositoryImpl(
         conferenceId: String,
         configuration: QuestionConfiguration,
     ): Conference = db {
+        applyQuestionConfiguration(conferenceId, configuration)
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = Instant.now().toEpochMilli()
+        }
+        loadConferenceGraph(conferenceId)
+    }
+
+    /**
+     * Updates every given question's configuration and their shared display order in one
+     * transaction, so a mid-batch failure leaves no partially-saved configuration.
+     */
+    override suspend fun updateQuestionConfigurations(
+        conferenceId: String,
+        configurations: List<QuestionConfiguration>,
+    ): Conference = db {
+        configurations.forEach { configuration -> applyQuestionConfiguration(conferenceId, configuration) }
+        reorderQuestionConfigurationsInTransaction(
+            conferenceId,
+            configurations.sortedBy { it.displayOrder }.map { it.questionId.value },
+        )
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = Instant.now().toEpochMilli()
+        }
+        loadConferenceGraph(conferenceId)
+    }
+
+    override suspend fun reorderQuestionConfigurations(
+        conferenceId: String,
+        questionIdsInDisplayOrder: List<String>,
+    ): Conference = db {
+        reorderQuestionConfigurationsInTransaction(conferenceId, questionIdsInDisplayOrder)
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = Instant.now().toEpochMilli()
+        }
+        loadConferenceGraph(conferenceId)
+    }
+
+    private fun applyQuestionConfiguration(conferenceId: String, configuration: QuestionConfiguration) {
         val questionId = configuration.questionId.value
         val question = requireNotNull(
             DelegateQuestionTable.selectAll()
@@ -664,7 +702,6 @@ class ConferenceRepositoryImpl(
             "Imported question text is controlled by MyMUN updates."
         }
 
-        val now = Instant.now().toEpochMilli()
         DelegateQuestionTable.update({ DelegateQuestionTable.id eq questionId }) {
             it[roleId] = configuration.role?.id
             it[handlingTypeId] = configuration.handling.id
@@ -679,16 +716,9 @@ class ConferenceRepositoryImpl(
             StandardQuestionRoles.LanguageLevel -> replaceLanguageLevelMappings(questionId, configuration.mappings.languageLevel)
             null -> Unit
         }
-        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
-            it[updatedAtEpochMillis] = now
-        }
-        loadConferenceGraph(conferenceId)
     }
 
-    override suspend fun reorderQuestionConfigurations(
-        conferenceId: String,
-        questionIdsInDisplayOrder: List<String>,
-    ): Conference = db {
+    private fun reorderQuestionConfigurationsInTransaction(conferenceId: String, questionIdsInDisplayOrder: List<String>) {
         val knownIds = DelegateQuestionTable.selectAll()
             .where { DelegateQuestionTable.conferenceId eq conferenceId }
             .map { it[DelegateQuestionTable.id] }
@@ -696,16 +726,11 @@ class ConferenceRepositoryImpl(
         require(questionIdsInDisplayOrder.toSet() == knownIds && questionIdsInDisplayOrder.size == knownIds.size) {
             "Question reorder must include every known question exactly once."
         }
-        val now = Instant.now().toEpochMilli()
         questionIdsInDisplayOrder.forEachIndexed { index, questionId ->
             DelegateQuestionTable.update({ DelegateQuestionTable.id eq questionId }) {
                 it[displayOrder] = index
             }
         }
-        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
-            it[updatedAtEpochMillis] = now
-        }
-        loadConferenceGraph(conferenceId)
     }
 
     override suspend fun resolveAnswerIssue(

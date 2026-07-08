@@ -189,6 +189,18 @@ interface ConferenceRepository {
     ): Conference
 
     /**
+     * Updates every given question's configuration in one transaction and reorders them by their
+     * display order.
+     *
+     * Implementations must apply all configurations and the reorder atomically, so a mid-batch
+     * failure leaves no partially-saved configuration.
+     */
+    suspend fun updateQuestionConfigurations(
+        conferenceId: String,
+        configurations: List<QuestionConfiguration>,
+    ): Conference
+
+    /**
      * Replaces the display order for imported questions in one conference.
      *
      * The provided list must contain every question in that conference exactly once.

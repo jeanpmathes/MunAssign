@@ -59,6 +59,23 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `create conference failure surfaces as conference action error instead of crashing silently`() {
+        val conferenceA = Conference(ConferenceId("conference-a"), "Conference A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val repository = FakeConferenceRepository(
+            initialConference = conferenceA,
+            createConferenceThrows = IllegalStateException("Database is locked."),
+        )
+        val viewModel = viewModelWith(repository)
+        waitUntil { viewModel.state.value.selectedConference === conferenceA }
+
+        assertTrue(viewModel.createConference("New Conference"))
+
+        waitUntil { viewModel.state.value.conferenceActionError != null }
+        assertTrue("Database is locked." in requireNotNull(viewModel.state.value.conferenceActionError))
+        viewModel.close()
+    }
+
+    @Test
     fun `selecting another conference clears conference scoped UI state`() {
         val conferenceA = Conference(ConferenceId("conference-a"), "Conference A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val conferenceB = Conference(ConferenceId("conference-b"), "Conference B", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
@@ -703,6 +720,28 @@ class MainViewModelTest {
         viewModel.close()
     }
 
+    @Test
+    fun `resolve answer issue stores a non-validation failure as board error instead of crashing silently`() {
+        val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val repository = FakeConferenceRepository(initialConference = conference, resolveThrows = IllegalStateException("Database is locked."))
+        val viewModel = viewModelWith(repository)
+
+        viewModel.selectConference("conference")
+        waitUntil { viewModel.state.value.selectedConference === conference }
+
+        viewModel.resolveAnswerIssue(
+            delegateId = "delegate",
+            questionId = null,
+            issueKey = "Warning:Check",
+            justification = null,
+        )
+
+        waitUntil { viewModel.state.value.boardActionError != null }
+        assertTrue("Issue could not be resolved" in requireNotNull(viewModel.state.value.boardActionError))
+        assertTrue("Database is locked." in requireNotNull(viewModel.state.value.boardActionError))
+        viewModel.close()
+    }
+
     private fun viewModelWith(
         repository: ConferenceRepository,
         conferenceTransfer: ConferenceTransferRunner = FakeConferenceTransferRunner(),
@@ -802,6 +841,8 @@ private class FakeConferenceRepository(
     private val conferencesAfterCreate: List<Conference>? = null,
     private val resolvedConference: Conference? = initialConference,
     private val resolveError: String? = null,
+    private val resolveThrows: Exception? = null,
+    private val createConferenceThrows: Exception? = null,
     private val createdReservationConference: Conference? = initialConference,
     private val createdReservationConferenceDeferred: CompletableDeferred<Conference>? = null,
     private val createReservationStarted: CompletableDeferred<Unit>? = null,
@@ -850,6 +891,7 @@ private class FakeConferenceRepository(
 
     override suspend fun createConference(name: String): Conference {
         createConferenceStarted?.complete(Unit)
+        createConferenceThrows?.let { throw it }
         val created = createdConferenceDeferred?.await() ?: unsupported()
         conferenceCreated = true
         return created
@@ -960,6 +1002,11 @@ private class FakeConferenceRepository(
         configuration: QuestionConfiguration,
     ): Conference = unsupported()
 
+    override suspend fun updateQuestionConfigurations(
+        conferenceId: String,
+        configurations: List<QuestionConfiguration>,
+    ): Conference = unsupported()
+
     override suspend fun reorderQuestionConfigurations(
         conferenceId: String,
         questionIdsInDisplayOrder: List<String>,
@@ -972,6 +1019,7 @@ private class FakeConferenceRepository(
         issueKey: String,
         justification: String?,
     ): Conference {
+        resolveThrows?.let { throw it }
         resolveError?.let { throw IllegalArgumentException(it) }
         resolvedDelegateId = delegateId
         resolvedQuestionId = questionId

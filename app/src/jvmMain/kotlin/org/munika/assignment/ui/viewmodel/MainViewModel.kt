@@ -133,7 +133,7 @@ class MainViewModel internal constructor(
             return false
         }
         val expectedSelectedConferenceId = selectedIdOrNull()
-        scope.launch {
+        launchWithConferenceActionError {
             val created = repository.createConference(name.trim())
             val conferences = repository.listConferences()
             _state.update { current ->
@@ -160,7 +160,7 @@ class MainViewModel internal constructor(
             _state.update { it.copy(conferenceActionError = validationError) }
             return false
         }
-        scope.launch {
+        launchWithConferenceActionError {
             val renamed = repository.renameConference(conferenceId, newName.trim())
             val conferences = repository.listConferences()
             _state.update { current ->
@@ -176,7 +176,7 @@ class MainViewModel internal constructor(
 
     fun deleteConference(conferenceId: String) {
         if (_state.value.loading) return
-        scope.launch {
+        launchWithConferenceActionError {
             repository.deleteConference(conferenceId)
             val conferences = repository.listConferences()
             val previousSelectedId = _state.value.selectedConferenceId
@@ -210,7 +210,7 @@ class MainViewModel internal constructor(
             _state.update { it.copy(conferenceActionError = "Conference order is out of date. Reopen management and try again.") }
             return false
         }
-        scope.launch {
+        launchWithConferenceActionError {
             repository.reorderConferences(conferenceIdsInOrder)
             val conferences = repository.listConferences()
             _state.update { it.copy(conferences = conferences, conferenceActionError = null) }
@@ -646,6 +646,10 @@ class MainViewModel internal constructor(
                 updateConferenceState(selectedId) { it.copy(selectedConference = conference, boardActionError = null) }
             } catch (exception: IllegalArgumentException) {
                 updateConferenceState(selectedId) { it.copy(boardActionError = exception.message ?: "Comment could not be added.") }
+            } catch (exception: Exception) {
+                updateConferenceState(selectedId) {
+                    it.copy(boardActionError = "Comment could not be added: ${exception.message ?: exception::class.simpleName.orEmpty()}")
+                }
             }
         }
     }
@@ -658,6 +662,10 @@ class MainViewModel internal constructor(
                 updateConferenceState(selectedId) { it.copy(selectedConference = conference, boardActionError = null) }
             } catch (exception: IllegalArgumentException) {
                 updateConferenceState(selectedId) { it.copy(boardActionError = exception.message ?: "Comment could not be updated.") }
+            } catch (exception: Exception) {
+                updateConferenceState(selectedId) {
+                    it.copy(boardActionError = "Comment could not be updated: ${exception.message ?: exception::class.simpleName.orEmpty()}")
+                }
             }
         }
     }
@@ -670,6 +678,10 @@ class MainViewModel internal constructor(
                 updateConferenceState(selectedId) { it.copy(selectedConference = conference, boardActionError = null) }
             } catch (exception: IllegalArgumentException) {
                 updateConferenceState(selectedId) { it.copy(boardActionError = exception.message ?: "Comment could not be removed.") }
+            } catch (exception: Exception) {
+                updateConferenceState(selectedId) {
+                    it.copy(boardActionError = "Comment could not be removed: ${exception.message ?: exception::class.simpleName.orEmpty()}")
+                }
             }
         }
     }
@@ -693,6 +705,10 @@ class MainViewModel internal constructor(
                 updateConferenceState(selectedId) { it.copy(selectedConference = conference, boardActionError = null) }
             } catch (exception: IllegalArgumentException) {
                 updateConferenceState(selectedId) { it.copy(boardActionError = exception.message ?: "Issue could not be resolved.") }
+            } catch (exception: Exception) {
+                updateConferenceState(selectedId) {
+                    it.copy(boardActionError = "Issue could not be resolved: ${exception.message ?: exception::class.simpleName.orEmpty()}")
+                }
             }
         }
     }
@@ -709,6 +725,10 @@ class MainViewModel internal constructor(
                 updateConferenceState(selectedId) { it.copy(selectedConference = conference, boardActionError = null) }
             } catch (exception: IllegalArgumentException) {
                 updateConferenceState(selectedId) { it.copy(boardActionError = exception.message ?: "Issue justification could not be updated.") }
+            } catch (exception: Exception) {
+                updateConferenceState(selectedId) {
+                    it.copy(boardActionError = "Issue justification could not be updated: ${exception.message ?: exception::class.simpleName.orEmpty()}")
+                }
             }
         }
     }
@@ -721,6 +741,10 @@ class MainViewModel internal constructor(
                 updateConferenceState(selectedId) { it.copy(selectedConference = conference, boardActionError = null) }
             } catch (exception: IllegalArgumentException) {
                 updateConferenceState(selectedId) { it.copy(boardActionError = exception.message ?: "Issue could not be reopened.") }
+            } catch (exception: Exception) {
+                updateConferenceState(selectedId) {
+                    it.copy(boardActionError = "Issue could not be reopened: ${exception.message ?: exception::class.simpleName.orEmpty()}")
+                }
             }
         }
     }
@@ -755,14 +779,7 @@ class MainViewModel internal constructor(
         val selectedId = selectedIdOrNull() ?: return
         scope.launch {
             try {
-                var conference = _state.value.selectedConference
-                configurations.forEach { configuration ->
-                    conference = repository.updateQuestionConfiguration(selectedId, configuration)
-                }
-                conference = repository.reorderQuestionConfigurations(
-                    selectedId,
-                    configurations.sortedBy { it.displayOrder }.map { it.questionId.value },
-                )
+                val conference = repository.updateQuestionConfigurations(selectedId, configurations)
                 updateConferenceState(selectedId) {
                     it.copy(
                         selectedConference = conference,
@@ -951,6 +968,16 @@ class MainViewModel internal constructor(
     private fun loadConference(conferenceId: String) {
         scope.launch {
             loadConferenceNow(conferenceId)
+        }
+    }
+
+    private fun launchWithConferenceActionError(action: suspend () -> Unit) {
+        scope.launch {
+            try {
+                action()
+            } catch (exception: Exception) {
+                _state.update { it.copy(conferenceActionError = exception.readableMessage()) }
+            }
         }
     }
 
