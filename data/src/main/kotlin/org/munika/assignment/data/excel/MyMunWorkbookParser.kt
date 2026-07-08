@@ -176,7 +176,7 @@ class MyMunWorkbookParser {
                 nationality = row.text(headers, DelegateNationality).trimToNull(),
                 dateOfBirth = row.date(headers, DelegateDateOfBirth, sheet.sheetName, issues),
                 delegationName = row.text(headers, DelegateDelegation).trimToNull(),
-                isHeadDelegate = row.text(headers, DelegateHeadDelegate).trimToNull() != null,
+                isHeadDelegate = row.text(headers, DelegateHeadDelegate).trimToNull().equals("Head Delegate", ignoreCase = true),
                 mymunAssignedPositionName = row.text(headers, DelegateAssignedPosition).trimToNull(),
                 mymunAssignedCommitteeName = row.text(headers, DelegateCommittee).trimToNull(),
             )

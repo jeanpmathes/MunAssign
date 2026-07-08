@@ -236,4 +236,57 @@ class MyMunWorkbookParserTest {
         assertEquals("Delegates", issue.location?.sheetName)
         assertTrue("Why this committee?" in issue.message)
     }
+
+    @Test
+    fun `head delegate column only recognizes the exact marker value`() {
+        val workbookBytes = ByteArrayOutputStream().use { output ->
+            XSSFWorkbook().use { workbook ->
+                val countries = workbook.createSheet("Countries")
+                countries.createRow(0).apply {
+                    createCell(0).setCellValue("Committee Name")
+                    createCell(1).setCellValue("Member Name")
+                    createCell(2).setCellValue("Delegation Name")
+                    createCell(3).setCellValue("Delegates")
+                }
+                countries.createRow(1).apply {
+                    createCell(0).setCellValue("GA")
+                    createCell(1).setCellValue("France")
+                }
+
+                val delegates = workbook.createSheet("Delegates")
+                delegates.createRow(0).apply {
+                    createCell(0).setCellValue("First Name")
+                    createCell(1).setCellValue("Last Name")
+                    createCell(2).setCellValue("Email")
+                    createCell(3).setCellValue("Fee Paid")
+                    createCell(4).setCellValue("Head Delegate/Faculty Advisor")
+                }
+                delegates.createRow(1).apply {
+                    createCell(0).setCellValue("Alex")
+                    createCell(1).setCellValue("Kim")
+                    createCell(2).setCellValue("alex@example.test")
+                    createCell(3).setCellValue("yes")
+                    createCell(4).setCellValue("Faculty Advisor")
+                }
+                delegates.createRow(2).apply {
+                    createCell(0).setCellValue("Sam")
+                    createCell(1).setCellValue("Lee")
+                    createCell(2).setCellValue("sam@example.test")
+                    createCell(3).setCellValue("yes")
+                    createCell(4).setCellValue("Head Delegate")
+                }
+
+                workbook.write(output)
+            }
+            output.toByteArray()
+        }
+
+        val snapshot = parser.parse(ByteArrayInputStream(workbookBytes), "head-delegate.xlsx")
+
+        assertTrue(snapshot.issues.none { it.severity == MymunValidationSeverity.Error }, snapshot.issues.joinToString("\n") { it.message })
+        val facultyAdvisor = snapshot.delegates.single { it.firstName == "Alex" }
+        val headDelegate = snapshot.delegates.single { it.firstName == "Sam" }
+        assertTrue(!facultyAdvisor.isHeadDelegate)
+        assertTrue(headDelegate.isHeadDelegate)
+    }
 }
