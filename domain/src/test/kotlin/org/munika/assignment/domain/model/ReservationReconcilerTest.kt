@@ -85,6 +85,34 @@ class ReservationReconcilerTest {
     }
 
     @Test
+    fun `delegation auto links checked-in delegates the same as accepted`() {
+        val fixture = fixture()
+        val delegation = fixture.delegation()
+        val checkedIn = fixture.delegate(
+            id = "checked-in",
+            delegation = delegation,
+            applicationStatus = "Checked In",
+            submittedAt = Instant.ofEpochMilli(1),
+        )
+        val reservation = fixture.reservation(
+            id = "reservation",
+            highSchoolCount = 1,
+            universityCount = 0,
+            delegation = delegation,
+        )
+
+        val result = ReservationReconciler.reconcile(
+            conference = fixture.conference,
+            existingLinks = emptyList(),
+            now = Later,
+            idFactory = fixture.idFactory("auto-"),
+        )
+
+        assertEquals(listOf(checkedIn.id), result.links.map { it.delegate.id })
+        assertEquals(1, reservation.usedHighSchoolCount)
+    }
+
+    @Test
     fun `delegation auto links multiple high school and university delegates in separate buckets`() {
         val fixture = fixture()
         val delegation = fixture.delegation()

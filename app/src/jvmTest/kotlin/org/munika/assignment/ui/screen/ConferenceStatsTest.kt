@@ -62,6 +62,21 @@ class ConferenceStatsTest {
     }
 
     @Test
+    fun `acceptance capacity counts checked-in delegates the same as accepted`() {
+        val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val universityCommittee = committee(conference, "uni", isHighSchool = false, positionCount = 3)
+        conference.committees += universityCommittee
+        conference.delegates += listOf(
+            delegate(conference, "uni-accepted", isHighSchool = false, status = "Accepted", paymentStatus = PaymentStatus.Paid),
+            delegate(conference, "uni-checked-in", isHighSchool = false, status = "Checked In", paymentStatus = PaymentStatus.Paid),
+        )
+
+        val capacity = conference.toAcceptanceCapacityUiState()
+
+        assertEquals(1, capacity.universityCount)
+    }
+
+    @Test
     fun `acceptance capacity counts mapped slots by mapped target mode`() {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val target = committee(conference, "target", isHighSchool = true, positionCount = 1)

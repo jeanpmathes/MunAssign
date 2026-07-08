@@ -70,6 +70,7 @@ import org.munika.assignment.domain.model.AssignmentSource
 import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.HighSchoolerAnswerMapping
+import org.munika.assignment.domain.model.isUsableApplicationStatus
 import org.munika.assignment.domain.model.LanguageLevelAnswerMapping
 import org.munika.assignment.domain.model.MinimumSentenceCount
 import org.munika.assignment.domain.model.MinimumTextLength
@@ -353,8 +354,8 @@ class ConferenceRepositoryImpl(
         require(delegate[DelegateTable.paymentStatus] == PaymentStatus.Paid.name) {
             "Only paid delegates can be manually assigned."
         }
-        require(delegate[DelegateTable.applicationStatus].isAcceptedOrAssigned()) {
-            "Only accepted or assigned delegates can be manually assigned."
+        require(isUsableApplicationStatus(delegate[DelegateTable.applicationStatus])) {
+            "Only accepted, assigned, or checked-in delegates can be manually assigned."
         }
 
         val existingAssignment = SlotTable.selectAll()
@@ -2234,9 +2235,4 @@ class ConferenceRepositoryImpl(
         }
     }
 
-    private fun String?.isAcceptedOrAssigned(): Boolean {
-        val normalized = this?.trim() ?: return false
-        return normalized.equals("Accepted", ignoreCase = true) ||
-            normalized.equals("Assigned", ignoreCase = true)
-    }
 }

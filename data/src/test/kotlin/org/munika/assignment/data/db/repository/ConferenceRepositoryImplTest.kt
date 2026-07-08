@@ -739,6 +739,31 @@ class ConferenceRepositoryImplTest {
     }
 
     @Test
+    fun `manual assignment succeeds for a checked-in delegate`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-manual-assign-checked-in").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        assertTrue(
+            repository.applyMymunUpdateSnapshot(
+                conference.id.value,
+                snapshotWithAssignments(
+                    delegates = listOf(delegate(applicationStatus = "Checked In")),
+                    confirmedAssignments = emptyList(),
+                ),
+            ).success,
+        )
+        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val delegate = loaded.delegates.single()
+        val slot = loaded.openSlots.first()
+
+        val updated = repository.assignDelegateToSlot(conference.id.value, slot.id.value, delegate.id.value, moveExistingPending = false)
+
+        assertEquals(delegate.id, updated.pendingSlots.single().delegate?.id)
+    }
+
+    @Test
     fun `clearing pending slot persists and frees delegate`() = runBlocking {
         val dbPath = Files.createTempDirectory("munassign-clear-pending").resolve("data.db")
         val database = DatabaseFactory.connect(dbPath)

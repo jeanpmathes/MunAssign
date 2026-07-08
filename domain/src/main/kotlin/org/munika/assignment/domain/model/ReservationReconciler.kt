@@ -116,15 +116,9 @@ object ReservationReconciler {
             .filter { it.id !in consumedDelegateIds }
             .filter { it.active }
             .filter { it.paymentStatus == PaymentStatus.Paid }
-            .filter { it.profile.applicationStatus.isAcceptedOrAssigned() }
+            .filter { it.profile.isUsableForAssignment }
             .sortedWith(EligibleDelegateComparator)
             .toList()
-
-    private fun String?.isAcceptedOrAssigned(): Boolean {
-        val normalized = this?.trim() ?: return false
-        return normalized.equals("Accepted", ignoreCase = true) ||
-            normalized.equals("Assigned", ignoreCase = true)
-    }
 
     private val EligibleDelegateComparator = compareBy<Delegate>(
         { it.submittedAt == null },

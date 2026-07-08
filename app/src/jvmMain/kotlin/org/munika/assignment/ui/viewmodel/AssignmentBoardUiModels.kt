@@ -264,13 +264,7 @@ private fun Slot.toBoardUiState(): SlotBoardUiState =
 private fun Delegate.visibleOnAssignmentBoard(): Boolean =
     active &&
         paymentStatus == PaymentStatus.Paid &&
-        profile.applicationStatus.isAcceptedOrAssigned()
-
-private fun String?.isAcceptedOrAssigned(): Boolean {
-    val normalized = this?.trim() ?: return false
-    return normalized.equals("Accepted", ignoreCase = true) ||
-        normalized.equals("Assigned", ignoreCase = true)
-}
+        profile.isUsableForAssignment
 
 private fun Delegate.confirmedAssignmentLabel(): String? {
     val assignedPosition = currentPosition ?: return null

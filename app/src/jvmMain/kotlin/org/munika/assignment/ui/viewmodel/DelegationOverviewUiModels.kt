@@ -59,7 +59,7 @@ private fun Delegation.toOverviewRowUiState(conference: Conference): DelegationO
             .sortedBy { it.name }
             .map { it.toDelegationReservationUiState() },
         acceptedDelegates = delegates
-            .filter { it.profile.applicationStatus.isAcceptedOrAssigned() }
+            .filter { it.profile.isUsableForAssignment }
             .sortedBy { it.displayName }
             .map { it.toDelegationDelegateUiState() },
         submittedDelegates = delegates
@@ -90,13 +90,7 @@ private fun Delegate.toDelegationDelegateUiState(): DelegationDelegateUiState =
 private fun Delegate.isActivePaidAcceptedOrAssigned(): Boolean =
     active &&
         paymentStatus == PaymentStatus.Paid &&
-        profile.applicationStatus.isAcceptedOrAssigned()
-
-private fun String?.isAcceptedOrAssigned(): Boolean {
-    val normalized = this?.trim() ?: return false
-    return normalized.equals("Accepted", ignoreCase = true) ||
-        normalized.equals("Assigned", ignoreCase = true)
-}
+        profile.isUsableForAssignment
 
 private fun String?.isSubmitted(): Boolean =
     this?.trim()?.equals("Submitted", ignoreCase = true) == true

@@ -1318,7 +1318,4 @@ private fun SnapshotStateList<Conference>.move(from: Int, to: Int) {
     add(to, item)
 }
 
-private fun Delegate.hasActionableApplicationStatus(): Boolean {
-    val normalizedStatus = profile.applicationStatus?.trim()?.lowercase().orEmpty()
-    return normalizedStatus == "accepted" || normalizedStatus == "assigned"
-}
+private fun Delegate.hasActionableApplicationStatus(): Boolean = profile.isUsableForAssignment
