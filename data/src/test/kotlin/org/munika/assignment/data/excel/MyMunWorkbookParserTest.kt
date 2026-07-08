@@ -139,4 +139,51 @@ class MyMunWorkbookParserTest {
         assertEquals(2, issue.location?.rowNumber)
         assertEquals("Date of Birth", issue.location?.columnName)
     }
+
+    @Test
+    fun `duplicate question columns become a blocking validation issue`() {
+        val workbookBytes = ByteArrayOutputStream().use { output ->
+            XSSFWorkbook().use { workbook ->
+                val countries = workbook.createSheet("Countries")
+                countries.createRow(0).apply {
+                    createCell(0).setCellValue("Committee Name")
+                    createCell(1).setCellValue("Member Name")
+                    createCell(2).setCellValue("Delegation Name")
+                    createCell(3).setCellValue("Delegates")
+                }
+                countries.createRow(1).apply {
+                    createCell(0).setCellValue("GA")
+                    createCell(1).setCellValue("France")
+                }
+
+                val delegates = workbook.createSheet("Delegates")
+                delegates.createRow(0).apply {
+                    createCell(0).setCellValue("First Name")
+                    createCell(1).setCellValue("Last Name")
+                    createCell(2).setCellValue("Email")
+                    createCell(3).setCellValue("Fee Paid")
+                    createCell(4).setCellValue("Question: Why this committee?")
+                    createCell(5).setCellValue("Question:  Why this committee?  ")
+                }
+                delegates.createRow(1).apply {
+                    createCell(0).setCellValue("Alex")
+                    createCell(1).setCellValue("Kim")
+                    createCell(2).setCellValue("alex@example.test")
+                    createCell(3).setCellValue("yes")
+                    createCell(4).setCellValue("Because.")
+                    createCell(5).setCellValue("Because.")
+                }
+
+                workbook.write(output)
+            }
+            output.toByteArray()
+        }
+
+        val snapshot = parser.parse(ByteArrayInputStream(workbookBytes), "duplicate-question.xlsx")
+
+        val issue = snapshot.issues.single { it.code == "duplicate_question_column" }
+        assertEquals(MymunValidationSeverity.Error, issue.severity)
+        assertEquals("Delegates", issue.location?.sheetName)
+        assertTrue("Why this committee?" in issue.message)
+    }
 }

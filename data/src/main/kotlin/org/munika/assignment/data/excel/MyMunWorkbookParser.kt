@@ -124,6 +124,7 @@ class MyMunWorkbookParser {
                 questionText = header,
             )
         }
+        issues += duplicateQuestionColumnIssues(questionColumns)
         val preferenceColumns = headers.orderedHeaders.mapNotNull { header ->
             val rank = PreferenceHeader.matchEntire(header)?.groupValues?.get(1)?.toIntOrNull()
             if (rank == null) null else PreferenceColumn(header, rank)
@@ -274,6 +275,21 @@ class MyMunWorkbookParser {
                 location = CellLocation(DelegatesSheetName, duplicateRows.first().rowNumber, 1, DelegateFirstName),
             )
         }
+
+    private fun duplicateQuestionColumnIssues(questionColumns: List<MymunQuestionColumn>): List<MymunValidationIssue> =
+        questionColumns
+            .groupBy { normalizeHeader(it.questionText) }
+            .values
+            .filter { it.size > 1 }
+            .map { duplicates ->
+                MymunValidationIssue(
+                    severity = MymunValidationSeverity.Error,
+                    code = "duplicate_question_column",
+                    message = "${duplicates.first().sheetName} has more than one question column with the same text: " +
+                        duplicates.first().questionText,
+                    location = CellLocation(duplicates.first().sheetName, 1, 1, duplicates.first().questionText),
+                )
+            }
 
     private fun headerMap(sheet: Sheet): HeaderMap {
         val headerRow = sheet.getRow(sheet.firstRowNum) ?: return HeaderMap(emptyMap(), emptyList())
