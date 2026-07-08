@@ -30,6 +30,7 @@ class Delegation(
 
     fun addDelegate(delegate: Delegate) {
         require(delegate.conference === conference) { "Delegate must belong to the delegation conference." }
+        delegate.delegation?.takeIf { it !== this }?.delegates?.remove(delegate)
         if (delegate !in delegates) {
             delegates += delegate
         }

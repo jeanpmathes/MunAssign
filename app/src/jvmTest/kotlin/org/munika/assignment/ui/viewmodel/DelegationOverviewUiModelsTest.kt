@@ -136,7 +136,7 @@ class DelegationOverviewUiModelsTest {
         delegate: Delegate,
         source: ReservationLinkSource,
     ) {
-        reservation.delegateLinks += ReservationDelegateLink(
+        val reservationLink = ReservationDelegateLink(
             id = ReservationDelegateLinkId("${reservation.id.value}-${delegate.id.value}"),
             reservation = reservation,
             delegate = delegate,
@@ -144,5 +144,7 @@ class DelegationOverviewUiModelsTest {
             createdAt = Instant.EPOCH,
             updatedAt = Instant.EPOCH,
         )
+        reservation.delegateLinks += reservationLink
+        reservationLink.attachToDelegate()
     }
 }

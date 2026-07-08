@@ -181,7 +181,7 @@ class DelegateDetailUiModelsTest {
             updatedAt = Instant.EPOCH,
         )
         board.conference.reservations += reservation
-        reservation.delegateLinks += ReservationDelegateLink(
+        val link = ReservationDelegateLink(
             id = ReservationDelegateLinkId("reservation-link"),
             reservation = reservation,
             delegate = board.delegate,
@@ -189,6 +189,8 @@ class DelegateDetailUiModelsTest {
             createdAt = Instant.EPOCH,
             updatedAt = Instant.EPOCH,
         )
+        reservation.delegateLinks += link
+        link.attachToDelegate()
 
         val detail = requireNotNull(board.conference.toDelegateDetailUiState(board.delegate.id.value))
 

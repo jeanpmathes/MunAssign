@@ -258,6 +258,7 @@ object ConferenceGraphMapper {
                 updatedAt = row.updatedAtEpochMillis.toInstant(),
             )
             reservation.delegateLinks += link
+            link.attachToDelegate()
         }
 
         rows.slots.forEach { row ->

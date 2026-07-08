@@ -20,6 +20,10 @@ class ReservationDelegateLink(
         require(reservation.conference === delegate.conference) {
             "Reservation and delegate must belong to the same conference."
         }
+    }
+
+    /** Marks this link as the delegate's current reservation link. Callers must also add it to [reservation]'s links. */
+    fun attachToDelegate() {
         delegate.reservationLink = this
     }
 }
