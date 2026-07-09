@@ -15,9 +15,19 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import org.munika.assignment.data.db.ConferenceTransferService
 import org.munika.assignment.data.excel.MymunWorkbookUpdater
+import org.munika.assignment.domain.model.AnswerIssueResolutionId
+import org.munika.assignment.domain.model.CommitteeId
 import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.Conference
+import org.munika.assignment.domain.model.ConferenceId
+import org.munika.assignment.domain.model.DelegateCommentId
+import org.munika.assignment.domain.model.DelegateId
+import org.munika.assignment.domain.model.DelegationId
+import org.munika.assignment.domain.model.PositionId
 import org.munika.assignment.domain.model.QuestionConfiguration
+import org.munika.assignment.domain.model.QuestionId
+import org.munika.assignment.domain.model.ReservationId
+import org.munika.assignment.domain.model.SlotId
 import org.munika.assignment.domain.repository.ConferenceRepository
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
 import org.munika.assignment.domain.repository.UpdateResult
@@ -163,7 +173,7 @@ class MainViewModel internal constructor(
             return false
         }
         launchWithConferenceActionError {
-            val renamed = repository.renameConference(conferenceId, newName.trim())
+            val renamed = repository.renameConference(ConferenceId(conferenceId), newName.trim())
             val conferences = repository.listConferences()
             _state.update { current ->
                 current.copy(
@@ -179,14 +189,14 @@ class MainViewModel internal constructor(
     fun deleteConference(conferenceId: String) {
         if (_state.value.loading) return
         launchWithConferenceActionError {
-            repository.deleteConference(conferenceId)
+            repository.deleteConference(ConferenceId(conferenceId))
             val conferences = repository.listConferences()
             val previousSelectedId = _state.value.selectedConferenceId
             val nextId = when {
                 previousSelectedId != conferenceId -> previousSelectedId?.takeIf { selected -> conferences.any { it.id.value == selected } }
                 else -> conferences.firstOrNull()?.id?.value
             }
-            val nextConference = nextId?.let { repository.getConference(it) }
+            val nextConference = nextId?.let { repository.getConference(ConferenceId(it)) }
             _state.update { current ->
                 if (current.selectedConferenceId != previousSelectedId) {
                     current.copy(conferences = conferences, conferenceActionError = null)
@@ -213,7 +223,7 @@ class MainViewModel internal constructor(
             return false
         }
         launchWithConferenceActionError {
-            repository.reorderConferences(conferenceIdsInOrder)
+            repository.reorderConferences(conferenceIdsInOrder.map(::ConferenceId))
             val conferences = repository.listConferences()
             _state.update { it.copy(conferences = conferences, conferenceActionError = null) }
         }
@@ -346,7 +356,7 @@ class MainViewModel internal constructor(
         scope.launch {
             updateConferenceState(selectedId) { it.copy(loading = true, boardActionError = null) }
             try {
-                val conference = repository.setCommitteeSlotsPerPosition(selectedId, committeeId, slotsPerPosition)
+                val conference = repository.setCommitteeSlotsPerPosition(ConferenceId(selectedId), CommitteeId(committeeId), slotsPerPosition)
                 updateConferenceState(selectedId) {
                     it.copy(
                         selectedConference = conference,
@@ -384,7 +394,7 @@ class MainViewModel internal constructor(
         scope.launch {
             updateConferenceState(selectedId) { it.copy(loading = true, boardActionError = null) }
             try {
-                val conference = repository.setCommitteeMode(selectedId, committeeId, mode)
+                val conference = repository.setCommitteeMode(ConferenceId(selectedId), CommitteeId(committeeId), mode)
                 updateConferenceState(selectedId) {
                     it.copy(
                         selectedConference = conference,
@@ -415,7 +425,11 @@ class MainViewModel internal constructor(
         scope.launch {
             updateConferenceState(selectedId) { it.copy(loading = true, boardActionError = null) }
             try {
-                val conference = repository.setPositionMappedCommittee(selectedId, positionId, mappedCommitteeId)
+                val conference = repository.setPositionMappedCommittee(
+                    ConferenceId(selectedId),
+                    PositionId(positionId),
+                    mappedCommitteeId?.let(::CommitteeId),
+                )
                 updateConferenceState(selectedId) {
                     it.copy(
                         selectedConference = conference,
@@ -447,9 +461,9 @@ class MainViewModel internal constructor(
             updateConferenceState(selectedId) { it.copy(loading = true, boardActionError = null) }
             try {
                 val conference = repository.assignDelegateToSlot(
-                    conferenceId = selectedId,
-                    slotId = slotId,
-                    delegateId = delegateId,
+                    conferenceId = ConferenceId(selectedId),
+                    slotId = SlotId(slotId),
+                    delegateId = DelegateId(delegateId),
                     moveExistingPending = moveExistingPending,
                 )
                 updateConferenceState(selectedId) {
@@ -482,7 +496,7 @@ class MainViewModel internal constructor(
         scope.launch {
             updateConferenceState(selectedId) { it.copy(loading = true, boardActionError = null) }
             try {
-                val conference = repository.clearPendingSlot(selectedId, slotId)
+                val conference = repository.clearPendingSlot(ConferenceId(selectedId), SlotId(slotId))
                 updateConferenceState(selectedId) {
                     it.copy(
                         selectedConference = conference,
@@ -513,7 +527,7 @@ class MainViewModel internal constructor(
         scope.launch {
             updateConferenceState(selectedId) { it.copy(loading = true, boardActionError = null) }
             try {
-                val conference = repository.deactivateDelegate(selectedId, delegateId)
+                val conference = repository.deactivateDelegate(ConferenceId(selectedId), DelegateId(delegateId))
                 updateConferenceState(selectedId) {
                     it.copy(
                         selectedConference = conference,
@@ -544,7 +558,7 @@ class MainViewModel internal constructor(
         scope.launch {
             updateConferenceState(selectedId) { it.copy(loading = true, boardActionError = null) }
             try {
-                val conference = repository.reactivateDelegate(selectedId, delegateId)
+                val conference = repository.reactivateDelegate(ConferenceId(selectedId), DelegateId(delegateId))
                 updateConferenceState(selectedId) {
                     it.copy(
                         selectedConference = conference,
@@ -579,11 +593,11 @@ class MainViewModel internal constructor(
     ): Unit {
         updateReservationState(conferenceId) {
             repository.createReservation(
-                conferenceId = conferenceId,
+                conferenceId = ConferenceId(conferenceId),
                 name = name,
                 highSchoolCount = highSchoolCount,
                 universityCount = universityCount,
-                delegationId = delegationId,
+                delegationId = delegationId?.let(::DelegationId),
             )
         }
     }
@@ -598,12 +612,12 @@ class MainViewModel internal constructor(
     ): Unit {
         updateReservationState(conferenceId) {
             repository.updateReservation(
-                conferenceId = conferenceId,
-                reservationId = reservationId,
+                conferenceId = ConferenceId(conferenceId),
+                reservationId = ReservationId(reservationId),
                 name = name,
                 highSchoolCount = highSchoolCount,
                 universityCount = universityCount,
-                delegationId = delegationId,
+                delegationId = delegationId?.let(::DelegationId),
             )
         }
     }
@@ -611,8 +625,8 @@ class MainViewModel internal constructor(
     fun deleteReservation(conferenceId: String, reservationId: String): Unit {
         updateReservationState(conferenceId) {
             repository.deleteReservation(
-                conferenceId = conferenceId,
-                reservationId = reservationId,
+                conferenceId = ConferenceId(conferenceId),
+                reservationId = ReservationId(reservationId),
             )
         }
     }
@@ -620,9 +634,9 @@ class MainViewModel internal constructor(
     fun assignDelegateReservation(conferenceId: String, delegateId: String, reservationId: String): Unit {
         updateReservationState(conferenceId, ReservationActionSurface.DelegateDetail) {
             repository.assignDelegateReservation(
-                conferenceId = conferenceId,
-                delegateId = delegateId,
-                reservationId = reservationId,
+                conferenceId = ConferenceId(conferenceId),
+                delegateId = DelegateId(delegateId),
+                reservationId = ReservationId(reservationId),
             )
         }
     }
@@ -630,8 +644,8 @@ class MainViewModel internal constructor(
     fun removeDelegateReservation(conferenceId: String, delegateId: String): Unit {
         updateReservationState(conferenceId, ReservationActionSurface.DelegateDetail) {
             repository.removeDelegateReservation(
-                conferenceId = conferenceId,
-                delegateId = delegateId,
+                conferenceId = ConferenceId(conferenceId),
+                delegateId = DelegateId(delegateId),
             )
         }
     }
@@ -644,7 +658,7 @@ class MainViewModel internal constructor(
         val selectedId = selectedIdOrNull() ?: return
         scope.launch {
             try {
-                val conference = repository.addDelegateComment(selectedId, delegateId, body)
+                val conference = repository.addDelegateComment(ConferenceId(selectedId), DelegateId(delegateId), body)
                 updateConferenceState(selectedId) { it.copy(selectedConference = conference, boardActionError = null) }
             } catch (exception: IllegalArgumentException) {
                 updateConferenceState(selectedId) { it.copy(boardActionError = exception.message ?: "Comment could not be added.") }
@@ -660,7 +674,7 @@ class MainViewModel internal constructor(
         val selectedId = selectedIdOrNull() ?: return
         scope.launch {
             try {
-                val conference = repository.updateDelegateComment(selectedId, commentId, body)
+                val conference = repository.updateDelegateComment(ConferenceId(selectedId), DelegateCommentId(commentId), body)
                 updateConferenceState(selectedId) { it.copy(selectedConference = conference, boardActionError = null) }
             } catch (exception: IllegalArgumentException) {
                 updateConferenceState(selectedId) { it.copy(boardActionError = exception.message ?: "Comment could not be updated.") }
@@ -676,7 +690,7 @@ class MainViewModel internal constructor(
         val selectedId = selectedIdOrNull() ?: return
         scope.launch {
             try {
-                val conference = repository.deleteDelegateComment(selectedId, commentId)
+                val conference = repository.deleteDelegateComment(ConferenceId(selectedId), DelegateCommentId(commentId))
                 updateConferenceState(selectedId) { it.copy(selectedConference = conference, boardActionError = null) }
             } catch (exception: IllegalArgumentException) {
                 updateConferenceState(selectedId) { it.copy(boardActionError = exception.message ?: "Comment could not be removed.") }
@@ -698,9 +712,9 @@ class MainViewModel internal constructor(
         scope.launch {
             try {
                 val conference = repository.resolveAnswerIssue(
-                    conferenceId = selectedId,
-                    delegateId = delegateId,
-                    questionId = questionId,
+                    conferenceId = ConferenceId(selectedId),
+                    delegateId = DelegateId(delegateId),
+                    questionId = questionId?.let(::QuestionId),
                     issueKey = issueKey,
                     justification = justification,
                 )
@@ -720,8 +734,8 @@ class MainViewModel internal constructor(
         scope.launch {
             try {
                 val conference = repository.updateAnswerIssueResolutionJustification(
-                    conferenceId = selectedId,
-                    resolutionId = resolutionId,
+                    conferenceId = ConferenceId(selectedId),
+                    resolutionId = AnswerIssueResolutionId(resolutionId),
                     justification = justification,
                 )
                 updateConferenceState(selectedId) { it.copy(selectedConference = conference, boardActionError = null) }
@@ -739,7 +753,7 @@ class MainViewModel internal constructor(
         val selectedId = selectedIdOrNull() ?: return
         scope.launch {
             try {
-                val conference = repository.unresolveAnswerIssue(selectedId, resolutionId)
+                val conference = repository.unresolveAnswerIssue(ConferenceId(selectedId), AnswerIssueResolutionId(resolutionId))
                 updateConferenceState(selectedId) { it.copy(selectedConference = conference, boardActionError = null) }
             } catch (exception: IllegalArgumentException) {
                 updateConferenceState(selectedId) { it.copy(boardActionError = exception.message ?: "Issue could not be reopened.") }
@@ -755,7 +769,7 @@ class MainViewModel internal constructor(
         val selectedId = selectedIdOrNull() ?: return
         scope.launch {
             try {
-                val conference = repository.updateQuestionConfiguration(selectedId, configuration)
+                val conference = repository.updateQuestionConfiguration(ConferenceId(selectedId), configuration)
                 updateConferenceState(selectedId) {
                     it.copy(
                         selectedConference = conference,
@@ -781,7 +795,7 @@ class MainViewModel internal constructor(
         val selectedId = selectedIdOrNull() ?: return
         scope.launch {
             try {
-                val conference = repository.updateQuestionConfigurations(selectedId, configurations)
+                val conference = repository.updateQuestionConfigurations(ConferenceId(selectedId), configurations)
                 updateConferenceState(selectedId) {
                     it.copy(
                         selectedConference = conference,
@@ -813,7 +827,7 @@ class MainViewModel internal constructor(
             updateConferenceState(selectedId) { it.copy(loading = true, workbookUpdateNotice = null) }
             try {
                 val result = workbookUpdater.applyUpdate(selectedId, path)
-                val conference = repository.getConference(selectedId)
+                val conference = repository.getConference(ConferenceId(selectedId))
                 updateConferenceState(selectedId) {
                     it.copy(
                         selectedConference = conference,
@@ -877,7 +891,7 @@ class MainViewModel internal constructor(
             try {
                 val importedId = conferenceTransfer.importConferenceAsNew(sourcePath)
                 val conferences = repository.listConferences()
-                val imported = repository.getConference(importedId)
+                val imported = repository.getConference(ConferenceId(importedId))
                 _state.update {
                     it.copy(
                         conferences = conferences,
@@ -907,7 +921,7 @@ class MainViewModel internal constructor(
             try {
                 val replacedId = conferenceTransfer.replaceConference(conferenceId, sourcePath)
                 val conferences = repository.listConferences()
-                val replaced = repository.getConference(replacedId)
+                val replaced = repository.getConference(ConferenceId(replacedId))
                 _state.update {
                     it.copy(
                         conferences = conferences,
@@ -984,7 +998,7 @@ class MainViewModel internal constructor(
     }
 
     private suspend fun loadConferenceNow(conferenceId: String) {
-        val conference = repository.getConference(conferenceId)
+        val conference = repository.getConference(ConferenceId(conferenceId))
         updateConferenceState(conferenceId) { it.copy(selectedConference = conference) }
     }
 
@@ -996,7 +1010,7 @@ class MainViewModel internal constructor(
     ) {
         try {
             val fullConferences = repository.listConferences()
-                .mapNotNull { conference -> repository.getConference(conference.id.value) }
+                .mapNotNull { conference -> repository.getConference(conference.id) }
             val result = markdownSafetyExport.exportAll(fullConferences, trigger)
             if (showNotice && result.hasFailures) {
                 val count = result.failures.size

@@ -68,8 +68,14 @@ import org.munika.assignment.data.excel.MymunDelegationRow
 import org.munika.assignment.data.excel.MymunValidationSeverity
 import org.munika.assignment.data.excel.MymunWorkbookSnapshot
 import org.munika.assignment.domain.model.AssignmentSource
+import org.munika.assignment.domain.model.AnswerIssueResolutionId
+import org.munika.assignment.domain.model.CommitteeId
 import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.Conference
+import org.munika.assignment.domain.model.ConferenceId
+import org.munika.assignment.domain.model.DelegateCommentId
+import org.munika.assignment.domain.model.DelegateId
+import org.munika.assignment.domain.model.DelegationId
 import org.munika.assignment.domain.model.HighSchoolerAnswerMapping
 import org.munika.assignment.domain.model.isUsableApplicationStatus
 import org.munika.assignment.domain.model.LanguageLevelAnswerMapping
@@ -79,12 +85,16 @@ import org.munika.assignment.domain.model.MunExperienceAnswerMapping
 import org.munika.assignment.domain.model.NoticeWhenAffirmative
 import org.munika.assignment.domain.model.NoticeWhenNonBlank
 import org.munika.assignment.domain.model.PaymentStatus
+import org.munika.assignment.domain.model.PositionId
 import org.munika.assignment.domain.model.QuestionConfiguration
+import org.munika.assignment.domain.model.QuestionId
 import org.munika.assignment.domain.model.ReservationDelegateLink
 import org.munika.assignment.domain.model.ReservationDelegateLinkId
+import org.munika.assignment.domain.model.ReservationId
 import org.munika.assignment.domain.model.ReservationLinkSource
 import org.munika.assignment.domain.model.ReservationReconciler
 import org.munika.assignment.domain.model.RequiredAnswer
+import org.munika.assignment.domain.model.SlotId
 import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
 import org.munika.assignment.domain.model.TypedAnswerMappings
@@ -154,7 +164,8 @@ class ConferenceRepositoryImpl(
         loadConferenceGraph(id)
     }
 
-    override suspend fun renameConference(conferenceId: String, newName: String): Conference = db {
+    override suspend fun renameConference(conferenceId: ConferenceId, newName: String): Conference = db {
+        val conferenceId = conferenceId.value
         ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
             it[ConferenceTable.name] = newName.trim()
             it[ConferenceTable.updatedAtEpochMillis] = Instant.now().toEpochMilli()
@@ -162,15 +173,17 @@ class ConferenceRepositoryImpl(
         loadConferenceGraph(conferenceId)
     }
 
-    override suspend fun deleteConference(conferenceId: String) {
+    override suspend fun deleteConference(conferenceId: ConferenceId) {
         db {
+            val conferenceId = conferenceId.value
             ConferenceTable.deleteWhere { ConferenceTable.id eq conferenceId }
             normalizeConferenceDisplayOrder()
         }
     }
 
-    override suspend fun reorderConferences(conferenceIdsInOrder: List<String>) {
+    override suspend fun reorderConferences(conferenceIdsInOrder: List<ConferenceId>) {
         db {
+            val conferenceIdsInOrder = conferenceIdsInOrder.map { it.value }
             val knownIds = ConferenceTable.selectAll()
                 .map { it[ConferenceTable.id] }
                 .toSet()
@@ -187,10 +200,12 @@ class ConferenceRepositoryImpl(
     }
 
     override suspend fun setCommitteeSlotsPerPosition(
-        conferenceId: String,
-        committeeId: String,
+        conferenceId: ConferenceId,
+        committeeId: CommitteeId,
         slotsPerPosition: Int,
     ): Conference = db {
+        val conferenceId = conferenceId.value
+        val committeeId = committeeId.value
         require(slotsPerPosition >= 1) { "Committee slot count must be at least 1." }
         val committee = requireNotNull(
             CommitteeTable.selectAll()
@@ -242,8 +257,8 @@ class ConferenceRepositoryImpl(
     }
 
     override suspend fun setCommitteeHighSchoolStatus(
-        conferenceId: String,
-        committeeId: String,
+        conferenceId: ConferenceId,
+        committeeId: CommitteeId,
         isHighSchoolCommittee: Boolean,
     ): Conference = setCommitteeMode(
         conferenceId = conferenceId,
@@ -252,10 +267,12 @@ class ConferenceRepositoryImpl(
     )
 
     override suspend fun setCommitteeMode(
-        conferenceId: String,
-        committeeId: String,
+        conferenceId: ConferenceId,
+        committeeId: CommitteeId,
         mode: CommitteeMode,
     ): Conference = db {
+        val conferenceId = conferenceId.value
+        val committeeId = committeeId.value
         val committee = requireCommitteeInConference(conferenceId, committeeId)
         val currentMode = CommitteeMode.valueOf(committee[CommitteeTable.mode])
         if (mode == CommitteeMode.Mapped) {
@@ -290,10 +307,13 @@ class ConferenceRepositoryImpl(
     }
 
     override suspend fun setPositionMappedCommittee(
-        conferenceId: String,
-        positionId: String,
-        mappedCommitteeId: String?,
+        conferenceId: ConferenceId,
+        positionId: PositionId,
+        mappedCommitteeId: CommitteeId?,
     ): Conference = db {
+        val conferenceId = conferenceId.value
+        val positionId = positionId.value
+        val mappedCommitteeId = mappedCommitteeId?.value
         val position = requireNotNull(
             PositionTable.selectAll()
                 .where { (PositionTable.id eq positionId) and (PositionTable.conferenceId eq conferenceId) }
@@ -329,7 +349,8 @@ class ConferenceRepositoryImpl(
         loadConferenceGraph(conferenceId)
     }
 
-    override suspend fun getConference(conferenceId: String): Conference? = db {
+    override suspend fun getConference(conferenceId: ConferenceId): Conference? = db {
+        val conferenceId = conferenceId.value
         if (ConferenceTable.selectAll().where { ConferenceTable.id eq conferenceId }.empty()) {
             return@db null
         }
@@ -337,11 +358,14 @@ class ConferenceRepositoryImpl(
     }
 
     override suspend fun assignDelegateToSlot(
-        conferenceId: String,
-        slotId: String,
-        delegateId: String,
+        conferenceId: ConferenceId,
+        slotId: SlotId,
+        delegateId: DelegateId,
         moveExistingPending: Boolean,
     ): Conference = db {
+        val conferenceId = conferenceId.value
+        val slotId = slotId.value
+        val delegateId = delegateId.value
         val slot = requireSlotInConference(conferenceId, slotId)
         require(slot[SlotTable.assignmentSource] != AssignmentSource.Mymun.name) {
             "Confirmed assignments are controlled by MyMUN updates and cannot be changed in MunAssign."
@@ -408,7 +432,9 @@ class ConferenceRepositoryImpl(
         loadConferenceGraph(conferenceId)
     }
 
-    override suspend fun clearPendingSlot(conferenceId: String, slotId: String): Conference = db {
+    override suspend fun clearPendingSlot(conferenceId: ConferenceId, slotId: SlotId): Conference = db {
+        val conferenceId = conferenceId.value
+        val slotId = slotId.value
         val slot = requireSlotInConference(conferenceId, slotId)
         require(slot[SlotTable.assignmentSource] != AssignmentSource.Mymun.name) {
             "Confirmed assignments are controlled by MyMUN updates and cannot be cleared in MunAssign."
@@ -431,7 +457,9 @@ class ConferenceRepositoryImpl(
         loadConferenceGraph(conferenceId)
     }
 
-    override suspend fun deactivateDelegate(conferenceId: String, delegateId: String): Conference = db {
+    override suspend fun deactivateDelegate(conferenceId: ConferenceId, delegateId: DelegateId): Conference = db {
+        val conferenceId = conferenceId.value
+        val delegateId = delegateId.value
         requireDelegateInConference(conferenceId, delegateId)
         val assignedSlot = SlotTable.selectAll()
             .where { SlotTable.assignedDelegateId eq delegateId }
@@ -455,7 +483,9 @@ class ConferenceRepositoryImpl(
         conference
     }
 
-    override suspend fun reactivateDelegate(conferenceId: String, delegateId: String): Conference = db {
+    override suspend fun reactivateDelegate(conferenceId: ConferenceId, delegateId: DelegateId): Conference = db {
+        val conferenceId = conferenceId.value
+        val delegateId = delegateId.value
         requireDelegateInConference(conferenceId, delegateId)
         val now = Instant.now().toEpochMilli()
         DelegateTable.update({ (DelegateTable.id eq delegateId) and (DelegateTable.conferenceId eq conferenceId) }) {
@@ -470,12 +500,14 @@ class ConferenceRepositoryImpl(
     }
 
     override suspend fun createReservation(
-        conferenceId: String,
+        conferenceId: ConferenceId,
         name: String,
         highSchoolCount: Int,
         universityCount: Int,
-        delegationId: String?,
+        delegationId: DelegationId?,
     ): Conference = db {
+        val conferenceId = conferenceId.value
+        val delegationId = delegationId?.value
         val trimmed = validateReservationInput(conferenceId, name, highSchoolCount, universityCount, delegationId)
         val now = Instant.now().toEpochMilli()
         ReservationTable.insert {
@@ -495,13 +527,16 @@ class ConferenceRepositoryImpl(
     }
 
     override suspend fun updateReservation(
-        conferenceId: String,
-        reservationId: String,
+        conferenceId: ConferenceId,
+        reservationId: ReservationId,
         name: String,
         highSchoolCount: Int,
         universityCount: Int,
-        delegationId: String?,
+        delegationId: DelegationId?,
     ): Conference = db {
+        val conferenceId = conferenceId.value
+        val reservationId = reservationId.value
+        val delegationId = delegationId?.value
         val trimmed = validateReservationInput(conferenceId, name, highSchoolCount, universityCount, delegationId)
         val conference = loadConferenceGraph(conferenceId)
         val reservation = requireNotNull(conference.reservations.find { it.id.value == reservationId }) {
@@ -534,7 +569,9 @@ class ConferenceRepositoryImpl(
         reconcileReservations(conferenceId, now)
     }
 
-    override suspend fun deleteReservation(conferenceId: String, reservationId: String): Conference = db {
+    override suspend fun deleteReservation(conferenceId: ConferenceId, reservationId: ReservationId): Conference = db {
+        val conferenceId = conferenceId.value
+        val reservationId = reservationId.value
         requireReservationInConference(conferenceId, reservationId)
         val now = Instant.now().toEpochMilli()
         ReservationTable.deleteWhere { (ReservationTable.id eq reservationId) and (ReservationTable.conferenceId eq conferenceId) }
@@ -545,10 +582,13 @@ class ConferenceRepositoryImpl(
     }
 
     override suspend fun assignDelegateReservation(
-        conferenceId: String,
-        delegateId: String,
-        reservationId: String,
+        conferenceId: ConferenceId,
+        delegateId: DelegateId,
+        reservationId: ReservationId,
     ): Conference = db {
+        val conferenceId = conferenceId.value
+        val delegateId = delegateId.value
+        val reservationId = reservationId.value
         requireReservationInConference(conferenceId, reservationId)
         val delegateRow = requireDelegateInConference(conferenceId, delegateId)
         require(delegateRow[DelegateTable.active]) { "Inactive delegates cannot consume reservation capacity." }
@@ -587,7 +627,9 @@ class ConferenceRepositoryImpl(
         reconcileReservations(conferenceId, now)
     }
 
-    override suspend fun removeDelegateReservation(conferenceId: String, delegateId: String): Conference = db {
+    override suspend fun removeDelegateReservation(conferenceId: ConferenceId, delegateId: DelegateId): Conference = db {
+        val conferenceId = conferenceId.value
+        val delegateId = delegateId.value
         requireDelegateInConference(conferenceId, delegateId)
         val existingLink = ReservationDelegateLinkTable.selectAll()
             .where { ReservationDelegateLinkTable.delegateId eq delegateId }
@@ -605,7 +647,9 @@ class ConferenceRepositoryImpl(
         reconcileReservations(conferenceId, now)
     }
 
-    override suspend fun addDelegateComment(conferenceId: String, delegateId: String, body: String): Conference = db {
+    override suspend fun addDelegateComment(conferenceId: ConferenceId, delegateId: DelegateId, body: String): Conference = db {
+        val conferenceId = conferenceId.value
+        val delegateId = delegateId.value
         val trimmed = body.trim()
         require(trimmed.isNotBlank()) { "Comment body must not be blank." }
         requireDelegateInConference(conferenceId, delegateId)
@@ -623,7 +667,9 @@ class ConferenceRepositoryImpl(
         loadConferenceGraph(conferenceId)
     }
 
-    override suspend fun updateDelegateComment(conferenceId: String, commentId: String, body: String): Conference = db {
+    override suspend fun updateDelegateComment(conferenceId: ConferenceId, commentId: DelegateCommentId, body: String): Conference = db {
+        val conferenceId = conferenceId.value
+        val commentId = commentId.value
         val trimmed = body.trim()
         require(trimmed.isNotBlank()) { "Comment body must not be blank." }
         requireCommentInConference(conferenceId, commentId)
@@ -638,7 +684,9 @@ class ConferenceRepositoryImpl(
         loadConferenceGraph(conferenceId)
     }
 
-    override suspend fun deleteDelegateComment(conferenceId: String, commentId: String): Conference = db {
+    override suspend fun deleteDelegateComment(conferenceId: ConferenceId, commentId: DelegateCommentId): Conference = db {
+        val conferenceId = conferenceId.value
+        val commentId = commentId.value
         requireCommentInConference(conferenceId, commentId)
         val now = Instant.now().toEpochMilli()
         DelegateCommentTable.deleteWhere { DelegateCommentTable.id eq commentId }
@@ -649,9 +697,10 @@ class ConferenceRepositoryImpl(
     }
 
     override suspend fun updateQuestionConfiguration(
-        conferenceId: String,
+        conferenceId: ConferenceId,
         configuration: QuestionConfiguration,
     ): Conference = db {
+        val conferenceId = conferenceId.value
         applyQuestionConfiguration(conferenceId, configuration)
         ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
             it[updatedAtEpochMillis] = Instant.now().toEpochMilli()
@@ -664,9 +713,10 @@ class ConferenceRepositoryImpl(
      * transaction, so a mid-batch failure leaves no partially-saved configuration.
      */
     override suspend fun updateQuestionConfigurations(
-        conferenceId: String,
+        conferenceId: ConferenceId,
         configurations: List<QuestionConfiguration>,
     ): Conference = db {
+        val conferenceId = conferenceId.value
         configurations.forEach { configuration -> applyQuestionConfiguration(conferenceId, configuration) }
         reorderQuestionConfigurationsInTransaction(
             conferenceId,
@@ -679,9 +729,11 @@ class ConferenceRepositoryImpl(
     }
 
     override suspend fun reorderQuestionConfigurations(
-        conferenceId: String,
-        questionIdsInDisplayOrder: List<String>,
+        conferenceId: ConferenceId,
+        questionIdsInDisplayOrder: List<QuestionId>,
     ): Conference = db {
+        val conferenceId = conferenceId.value
+        val questionIdsInDisplayOrder = questionIdsInDisplayOrder.map { it.value }
         reorderQuestionConfigurationsInTransaction(conferenceId, questionIdsInDisplayOrder)
         ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
             it[updatedAtEpochMillis] = Instant.now().toEpochMilli()
@@ -732,12 +784,15 @@ class ConferenceRepositoryImpl(
     }
 
     override suspend fun resolveAnswerIssue(
-        conferenceId: String,
-        delegateId: String,
-        questionId: String?,
+        conferenceId: ConferenceId,
+        delegateId: DelegateId,
+        questionId: QuestionId?,
         issueKey: String,
         justification: String?,
     ): Conference = db {
+        val conferenceId = conferenceId.value
+        val delegateId = delegateId.value
+        val questionId = questionId?.value
         val conference = loadConferenceGraph(conferenceId)
         val delegate = requireNotNull(conference.delegates.firstOrNull { it.id.value == delegateId }) {
             "Delegate $delegateId does not belong to conference $conferenceId."
@@ -787,10 +842,12 @@ class ConferenceRepositoryImpl(
     }
 
     override suspend fun updateAnswerIssueResolutionJustification(
-        conferenceId: String,
-        resolutionId: String,
+        conferenceId: ConferenceId,
+        resolutionId: AnswerIssueResolutionId,
         justification: String?,
     ): Conference = db {
+        val conferenceId = conferenceId.value
+        val resolutionId = resolutionId.value
         requireAnswerIssueResolutionInConference(conferenceId, resolutionId)
         val trimmedJustification = justification?.trim()?.takeIf { it.isNotBlank() }
         val now = Instant.now().toEpochMilli()
@@ -804,7 +861,9 @@ class ConferenceRepositoryImpl(
         loadConferenceGraph(conferenceId)
     }
 
-    override suspend fun unresolveAnswerIssue(conferenceId: String, resolutionId: String): Conference = db {
+    override suspend fun unresolveAnswerIssue(conferenceId: ConferenceId, resolutionId: AnswerIssueResolutionId): Conference = db {
+        val conferenceId = conferenceId.value
+        val resolutionId = resolutionId.value
         requireAnswerIssueResolutionInConference(conferenceId, resolutionId)
         AnswerIssueResolutionTable.deleteWhere { id eq resolutionId }
         ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {

@@ -1,8 +1,18 @@
 package org.munika.assignment.domain.repository
 
-import org.munika.assignment.domain.model.Conference
+import org.munika.assignment.domain.model.AnswerIssueResolutionId
+import org.munika.assignment.domain.model.CommitteeId
 import org.munika.assignment.domain.model.CommitteeMode
+import org.munika.assignment.domain.model.Conference
+import org.munika.assignment.domain.model.ConferenceId
+import org.munika.assignment.domain.model.DelegateCommentId
+import org.munika.assignment.domain.model.DelegateId
+import org.munika.assignment.domain.model.DelegationId
+import org.munika.assignment.domain.model.PositionId
 import org.munika.assignment.domain.model.QuestionConfiguration
+import org.munika.assignment.domain.model.QuestionId
+import org.munika.assignment.domain.model.ReservationId
+import org.munika.assignment.domain.model.SlotId
 
 /**
  * Persistence boundary for conference aggregates.
@@ -14,11 +24,11 @@ interface ConferenceRepository {
 
     suspend fun createConference(name: String): Conference
 
-    suspend fun renameConference(conferenceId: String, newName: String): Conference
+    suspend fun renameConference(conferenceId: ConferenceId, newName: String): Conference
 
-    suspend fun deleteConference(conferenceId: String)
+    suspend fun deleteConference(conferenceId: ConferenceId)
 
-    suspend fun reorderConferences(conferenceIdsInOrder: List<String>)
+    suspend fun reorderConferences(conferenceIdsInOrder: List<ConferenceId>)
 
     /**
      * Sets the uniform slot count for every position in one committee.
@@ -27,8 +37,8 @@ interface ConferenceRepository {
      * reductions that would remove occupied slots.
      */
     suspend fun setCommitteeSlotsPerPosition(
-        conferenceId: String,
-        committeeId: String,
+        conferenceId: ConferenceId,
+        committeeId: CommitteeId,
         slotsPerPosition: Int,
     ): Conference
 
@@ -39,8 +49,8 @@ interface ConferenceRepository {
      * updates for retained committees.
      */
     suspend fun setCommitteeHighSchoolStatus(
-        conferenceId: String,
-        committeeId: String,
+        conferenceId: ConferenceId,
+        committeeId: CommitteeId,
         isHighSchoolCommittee: Boolean,
     ): Conference
 
@@ -52,8 +62,8 @@ interface ConferenceRepository {
      * still map to it.
      */
     suspend fun setCommitteeMode(
-        conferenceId: String,
-        committeeId: String,
+        conferenceId: ConferenceId,
+        committeeId: CommitteeId,
         mode: CommitteeMode,
     ): Conference
 
@@ -64,9 +74,9 @@ interface ConferenceRepository {
      * mappings to committees from another conference, and mappings to mapped committees.
      */
     suspend fun setPositionMappedCommittee(
-        conferenceId: String,
-        positionId: String,
-        mappedCommitteeId: String?,
+        conferenceId: ConferenceId,
+        positionId: PositionId,
+        mappedCommitteeId: CommitteeId?,
     ): Conference
 
     /**
@@ -77,9 +87,9 @@ interface ConferenceRepository {
      * existing pending assignment is moved or rejected.
      */
     suspend fun assignDelegateToSlot(
-        conferenceId: String,
-        slotId: String,
-        delegateId: String,
+        conferenceId: ConferenceId,
+        slotId: SlotId,
+        delegateId: DelegateId,
         moveExistingPending: Boolean,
     ): Conference
 
@@ -88,7 +98,7 @@ interface ConferenceRepository {
      *
      * MyMUN-confirmed assignments are controlled only by later MyMUN updates and must be rejected.
      */
-    suspend fun clearPendingSlot(conferenceId: String, slotId: String): Conference
+    suspend fun clearPendingSlot(conferenceId: ConferenceId, slotId: SlotId): Conference
 
     /**
      * Deactivates one delegate for local assignment workflows.
@@ -96,14 +106,14 @@ interface ConferenceRepository {
      * Implementations must reject delegates with MyMUN-confirmed assignments. Pending MunAssign
      * assignments are organizer-managed and should be cleared as part of deactivation.
      */
-    suspend fun deactivateDelegate(conferenceId: String, delegateId: String): Conference
+    suspend fun deactivateDelegate(conferenceId: ConferenceId, delegateId: DelegateId): Conference
 
     /**
      * Reactivates one delegate for local assignment workflows.
      *
      * Reactivation restores eligibility but must not recreate any previously cleared assignment.
      */
-    suspend fun reactivateDelegate(conferenceId: String, delegateId: String): Conference
+    suspend fun reactivateDelegate(conferenceId: ConferenceId, delegateId: DelegateId): Conference
 
     /**
      * Creates an organizer-managed reservation for high-school and/or university capacity.
@@ -112,11 +122,11 @@ interface ConferenceRepository {
      * the same conference and reconcile automatic delegate links after persisting the reservation.
      */
     suspend fun createReservation(
-        conferenceId: String,
+        conferenceId: ConferenceId,
         name: String,
         highSchoolCount: Int,
         universityCount: Int,
-        delegationId: String?,
+        delegationId: DelegationId?,
     ): Conference
 
     /**
@@ -126,12 +136,12 @@ interface ConferenceRepository {
      * delegate usage because manual links represent explicit organizer intent.
      */
     suspend fun updateReservation(
-        conferenceId: String,
-        reservationId: String,
+        conferenceId: ConferenceId,
+        reservationId: ReservationId,
         name: String,
         highSchoolCount: Int,
         universityCount: Int,
-        delegationId: String?,
+        delegationId: DelegationId?,
     ): Conference
 
     /**
@@ -140,7 +150,7 @@ interface ConferenceRepository {
      * Persisted delegate links for that reservation should be removed by the data store cascade,
      * followed by reconciliation of remaining reservations.
      */
-    suspend fun deleteReservation(conferenceId: String, reservationId: String): Conference
+    suspend fun deleteReservation(conferenceId: ConferenceId, reservationId: ReservationId): Conference
 
     /**
      * Manually consumes one reservation for one active delegate.
@@ -149,9 +159,9 @@ interface ConferenceRepository {
      * capacity for the delegate's high-school/university status, and reconcile automatic links.
      */
     suspend fun assignDelegateReservation(
-        conferenceId: String,
-        delegateId: String,
-        reservationId: String,
+        conferenceId: ConferenceId,
+        delegateId: DelegateId,
+        reservationId: ReservationId,
     ): Conference
 
     /**
@@ -160,22 +170,22 @@ interface ConferenceRepository {
      * Automatic delegation links are maintained by reconciliation and should be rejected rather
      * than deleted directly.
      */
-    suspend fun removeDelegateReservation(conferenceId: String, delegateId: String): Conference
+    suspend fun removeDelegateReservation(conferenceId: ConferenceId, delegateId: DelegateId): Conference
 
     /**
      * Adds an organizer-managed note to one delegate.
      */
-    suspend fun addDelegateComment(conferenceId: String, delegateId: String, body: String): Conference
+    suspend fun addDelegateComment(conferenceId: ConferenceId, delegateId: DelegateId, body: String): Conference
 
     /**
      * Updates an organizer-managed delegate note.
      */
-    suspend fun updateDelegateComment(conferenceId: String, commentId: String, body: String): Conference
+    suspend fun updateDelegateComment(conferenceId: ConferenceId, commentId: DelegateCommentId, body: String): Conference
 
     /**
      * Deletes an organizer-managed delegate note.
      */
-    suspend fun deleteDelegateComment(conferenceId: String, commentId: String): Conference
+    suspend fun deleteDelegateComment(conferenceId: ConferenceId, commentId: DelegateCommentId): Conference
 
     /**
      * Updates organizer-managed handling for one imported MyMUN question.
@@ -184,7 +194,7 @@ interface ConferenceRepository {
      * configuration such as role, handling, visibility, label, rules, and typed mappings changes.
      */
     suspend fun updateQuestionConfiguration(
-        conferenceId: String,
+        conferenceId: ConferenceId,
         configuration: QuestionConfiguration,
     ): Conference
 
@@ -196,7 +206,7 @@ interface ConferenceRepository {
      * failure leaves no partially-saved configuration.
      */
     suspend fun updateQuestionConfigurations(
-        conferenceId: String,
+        conferenceId: ConferenceId,
         configurations: List<QuestionConfiguration>,
     ): Conference
 
@@ -206,8 +216,8 @@ interface ConferenceRepository {
      * The provided list must contain every question in that conference exactly once.
      */
     suspend fun reorderQuestionConfigurations(
-        conferenceId: String,
-        questionIdsInDisplayOrder: List<String>,
+        conferenceId: ConferenceId,
+        questionIdsInDisplayOrder: List<QuestionId>,
     ): Conference
 
     /**
@@ -217,9 +227,9 @@ interface ConferenceRepository {
      * as absent text.
      */
     suspend fun resolveAnswerIssue(
-        conferenceId: String,
-        delegateId: String,
-        questionId: String?,
+        conferenceId: ConferenceId,
+        delegateId: DelegateId,
+        questionId: QuestionId?,
         issueKey: String,
         justification: String?,
     ): Conference
@@ -228,15 +238,15 @@ interface ConferenceRepository {
      * Updates the organizer justification on an existing resolved answer or profile issue.
      */
     suspend fun updateAnswerIssueResolutionJustification(
-        conferenceId: String,
-        resolutionId: String,
+        conferenceId: ConferenceId,
+        resolutionId: AnswerIssueResolutionId,
         justification: String?,
     ): Conference
 
     /**
      * Reopens a previously resolved answer or profile issue by deleting its resolution row.
      */
-    suspend fun unresolveAnswerIssue(conferenceId: String, resolutionId: String): Conference
+    suspend fun unresolveAnswerIssue(conferenceId: ConferenceId, resolutionId: AnswerIssueResolutionId): Conference
 
-    suspend fun getConference(conferenceId: String): Conference?
+    suspend fun getConference(conferenceId: ConferenceId): Conference?
 }

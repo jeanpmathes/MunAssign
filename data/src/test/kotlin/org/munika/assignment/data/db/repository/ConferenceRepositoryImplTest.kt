@@ -44,6 +44,7 @@ import org.munika.assignment.data.excel.MymunWorkbookSnapshot
 import org.munika.assignment.data.excel.MymunWorkbookUpdater
 import org.munika.assignment.domain.model.AssignmentSource
 import org.munika.assignment.domain.model.CommitteeMode
+import org.munika.assignment.domain.model.ConferenceId
 import org.munika.assignment.domain.model.HighSchoolerAnswerMapping
 import org.munika.assignment.domain.model.HighSchoolerStatus
 import org.munika.assignment.domain.model.LanguageLevel
@@ -54,6 +55,7 @@ import org.munika.assignment.domain.model.MunExperienceLevel
 import org.munika.assignment.domain.model.NoticeWhenNonBlank
 import org.munika.assignment.domain.model.PaymentStatus
 import org.munika.assignment.domain.model.QuestionConfiguration
+import org.munika.assignment.domain.model.QuestionId
 import org.munika.assignment.domain.model.ReservationLinkSource
 import org.munika.assignment.domain.model.RequiredAnswer
 import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
@@ -74,13 +76,13 @@ class ConferenceRepositoryImplTest {
         val update = updater.applyUpdate(conference.id.value, java.nio.file.Paths.get(workbook.toURI()))
         assertTrue(update.success, update.issues.joinToString("; ") { it.message })
 
-        val loaded = repository.getConference(conference.id.value)
+        val loaded = repository.getConference(conference.id)
         assertNotNull(loaded)
         assertTrue(loaded.committees.isNotEmpty())
         assertTrue(loaded.delegates.isNotEmpty())
         assertTrue(loaded.delegates.any { it.preferences.isNotEmpty() })
 
-        repository.deleteConference(conference.id.value)
+        repository.deleteConference(conference.id)
 
         assertEquals(0, transaction(database) { CommitteeTable.selectAll().count() })
         assertEquals(0, transaction(database) { DelegateTable.selectAll().count() })
@@ -118,7 +120,7 @@ class ConferenceRepositoryImplTest {
 
         assertEquals(listOf("First", "Second", "Third"), repository.listConferences().map { it.name })
 
-        repository.reorderConferences(listOf(third.id.value, first.id.value, second.id.value))
+        repository.reorderConferences(listOf(third.id, first.id, second.id))
 
         assertEquals(listOf("Third", "First", "Second"), repository.listConferences().map { it.name })
         assertEquals(listOf(0, 1, 2), repository.listConferences().map { it.displayOrder })
@@ -139,13 +141,13 @@ class ConferenceRepositoryImplTest {
         val second = repository.createConference("Second")
 
         kotlin.test.assertFailsWith<IllegalArgumentException> {
-            repository.reorderConferences(listOf(first.id.value))
+            repository.reorderConferences(listOf(first.id))
         }
         kotlin.test.assertFailsWith<IllegalArgumentException> {
-            repository.reorderConferences(listOf(first.id.value, first.id.value))
+            repository.reorderConferences(listOf(first.id, first.id))
         }
         kotlin.test.assertFailsWith<IllegalArgumentException> {
-            repository.reorderConferences(listOf(first.id.value, "missing"))
+            repository.reorderConferences(listOf(first.id, ConferenceId("missing")))
         }
 
         assertEquals(listOf(first.id, second.id), repository.listConferences().map { it.id })
@@ -159,10 +161,10 @@ class ConferenceRepositoryImplTest {
         val conference = repository.createConference("TestConf")
 
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(confirmedAssignments = emptyList())).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val committee = loaded.committees.single()
 
-        val updated = repository.setCommitteeSlotsPerPosition(conference.id.value, committee.id.value, 3)
+        val updated = repository.setCommitteeSlotsPerPosition(conference.id, committee.id, 3)
 
         val updatedCommittee = updated.committees.single()
         assertEquals(3, updatedCommittee.slotsPerPosition)
@@ -178,9 +180,9 @@ class ConferenceRepositoryImplTest {
         val conference = repository.createConference("TestConf")
 
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(confirmedAssignments = emptyList())).success)
-        val committee = requireNotNull(repository.getConference(conference.id.value)).committees.single()
+        val committee = requireNotNull(repository.getConference(conference.id)).committees.single()
 
-        val updated = repository.setCommitteeHighSchoolStatus(conference.id.value, committee.id.value, true)
+        val updated = repository.setCommitteeHighSchoolStatus(conference.id, committee.id, true)
 
         assertTrue(updated.committees.single().isHighSchoolCommittee)
         transaction(database) {
@@ -195,16 +197,16 @@ class ConferenceRepositoryImplTest {
         val repository = ConferenceRepositoryImpl(database)
         val conference = repository.createConference("TestConf")
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithTwoCommittees()).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val ipc = loaded.committees.single { it.mymunName == "IPC" }
         val target = loaded.committees.single { it.mymunName == "UNSC" }
 
-        repository.setCommitteeMode(conference.id.value, target.id.value, CommitteeMode.HighSchool)
-        repository.setCommitteeMode(conference.id.value, ipc.id.value, CommitteeMode.Mapped)
+        repository.setCommitteeMode(conference.id, target.id, CommitteeMode.HighSchool)
+        repository.setCommitteeMode(conference.id, ipc.id, CommitteeMode.Mapped)
         val mapped = repository.setPositionMappedCommittee(
-            conferenceId = conference.id.value,
-            positionId = ipc.positions.single().id.value,
-            mappedCommitteeId = target.id.value,
+            conferenceId = conference.id,
+            positionId = ipc.positions.single().id,
+            mappedCommitteeId = target.id,
         )
 
         val mappedPosition = mapped.committees.single { it.mymunName == "IPC" }.positions.single()
@@ -212,7 +214,7 @@ class ConferenceRepositoryImplTest {
         assertEquals(target.id, mappedPosition.mappedCommittee?.id)
         assertEquals(CommitteeMode.HighSchool, mappedPosition.effectiveCommitteeMode)
 
-        val reloaded = requireNotNull(repository.getConference(conference.id.value))
+        val reloaded = requireNotNull(repository.getConference(conference.id))
         assertEquals(CommitteeMode.Mapped, reloaded.committees.single { it.mymunName == "IPC" }.mode)
         assertEquals(
             reloaded.committees.single { it.mymunName == "UNSC" }.id,
@@ -227,19 +229,19 @@ class ConferenceRepositoryImplTest {
         val repository = ConferenceRepositoryImpl(database)
         val conference = repository.createConference("TestConf")
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithTwoCommittees()).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val ipc = loaded.committees.single { it.mymunName == "IPC" }
         val target = loaded.committees.single { it.mymunName == "UNSC" }
 
         assertFailsWith<IllegalArgumentException> {
-            repository.setPositionMappedCommittee(conference.id.value, target.positions.single().id.value, ipc.id.value)
+            repository.setPositionMappedCommittee(conference.id, target.positions.single().id, ipc.id)
         }
 
-        repository.setCommitteeMode(conference.id.value, ipc.id.value, CommitteeMode.Mapped)
-        repository.setCommitteeMode(conference.id.value, target.id.value, CommitteeMode.Mapped)
+        repository.setCommitteeMode(conference.id, ipc.id, CommitteeMode.Mapped)
+        repository.setCommitteeMode(conference.id, target.id, CommitteeMode.Mapped)
 
         assertFailsWith<IllegalArgumentException> {
-            repository.setPositionMappedCommittee(conference.id.value, ipc.positions.single().id.value, target.id.value)
+            repository.setPositionMappedCommittee(conference.id, ipc.positions.single().id, target.id)
         }
         Unit
     }
@@ -251,19 +253,19 @@ class ConferenceRepositoryImplTest {
         val repository = ConferenceRepositoryImpl(database)
         val conference = repository.createConference("TestConf")
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithTwoCommittees()).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val ipc = loaded.committees.single { it.mymunName == "IPC" }
         val target = loaded.committees.single { it.mymunName == "UNSC" }
-        repository.setCommitteeMode(conference.id.value, target.id.value, CommitteeMode.HighSchool)
-        repository.setCommitteeMode(conference.id.value, ipc.id.value, CommitteeMode.Mapped)
-        repository.setPositionMappedCommittee(conference.id.value, ipc.positions.single().id.value, target.id.value)
+        repository.setCommitteeMode(conference.id, target.id, CommitteeMode.HighSchool)
+        repository.setCommitteeMode(conference.id, ipc.id, CommitteeMode.Mapped)
+        repository.setPositionMappedCommittee(conference.id, ipc.positions.single().id, target.id)
 
         val error = assertFailsWith<IllegalArgumentException> {
-            repository.setCommitteeMode(conference.id.value, ipc.id.value, CommitteeMode.University)
+            repository.setCommitteeMode(conference.id, ipc.id, CommitteeMode.University)
         }
 
         assertTrue(error.message.orEmpty().contains("correspondence"))
-        val reloaded = requireNotNull(repository.getConference(conference.id.value))
+        val reloaded = requireNotNull(repository.getConference(conference.id))
         assertEquals(CommitteeMode.Mapped, reloaded.committees.single { it.mymunName == "IPC" }.mode)
         assertEquals(target.id, reloaded.committees.single { it.mymunName == "IPC" }.positions.single().mappedCommittee?.id)
     }
@@ -279,14 +281,14 @@ class ConferenceRepositoryImplTest {
                 snapshotWithTwoCommittees(ipcPositionNames = listOf("Reporter One", "Reporter Two")),
             ).success,
         )
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val ipc = loaded.committees.single { it.mymunName == "IPC" }
         val target = loaded.committees.single { it.mymunName == "UNSC" }
-        repository.setCommitteeMode(conference.id.value, ipc.id.value, CommitteeMode.Mapped)
-        repository.setPositionMappedCommittee(conference.id.value, ipc.positions.first().id.value, target.id.value)
+        repository.setCommitteeMode(conference.id, ipc.id, CommitteeMode.Mapped)
+        repository.setPositionMappedCommittee(conference.id, ipc.positions.first().id, target.id)
 
         val error = assertFailsWith<IllegalArgumentException> {
-            repository.setPositionMappedCommittee(conference.id.value, ipc.positions.last().id.value, target.id.value)
+            repository.setPositionMappedCommittee(conference.id, ipc.positions.last().id, target.id)
         }
 
         assertTrue(error.message.orEmpty().contains("already corresponds"))
@@ -300,7 +302,7 @@ class ConferenceRepositoryImplTest {
         val conference = repository.createConference("TestConf")
 
         val updated = repository.createReservation(
-            conferenceId = conference.id.value,
+            conferenceId = conference.id,
             name = "Delegation hold",
             highSchoolCount = 2,
             universityCount = 1,
@@ -313,7 +315,7 @@ class ConferenceRepositoryImplTest {
         assertEquals(1, reservation.universityCount)
         assertNull(reservation.delegation)
 
-        val reloaded = requireNotNull(repository.getConference(conference.id.value))
+        val reloaded = requireNotNull(repository.getConference(conference.id))
         assertEquals(reservation.id, reloaded.reservations.single().id)
         assertEquals("Delegation hold", reloaded.reservations.single().name)
     }
@@ -325,19 +327,19 @@ class ConferenceRepositoryImplTest {
         val repository = ConferenceRepositoryImpl(database)
         val conference = repository.createConference("TestConf")
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot()).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val delegate = loaded.delegates.single { it.name.firstName == "Alex" }
         val reservation = repository.createReservation(
-            conferenceId = conference.id.value,
+            conferenceId = conference.id,
             name = "Manual hold",
             highSchoolCount = 1,
             universityCount = 1,
             delegationId = null,
         ).reservations.single()
 
-        repository.assignDelegateReservation(conference.id.value, delegate.id.value, reservation.id.value)
+        repository.assignDelegateReservation(conference.id, delegate.id, reservation.id)
 
-        val reloaded = requireNotNull(repository.getConference(conference.id.value))
+        val reloaded = requireNotNull(repository.getConference(conference.id))
         val link = requireNotNull(reloaded.delegates.single { it.id == delegate.id }.reservationLink)
         assertEquals(reservation.id, link.reservation.id)
         assertEquals(ReservationLinkSource.Manual, link.source)
@@ -351,18 +353,18 @@ class ConferenceRepositoryImplTest {
         val repository = ConferenceRepositoryImpl(database)
         val conference = repository.createConference("TestConf")
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot()).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val delegate = loaded.delegates.single { it.name.firstName == "Alex" }
         val reservation = repository.createReservation(
-            conferenceId = conference.id.value,
+            conferenceId = conference.id,
             name = "Manual hold",
             highSchoolCount = 1,
             universityCount = 0,
             delegationId = null,
         ).reservations.single()
-        repository.assignDelegateReservation(conference.id.value, delegate.id.value, reservation.id.value)
+        repository.assignDelegateReservation(conference.id, delegate.id, reservation.id)
 
-        val updated = repository.removeDelegateReservation(conference.id.value, delegate.id.value)
+        val updated = repository.removeDelegateReservation(conference.id, delegate.id)
 
         assertNull(updated.delegates.single { it.id == delegate.id }.reservationLink)
         assertTrue(updated.reservations.single().delegateLinks.isEmpty())
@@ -375,23 +377,23 @@ class ConferenceRepositoryImplTest {
         val repository = ConferenceRepositoryImpl(database)
         val conference = repository.createConference("TestConf")
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot()).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val delegate = loaded.delegates.single { it.name.firstName == "Alex" }
         val delegation = loaded.delegations.single()
         val reservation = repository.createReservation(
-            conferenceId = conference.id.value,
+            conferenceId = conference.id,
             name = "Delegation hold",
             highSchoolCount = 1,
             universityCount = 0,
-            delegationId = delegation.id.value,
+            delegationId = delegation.id,
         ).reservations.single()
 
         val error = assertFailsWith<IllegalArgumentException> {
-            repository.removeDelegateReservation(conference.id.value, delegate.id.value)
+            repository.removeDelegateReservation(conference.id, delegate.id)
         }
 
         assertTrue(error.message.orEmpty().contains("Automatic reservation links", ignoreCase = true))
-        val reloaded = requireNotNull(repository.getConference(conference.id.value))
+        val reloaded = requireNotNull(repository.getConference(conference.id))
         val link = requireNotNull(reloaded.delegates.single { it.id == delegate.id }.reservationLink)
         assertEquals(reservation.id, link.reservation.id)
         assertEquals(ReservationLinkSource.DelegationAuto, link.source)
@@ -404,25 +406,25 @@ class ConferenceRepositoryImplTest {
         val repository = ConferenceRepositoryImpl(database)
         val conference = repository.createConference("TestConf")
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot()).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val delegate = loaded.delegates.single { it.name.firstName == "Alex" }
         val delegation = loaded.delegations.single()
         repository.createReservation(
-            conferenceId = conference.id.value,
+            conferenceId = conference.id,
             name = "Delegation hold",
             highSchoolCount = 1,
             universityCount = 0,
-            delegationId = delegation.id.value,
+            delegationId = delegation.id,
         )
         val manualReservation = repository.createReservation(
-            conferenceId = conference.id.value,
+            conferenceId = conference.id,
             name = "Manual hold",
             highSchoolCount = 1,
             universityCount = 0,
             delegationId = null,
         ).reservations.single { it.name == "Manual hold" }
 
-        val updated = repository.assignDelegateReservation(conference.id.value, delegate.id.value, manualReservation.id.value)
+        val updated = repository.assignDelegateReservation(conference.id, delegate.id, manualReservation.id)
 
         val link = requireNotNull(updated.delegates.single { it.id == delegate.id }.reservationLink)
         assertEquals(manualReservation.id, link.reservation.id)
@@ -443,14 +445,14 @@ class ConferenceRepositoryImplTest {
             reservationDelegate(rowNumber = 5, firstName = "Pending", email = "pending@example.test", applicationStatus = "Pending", submittedAt = LocalDate.parse("2026-01-01")),
         )
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot(delegates = delegates)).success)
-        val delegation = requireNotNull(repository.getConference(conference.id.value)).delegations.single()
+        val delegation = requireNotNull(repository.getConference(conference.id)).delegations.single()
 
         val updated = repository.createReservation(
-            conferenceId = conference.id.value,
+            conferenceId = conference.id,
             name = "School allocation",
             highSchoolCount = 2,
             universityCount = 0,
-            delegationId = delegation.id.value,
+            delegationId = delegation.id,
         )
 
         val linkedNames = updated.reservations.single().delegateLinks.map { it.delegate.name.firstName }
@@ -469,24 +471,24 @@ class ConferenceRepositoryImplTest {
             reservationDelegate(rowNumber = 3, firstName = "Late", email = "late@example.test", submittedAt = LocalDate.parse("2026-01-02")),
         )
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot(delegates = delegates)).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val delegation = loaded.delegations.single()
         val manualDelegate = loaded.delegates.single { it.name.firstName == "Early" }
         val manualReservation = repository.createReservation(
-            conferenceId = conference.id.value,
+            conferenceId = conference.id,
             name = "Manual hold",
             highSchoolCount = 1,
             universityCount = 0,
             delegationId = null,
         ).reservations.single()
-        repository.assignDelegateReservation(conference.id.value, manualDelegate.id.value, manualReservation.id.value)
+        repository.assignDelegateReservation(conference.id, manualDelegate.id, manualReservation.id)
 
         val updated = repository.createReservation(
-            conferenceId = conference.id.value,
+            conferenceId = conference.id,
             name = "Delegation hold",
             highSchoolCount = 1,
             universityCount = 0,
-            delegationId = delegation.id.value,
+            delegationId = delegation.id,
         )
 
         val manualLink = requireNotNull(updated.delegates.single { it.id == manualDelegate.id }.reservationLink)
@@ -502,18 +504,18 @@ class ConferenceRepositoryImplTest {
         val repository = ConferenceRepositoryImpl(database)
         val conference = repository.createConference("TestConf")
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot()).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val delegate = loaded.delegates.single { it.name.firstName == "Alex" }
         val reservation = repository.createReservation(
-            conferenceId = conference.id.value,
+            conferenceId = conference.id,
             name = "Manual hold",
             highSchoolCount = 1,
             universityCount = 0,
             delegationId = null,
         ).reservations.single()
-        repository.assignDelegateReservation(conference.id.value, delegate.id.value, reservation.id.value)
+        repository.assignDelegateReservation(conference.id, delegate.id, reservation.id)
 
-        val deactivated = repository.deactivateDelegate(conference.id.value, delegate.id.value)
+        val deactivated = repository.deactivateDelegate(conference.id, delegate.id)
 
         assertNull(deactivated.delegates.single { it.id == delegate.id }.reservationLink)
         assertTrue(deactivated.reservations.single().delegateLinks.isEmpty())
@@ -526,21 +528,21 @@ class ConferenceRepositoryImplTest {
         val repository = ConferenceRepositoryImpl(database)
         val conference = repository.createConference("TestConf")
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot()).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val delegate = loaded.delegates.single { it.name.firstName == "Alex" }
         val reservation = repository.createReservation(
-            conferenceId = conference.id.value,
+            conferenceId = conference.id,
             name = "Manual hold",
             highSchoolCount = 1,
             universityCount = 0,
             delegationId = null,
         ).reservations.single()
-        repository.assignDelegateReservation(conference.id.value, delegate.id.value, reservation.id.value)
+        repository.assignDelegateReservation(conference.id, delegate.id, reservation.id)
 
         val error = assertFailsWith<IllegalArgumentException> {
             repository.updateReservation(
-                conferenceId = conference.id.value,
-                reservationId = reservation.id.value,
+                conferenceId = conference.id,
+                reservationId = reservation.id,
                 name = "Manual hold",
                 highSchoolCount = 0,
                 universityCount = 1,
@@ -563,22 +565,22 @@ class ConferenceRepositoryImplTest {
             reservationDelegate(rowNumber = 3, firstName = "Second", email = "second@example.test", submittedAt = LocalDate.parse("2026-01-02")),
         )
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot(delegates = delegates)).success)
-        val delegation = requireNotNull(repository.getConference(conference.id.value)).delegations.single()
+        val delegation = requireNotNull(repository.getConference(conference.id)).delegations.single()
         val reservation = repository.createReservation(
-            conferenceId = conference.id.value,
+            conferenceId = conference.id,
             name = "Delegation hold",
             highSchoolCount = 2,
             universityCount = 0,
-            delegationId = delegation.id.value,
+            delegationId = delegation.id,
         ).reservations.single()
 
         val reduced = repository.updateReservation(
-            conferenceId = conference.id.value,
-            reservationId = reservation.id.value,
+            conferenceId = conference.id,
+            reservationId = reservation.id,
             name = "Delegation hold",
             highSchoolCount = 1,
             universityCount = 0,
-            delegationId = delegation.id.value,
+            delegationId = delegation.id,
         )
 
         assertEquals(listOf("First"), reduced.reservations.single().delegateLinks.map { it.delegate.name.firstName })
@@ -591,13 +593,13 @@ class ConferenceRepositoryImplTest {
         val repository = ConferenceRepositoryImpl(database)
         val conference = repository.createConference("TestConf")
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot()).success)
-        val delegation = requireNotNull(repository.getConference(conference.id.value)).delegations.single()
+        val delegation = requireNotNull(repository.getConference(conference.id)).delegations.single()
         val reservation = repository.createReservation(
-            conferenceId = conference.id.value,
+            conferenceId = conference.id,
             name = "Delegation hold",
             highSchoolCount = 1,
             universityCount = 0,
-            delegationId = delegation.id.value,
+            delegationId = delegation.id,
         ).reservations.single()
 
         val replacementDelegate = reservationDelegate(
@@ -608,7 +610,7 @@ class ConferenceRepositoryImplTest {
         )
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot(delegates = listOf(replacementDelegate))).success)
 
-        val updated = requireNotNull(repository.getConference(conference.id.value))
+        val updated = requireNotNull(repository.getConference(conference.id))
         val updatedReservation = updated.reservations.single { it.id == reservation.id }
         assertEquals("Delegation hold", updatedReservation.name)
         assertEquals(listOf("Blake"), updatedReservation.delegateLinks.map { it.delegate.name.firstName })
@@ -621,19 +623,19 @@ class ConferenceRepositoryImplTest {
         val repository = ConferenceRepositoryImpl(database)
         val conference = repository.createConference("TestConf")
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot()).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val delegation = loaded.delegations.single()
         val reservation = repository.createReservation(
-            conferenceId = conference.id.value,
+            conferenceId = conference.id,
             name = "Delegation hold",
             highSchoolCount = 1,
             universityCount = 0,
-            delegationId = delegation.id.value,
+            delegationId = delegation.id,
         ).reservations.single()
 
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot(delegations = emptyList())).success)
 
-        val updated = requireNotNull(repository.getConference(conference.id.value)).reservations.single { it.id == reservation.id }
+        val updated = requireNotNull(repository.getConference(conference.id)).reservations.single { it.id == reservation.id }
         assertNull(updated.delegation)
         assertTrue(updated.delegateLinks.isEmpty())
     }
@@ -646,10 +648,10 @@ class ConferenceRepositoryImplTest {
         val conference = repository.createConference("TestConf")
 
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(confirmedAssignments = emptyList())).success)
-        val committee = requireNotNull(repository.getConference(conference.id.value)).committees.single()
-        repository.setCommitteeSlotsPerPosition(conference.id.value, committee.id.value, 3)
+        val committee = requireNotNull(repository.getConference(conference.id)).committees.single()
+        repository.setCommitteeSlotsPerPosition(conference.id, committee.id, 3)
 
-        val updated = repository.setCommitteeSlotsPerPosition(conference.id.value, committee.id.value, 1)
+        val updated = repository.setCommitteeSlotsPerPosition(conference.id, committee.id, 1)
 
         val updatedCommittee = updated.committees.single()
         assertEquals(1, updatedCommittee.slotsPerPosition)
@@ -667,9 +669,9 @@ class ConferenceRepositoryImplTest {
         val conference = repository.createConference("TestConf")
 
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(confirmedAssignments = emptyList())).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val committee = loaded.committees.single()
-        val expanded = repository.setCommitteeSlotsPerPosition(conference.id.value, committee.id.value, 2)
+        val expanded = repository.setCommitteeSlotsPerPosition(conference.id, committee.id, 2)
         val delegate = expanded.delegates.single()
         val trailingSlot = expanded.positions.single { it.name == "Germany" }.slots.single { it.index == 2 }
         transaction(database) {
@@ -681,12 +683,12 @@ class ConferenceRepositoryImplTest {
         }
 
         assertFailsWith<IllegalArgumentException> {
-            repository.setCommitteeSlotsPerPosition(conference.id.value, committee.id.value, 1)
+            repository.setCommitteeSlotsPerPosition(conference.id, committee.id, 1)
         }
 
-        val reloaded = requireNotNull(repository.getConference(conference.id.value)).committees.single()
+        val reloaded = requireNotNull(repository.getConference(conference.id)).committees.single()
         assertEquals(2, reloaded.slotsPerPosition)
-        assertEquals(1, requireNotNull(repository.getConference(conference.id.value)).pendingSlots.size)
+        assertEquals(1, requireNotNull(repository.getConference(conference.id)).pendingSlots.size)
     }
 
     @Test
@@ -697,9 +699,9 @@ class ConferenceRepositoryImplTest {
         val conference = repository.createConference("TestConf")
 
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(confirmedAssignments = emptyList())).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val committee = loaded.committees.single()
-        val expanded = repository.setCommitteeSlotsPerPosition(conference.id.value, committee.id.value, 2)
+        val expanded = repository.setCommitteeSlotsPerPosition(conference.id, committee.id, 2)
         val delegate = expanded.delegates.single()
         val trailingSlot = expanded.positions.single { it.name == "Germany" }.slots.single { it.index == 2 }
         transaction(database) {
@@ -711,12 +713,12 @@ class ConferenceRepositoryImplTest {
         }
 
         assertFailsWith<IllegalArgumentException> {
-            repository.setCommitteeSlotsPerPosition(conference.id.value, committee.id.value, 1)
+            repository.setCommitteeSlotsPerPosition(conference.id, committee.id, 1)
         }
 
-        val reloaded = requireNotNull(repository.getConference(conference.id.value)).committees.single()
+        val reloaded = requireNotNull(repository.getConference(conference.id)).committees.single()
         assertEquals(2, reloaded.slotsPerPosition)
-        assertEquals(1, requireNotNull(repository.getConference(conference.id.value)).assignedSlots.size)
+        assertEquals(1, requireNotNull(repository.getConference(conference.id)).assignedSlots.size)
     }
 
     @Test
@@ -727,11 +729,11 @@ class ConferenceRepositoryImplTest {
         val conference = repository.createConference("TestConf")
 
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(confirmedAssignments = emptyList())).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val delegate = loaded.delegates.single()
         val slot = loaded.openSlots.first()
 
-        val updated = repository.assignDelegateToSlot(conference.id.value, slot.id.value, delegate.id.value, moveExistingPending = false)
+        val updated = repository.assignDelegateToSlot(conference.id, slot.id, delegate.id, moveExistingPending = false)
 
         val pendingSlot = updated.pendingSlots.single()
         assertEquals(slot.id, pendingSlot.id)
@@ -755,11 +757,11 @@ class ConferenceRepositoryImplTest {
                 ),
             ).success,
         )
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val delegate = loaded.delegates.single()
         val slot = loaded.openSlots.first()
 
-        val updated = repository.assignDelegateToSlot(conference.id.value, slot.id.value, delegate.id.value, moveExistingPending = false)
+        val updated = repository.assignDelegateToSlot(conference.id, slot.id, delegate.id, moveExistingPending = false)
 
         assertEquals(delegate.id, updated.pendingSlots.single().delegate?.id)
     }
@@ -772,12 +774,12 @@ class ConferenceRepositoryImplTest {
         val conference = repository.createConference("TestConf")
 
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(confirmedAssignments = emptyList())).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val delegate = loaded.delegates.single()
         val slot = loaded.openSlots.first()
-        repository.assignDelegateToSlot(conference.id.value, slot.id.value, delegate.id.value, moveExistingPending = false)
+        repository.assignDelegateToSlot(conference.id, slot.id, delegate.id, moveExistingPending = false)
 
-        val updated = repository.clearPendingSlot(conference.id.value, slot.id.value)
+        val updated = repository.clearPendingSlot(conference.id, slot.id)
 
         assertTrue(updated.pendingSlots.isEmpty())
         assertNull(updated.delegates.single().currentSlot)
@@ -800,13 +802,13 @@ class ConferenceRepositoryImplTest {
                 snapshotWithAssignments(delegates = delegates, confirmedAssignments = emptyList()),
             ).success,
         )
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val firstDelegate = loaded.delegates.single { it.name.firstName == "Alex" }
         val secondDelegate = loaded.delegates.single { it.name.firstName == "Blake" }
         val slot = loaded.openSlots.first()
-        repository.assignDelegateToSlot(conference.id.value, slot.id.value, firstDelegate.id.value, moveExistingPending = false)
+        repository.assignDelegateToSlot(conference.id, slot.id, firstDelegate.id, moveExistingPending = false)
 
-        val updated = repository.assignDelegateToSlot(conference.id.value, slot.id.value, secondDelegate.id.value, moveExistingPending = false)
+        val updated = repository.assignDelegateToSlot(conference.id, slot.id, secondDelegate.id, moveExistingPending = false)
 
         assertEquals(secondDelegate.id, updated.pendingSlots.single().delegate?.id)
         assertNull(updated.delegates.single { it.id == firstDelegate.id }.currentSlot)
@@ -820,17 +822,17 @@ class ConferenceRepositoryImplTest {
         val conference = repository.createConference("TestConf")
 
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(confirmedAssignments = emptyList())).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val delegate = loaded.delegates.single()
         val sourceSlot = loaded.positions.single { it.name == "France" }.slots.single()
         val targetSlot = loaded.positions.single { it.name == "Germany" }.slots.single()
-        repository.assignDelegateToSlot(conference.id.value, sourceSlot.id.value, delegate.id.value, moveExistingPending = false)
+        repository.assignDelegateToSlot(conference.id, sourceSlot.id, delegate.id, moveExistingPending = false)
 
         assertFailsWith<IllegalArgumentException> {
-            repository.assignDelegateToSlot(conference.id.value, targetSlot.id.value, delegate.id.value, moveExistingPending = false)
+            repository.assignDelegateToSlot(conference.id, targetSlot.id, delegate.id, moveExistingPending = false)
         }
 
-        val moved = repository.assignDelegateToSlot(conference.id.value, targetSlot.id.value, delegate.id.value, moveExistingPending = true)
+        val moved = repository.assignDelegateToSlot(conference.id, targetSlot.id, delegate.id, moveExistingPending = true)
         assertEquals(targetSlot.id, moved.pendingSlots.single().id)
         assertTrue(moved.positions.single { it.name == "France" }.slots.single().isEmpty)
     }
@@ -855,20 +857,20 @@ class ConferenceRepositoryImplTest {
                 ),
             ).success,
         )
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val confirmedDelegate = loaded.delegates.single { it.name.firstName == "Alex" }
         val unassignedDelegate = loaded.delegates.single { it.name.firstName == "Blake" }
         val confirmedSlot = loaded.assignedSlots.single()
         val emptySlot = loaded.openSlots.single()
 
         assertFailsWith<IllegalArgumentException> {
-            repository.clearPendingSlot(conference.id.value, confirmedSlot.id.value)
+            repository.clearPendingSlot(conference.id, confirmedSlot.id)
         }
         assertFailsWith<IllegalArgumentException> {
-            repository.assignDelegateToSlot(conference.id.value, confirmedSlot.id.value, unassignedDelegate.id.value, moveExistingPending = false)
+            repository.assignDelegateToSlot(conference.id, confirmedSlot.id, unassignedDelegate.id, moveExistingPending = false)
         }
         assertFailsWith<IllegalArgumentException> {
-            repository.assignDelegateToSlot(conference.id.value, emptySlot.id.value, confirmedDelegate.id.value, moveExistingPending = true)
+            repository.assignDelegateToSlot(conference.id, emptySlot.id, confirmedDelegate.id, moveExistingPending = true)
         }
         Unit
     }
@@ -890,7 +892,7 @@ class ConferenceRepositoryImplTest {
                 snapshotWithAssignments(delegates = delegates, confirmedAssignments = emptyList()),
             ).success,
         )
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val unpaidDelegate = loaded.delegates.single { it.name.firstName == "Alex" }
         val inactiveDelegate = loaded.delegates.single { it.name.firstName == "Blake" }
         val slots = loaded.openSlots
@@ -904,10 +906,10 @@ class ConferenceRepositoryImplTest {
         }
 
         assertFailsWith<IllegalArgumentException> {
-            repository.assignDelegateToSlot(conference.id.value, slots[0].id.value, unpaidDelegate.id.value, moveExistingPending = false)
+            repository.assignDelegateToSlot(conference.id, slots[0].id, unpaidDelegate.id, moveExistingPending = false)
         }
         assertFailsWith<IllegalArgumentException> {
-            repository.assignDelegateToSlot(conference.id.value, slots[1].id.value, inactiveDelegate.id.value, moveExistingPending = false)
+            repository.assignDelegateToSlot(conference.id, slots[1].id, inactiveDelegate.id, moveExistingPending = false)
         }
         Unit
     }
@@ -934,12 +936,12 @@ class ConferenceRepositoryImplTest {
                 snapshotWithAssignments(delegates = delegates, confirmedAssignments = emptyList()),
             ).success,
         )
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val submittedDelegate = loaded.delegates.single { it.name.firstName == "Delegate" }
         val slot = loaded.openSlots.first()
 
         assertFailsWith<IllegalArgumentException> {
-            repository.assignDelegateToSlot(conference.id.value, slot.id.value, submittedDelegate.id.value, moveExistingPending = false)
+            repository.assignDelegateToSlot(conference.id, slot.id, submittedDelegate.id, moveExistingPending = false)
         }
         Unit
     }
@@ -952,19 +954,19 @@ class ConferenceRepositoryImplTest {
         val conference = repository.createConference("TestConf")
 
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(confirmedAssignments = emptyList())).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val delegate = loaded.delegates.single()
         val slot = loaded.openSlots.first()
-        repository.assignDelegateToSlot(conference.id.value, slot.id.value, delegate.id.value, moveExistingPending = false)
+        repository.assignDelegateToSlot(conference.id, slot.id, delegate.id, moveExistingPending = false)
 
-        val deactivated = repository.deactivateDelegate(conference.id.value, delegate.id.value)
+        val deactivated = repository.deactivateDelegate(conference.id, delegate.id)
 
         val inactiveDelegate = deactivated.delegates.single()
         assertFalse(inactiveDelegate.active)
         assertNull(inactiveDelegate.currentSlot)
         assertTrue(deactivated.pendingSlots.isEmpty())
 
-        val reactivated = repository.reactivateDelegate(conference.id.value, delegate.id.value)
+        val reactivated = repository.reactivateDelegate(conference.id, delegate.id)
 
         val activeDelegate = reactivated.delegates.single()
         assertTrue(activeDelegate.active)
@@ -981,13 +983,13 @@ class ConferenceRepositoryImplTest {
         val conference = repository.createConference("TestConf")
 
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments()).success)
-        val delegate = requireNotNull(repository.getConference(conference.id.value)).delegates.single()
+        val delegate = requireNotNull(repository.getConference(conference.id)).delegates.single()
 
         assertFailsWith<IllegalArgumentException> {
-            repository.deactivateDelegate(conference.id.value, delegate.id.value)
+            repository.deactivateDelegate(conference.id, delegate.id)
         }
 
-        val reloaded = requireNotNull(repository.getConference(conference.id.value)).delegates.single()
+        val reloaded = requireNotNull(repository.getConference(conference.id)).delegates.single()
         assertTrue(reloaded.active)
         assertNotNull(reloaded.currentSlot)
         Unit
@@ -1001,16 +1003,16 @@ class ConferenceRepositoryImplTest {
         val conference = repository.createConference("TestConf")
 
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(confirmedAssignments = emptyList())).success)
-        val delegate = requireNotNull(repository.getConference(conference.id.value)).delegates.single()
+        val delegate = requireNotNull(repository.getConference(conference.id)).delegates.single()
 
-        val added = repository.addDelegateComment(conference.id.value, delegate.id.value, " First note ")
+        val added = repository.addDelegateComment(conference.id, delegate.id, " First note ")
         val comment = added.delegates.single().comments.single()
         assertEquals("First note", comment.body)
 
-        val updated = repository.updateDelegateComment(conference.id.value, comment.id.value, "Edited note")
+        val updated = repository.updateDelegateComment(conference.id, comment.id, "Edited note")
         assertEquals("Edited note", updated.delegates.single().comments.single().body)
 
-        val deleted = repository.deleteDelegateComment(conference.id.value, comment.id.value)
+        val deleted = repository.deleteDelegateComment(conference.id, comment.id)
         assertTrue(deleted.delegates.single().comments.isEmpty())
         Unit
     }
@@ -1045,7 +1047,7 @@ class ConferenceRepositoryImplTest {
         val workbookPath = java.nio.file.Paths.get(workbook.toURI())
         assertTrue(updater.applyUpdate(conference.id.value, workbookPath).success)
 
-        val firstLoaded = requireNotNull(repository.getConference(conference.id.value))
+        val firstLoaded = requireNotNull(repository.getConference(conference.id))
         val delegate = firstLoaded.delegates.first()
         val committee = firstLoaded.committees.first()
         val question = firstLoaded.questions.first()
@@ -1074,7 +1076,7 @@ class ConferenceRepositoryImplTest {
 
         assertTrue(updater.applyUpdate(conference.id.value, workbookPath).success)
 
-        val reloaded = requireNotNull(repository.getConference(conference.id.value))
+        val reloaded = requireNotNull(repository.getConference(conference.id))
         val reloadedDelegate = requireNotNull(reloaded.delegates.find { it.id == delegate.id })
         val reloadedCommittee = requireNotNull(reloaded.committees.find { it.id == committee.id })
         val reloadedQuestion = requireNotNull(reloaded.questions.find { it.id == question.id })
@@ -1157,7 +1159,7 @@ class ConferenceRepositoryImplTest {
         val issue = result.issues.single { it.code == "ambiguous_delegate_match" }
         assertTrue("2" in issue.message && "3" in issue.message)
 
-        val unchanged = repository.getConference(conference.id.value)!!
+        val unchanged = repository.getConference(conference.id)!!
         assertEquals(1, unchanged.delegates.size)
         assertEquals("seed@example.test", unchanged.delegates.single().email)
     }
@@ -1181,7 +1183,7 @@ class ConferenceRepositoryImplTest {
 
         assertTrue(result.success)
         assertEquals(2, result.summary.delegatesCreated)
-        val conferenceAfter = repository.getConference(conference.id.value)!!
+        val conferenceAfter = repository.getConference(conference.id)!!
         assertEquals(setOf("alex1@example.test", "alex2@example.test"), conferenceAfter.delegates.map { it.email }.toSet())
     }
 
@@ -1216,7 +1218,7 @@ class ConferenceRepositoryImplTest {
 
         assertTrue(result.success)
         assertEquals(2, result.summary.delegatesUpdated)
-        val conferenceAfter = repository.getConference(conference.id.value)!!
+        val conferenceAfter = repository.getConference(conference.id)!!
         assertEquals(2, conferenceAfter.delegates.size)
         assertEquals(setOf("alex1@example.test", "alex2@example.test"), conferenceAfter.delegates.map { it.email }.toSet())
     }
@@ -1359,7 +1361,7 @@ class ConferenceRepositoryImplTest {
         val snapshot = snapshotWithAssignments(confirmedAssignments = emptyList())
 
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshot).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val delegate = loaded.delegates.single { it.name.firstName == "Alex" }
         val slot = loaded.openSlots.first()
         transaction(database) {
@@ -1371,7 +1373,7 @@ class ConferenceRepositoryImplTest {
         }
 
         val result = repository.applyMymunUpdateSnapshot(conference.id.value, snapshot, "pending.xlsx")
-        val reloaded = requireNotNull(repository.getConference(conference.id.value))
+        val reloaded = requireNotNull(repository.getConference(conference.id))
 
         assertTrue(result.success, result.issues.joinToString("; ") { it.message })
         assertEquals(1, reloaded.pendingSlots.size)
@@ -1393,13 +1395,13 @@ class ConferenceRepositoryImplTest {
         assertTrue(
             repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(delegates = delegates, confirmedAssignments = emptyList())).success,
         )
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val committee = loaded.committees.single()
-        repository.setCommitteeSlotsPerPosition(conference.id.value, committee.id.value, 2)
+        repository.setCommitteeSlotsPerPosition(conference.id, committee.id, 2)
         val alex = loaded.delegates.single { it.name.firstName == "Alex" }
-        val franceSlot1 = requireNotNull(repository.getConference(conference.id.value))
+        val franceSlot1 = requireNotNull(repository.getConference(conference.id))
             .positions.single { it.name == "France" }.slots.single { it.index == 1 }
-        repository.assignDelegateToSlot(conference.id.value, franceSlot1.id.value, alex.id.value, moveExistingPending = false)
+        repository.assignDelegateToSlot(conference.id, franceSlot1.id, alex.id, moveExistingPending = false)
 
         val result = repository.applyMymunUpdateSnapshot(
             conferenceId = conference.id.value,
@@ -1414,7 +1416,7 @@ class ConferenceRepositoryImplTest {
         assertTrue(result.issues.none { it.code == "pending_assignment_displaced" })
         assertEquals(0, result.summary.pendingAssignmentsDisplaced)
 
-        val reloaded = requireNotNull(repository.getConference(conference.id.value))
+        val reloaded = requireNotNull(repository.getConference(conference.id))
         val france = reloaded.positions.single { it.name == "France" }
         val pendingSlot = france.slots.single { it.isPending }
         val assignedSlot = france.slots.single { it.isAssigned }
@@ -1437,13 +1439,13 @@ class ConferenceRepositoryImplTest {
         assertTrue(
             repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(delegates = delegates, confirmedAssignments = emptyList())).success,
         )
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val committee = loaded.committees.single()
-        repository.setCommitteeSlotsPerPosition(conference.id.value, committee.id.value, 2)
+        repository.setCommitteeSlotsPerPosition(conference.id, committee.id, 2)
         val casey = loaded.delegates.single { it.name.firstName == "Casey" }
-        val franceSlot1 = requireNotNull(repository.getConference(conference.id.value))
+        val franceSlot1 = requireNotNull(repository.getConference(conference.id))
             .positions.single { it.name == "France" }.slots.single { it.index == 1 }
-        repository.assignDelegateToSlot(conference.id.value, franceSlot1.id.value, casey.id.value, moveExistingPending = false)
+        repository.assignDelegateToSlot(conference.id, franceSlot1.id, casey.id, moveExistingPending = false)
 
         val result = repository.applyMymunUpdateSnapshot(
             conferenceId = conference.id.value,
@@ -1462,7 +1464,7 @@ class ConferenceRepositoryImplTest {
         assertTrue("Casey" in warning.message)
         assertEquals(1, result.summary.pendingAssignmentsDisplaced)
 
-        val reloaded = requireNotNull(repository.getConference(conference.id.value))
+        val reloaded = requireNotNull(repository.getConference(conference.id))
         val france = reloaded.positions.single { it.name == "France" }
         assertEquals(setOf("Alex", "Blake"), france.slots.mapNotNull { it.delegate?.name?.firstName }.toSet())
         assertNull(reloaded.delegates.single { it.name.firstName == "Casey" }.currentSlot)
@@ -1479,10 +1481,10 @@ class ConferenceRepositoryImplTest {
         assertTrue(
             repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(delegates = delegates, confirmedAssignments = emptyList())).success,
         )
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val alex = loaded.delegates.single()
         val franceSlot = loaded.positions.single { it.name == "France" }.slots.single()
-        repository.assignDelegateToSlot(conference.id.value, franceSlot.id.value, alex.id.value, moveExistingPending = false)
+        repository.assignDelegateToSlot(conference.id, franceSlot.id, alex.id, moveExistingPending = false)
 
         val result = repository.applyMymunUpdateSnapshot(
             conferenceId = conference.id.value,
@@ -1496,7 +1498,7 @@ class ConferenceRepositoryImplTest {
         assertTrue(result.success, result.issues.joinToString("; ") { it.message })
         assertTrue(result.issues.none { it.code == "pending_assignment_displaced" })
         assertEquals(0, result.summary.pendingAssignmentsDisplaced)
-        val reloaded = requireNotNull(repository.getConference(conference.id.value))
+        val reloaded = requireNotNull(repository.getConference(conference.id))
         val slot = reloaded.positions.single { it.name == "France" }.slots.single()
         assertTrue(slot.isAssigned)
         assertEquals("Alex", slot.delegate?.name?.firstName)
@@ -1549,7 +1551,7 @@ class ConferenceRepositoryImplTest {
         val initialSnapshot = snapshotWithAssignments(confirmedAssignments = emptyList())
 
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, initialSnapshot).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val delegate = loaded.delegates.single { it.name.firstName == "Alex" }
         val germanySlot = loaded.positions.single { it.name == "Germany" }.slots.single()
         transaction(database) {
@@ -1582,10 +1584,10 @@ class ConferenceRepositoryImplTest {
         assertTrue(
             repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(delegates = delegates, confirmedAssignments = emptyList())).success,
         )
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val blake = loaded.delegates.single { it.name.firstName == "Blake" }
         val germanySlot = loaded.positions.single { it.name == "Germany" }.slots.single()
-        repository.assignDelegateToSlot(conference.id.value, germanySlot.id.value, blake.id.value, moveExistingPending = false)
+        repository.assignDelegateToSlot(conference.id, germanySlot.id, blake.id, moveExistingPending = false)
 
         val result = repository.applyMymunUpdateSnapshot(
             conferenceId = conference.id.value,
@@ -1651,15 +1653,15 @@ class ConferenceRepositoryImplTest {
         val conference = repository.createConference("TestConf")
 
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithQuestion()).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val delegate = loaded.delegates.single()
         val question = loaded.questions.single()
         val issue = delegate.answers.single().issues.single()
 
         val resolved = repository.resolveAnswerIssue(
-            conferenceId = conference.id.value,
-            delegateId = delegate.id.value,
-            questionId = question.id.value,
+            conferenceId = conference.id,
+            delegateId = delegate.id,
+            questionId = question.id,
             issueKey = issue.key,
             justification = "Reviewed and acceptable.",
         )
@@ -1671,7 +1673,7 @@ class ConferenceRepositoryImplTest {
         )
 
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithQuestion()).success)
-        val afterUpdate = requireNotNull(repository.getConference(conference.id.value))
+        val afterUpdate = requireNotNull(repository.getConference(conference.id))
         assertTrue(afterUpdate.delegates.single().answers.single().openIssues.isEmpty())
         assertEquals(
             "Reviewed and acceptable.",
@@ -1687,28 +1689,28 @@ class ConferenceRepositoryImplTest {
         val conference = repository.createConference("TestConf")
 
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithQuestion()).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val delegate = loaded.delegates.single()
         val question = loaded.questions.single()
         val issue = delegate.answers.single().issues.single()
         val resolved = repository.resolveAnswerIssue(
-            conferenceId = conference.id.value,
-            delegateId = delegate.id.value,
-            questionId = question.id.value,
+            conferenceId = conference.id,
+            delegateId = delegate.id,
+            questionId = question.id,
             issueKey = issue.key,
             justification = "Initial.",
         )
-        val resolutionId = resolved.delegates.single().answers.single().resolvedIssues.single().resolution.id.value
+        val resolutionId = resolved.delegates.single().answers.single().resolvedIssues.single().resolution.id
 
         val edited = repository.updateAnswerIssueResolutionJustification(
-            conferenceId = conference.id.value,
+            conferenceId = conference.id,
             resolutionId = resolutionId,
             justification = "Edited.",
         )
 
         assertEquals("Edited.", edited.delegates.single().answers.single().resolvedIssues.single().resolution.justification)
 
-        val undone = repository.unresolveAnswerIssue(conferenceId = conference.id.value, resolutionId = resolutionId)
+        val undone = repository.unresolveAnswerIssue(conferenceId = conference.id, resolutionId = resolutionId)
 
         assertEquals(1, undone.delegates.single().answers.single().openIssues.size)
         assertTrue(undone.delegates.single().answers.single().resolvedIssues.isEmpty())
@@ -1726,11 +1728,11 @@ class ConferenceRepositoryImplTest {
         val snapshot = snapshotWithQuestion()
 
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshot).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val question = loaded.questions.single()
 
         val updated = repository.updateQuestionConfiguration(
-            conferenceId = conference.id.value,
+            conferenceId = conference.id,
             configuration = QuestionConfiguration(
                 questionId = question.id,
                 questionText = question.questionText,
@@ -1767,10 +1769,10 @@ class ConferenceRepositoryImplTest {
         val conference = repository.createConference("TestConf")
 
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithQuestion()).success)
-        val question = requireNotNull(repository.getConference(conference.id.value)).questions.single()
+        val question = requireNotNull(repository.getConference(conference.id)).questions.single()
 
         val saved = repository.updateQuestionConfiguration(
-            conferenceId = conference.id.value,
+            conferenceId = conference.id,
             configuration = QuestionConfiguration(
                 questionId = question.id,
                 questionText = question.questionText,
@@ -1789,7 +1791,7 @@ class ConferenceRepositoryImplTest {
 
         assertFailsWith<IllegalArgumentException> {
             repository.updateQuestionConfiguration(
-                conferenceId = conference.id.value,
+                conferenceId = conference.id,
                 configuration = QuestionConfiguration(
                     questionId = question.id,
                     questionText = question.questionText,
@@ -1819,7 +1821,7 @@ class ConferenceRepositoryImplTest {
         val conference = repository.createConference("TestConf")
 
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithQuestion()).success)
-        val question = requireNotNull(repository.getConference(conference.id.value)).questions.single()
+        val question = requireNotNull(repository.getConference(conference.id)).questions.single()
         transaction(database) {
             MunExperienceAnswerMappingTable.insert {
                 it[id] = "experience-mapping"
@@ -1838,7 +1840,7 @@ class ConferenceRepositoryImplTest {
         }
 
         repository.updateQuestionConfiguration(
-            conferenceId = conference.id.value,
+            conferenceId = conference.id,
             configuration = QuestionConfiguration(
                 questionId = question.id,
                 questionText = question.questionText,
@@ -1881,7 +1883,7 @@ class ConferenceRepositoryImplTest {
                 ),
             ).success,
         )
-        val questions = requireNotNull(repository.getConference(conference.id.value)).questions.associateBy { it.questionText }
+        val questions = requireNotNull(repository.getConference(conference.id)).questions.associateBy { it.questionText }
 
         assertNull(questions.getValue("Question: Please describe any of your accessibility needs.").role)
         assertEquals(StandardQuestionRoles.HighSchoolerStatus, questions.getValue("Question: Are you a high-schooler?").role)
@@ -1936,9 +1938,9 @@ class ConferenceRepositoryImplTest {
                 snapshotWithQuestions(listOf("Question: Are you a high-schooler?")),
             ).success,
         )
-        val question = requireNotNull(repository.getConference(conference.id.value)).questions.single()
+        val question = requireNotNull(repository.getConference(conference.id)).questions.single()
         repository.updateQuestionConfiguration(
-            conferenceId = conference.id.value,
+            conferenceId = conference.id,
             configuration = QuestionConfiguration(
                 questionId = question.id,
                 questionText = question.questionText,
@@ -1972,9 +1974,9 @@ class ConferenceRepositoryImplTest {
                 snapshotWithQuestions(listOf("Question: Are you a high-schooler?")),
             ).success,
         )
-        val question = requireNotNull(repository.getConference(conference.id.value)).questions.single()
+        val question = requireNotNull(repository.getConference(conference.id)).questions.single()
         repository.updateQuestionConfiguration(
-            conferenceId = conference.id.value,
+            conferenceId = conference.id,
             configuration = QuestionConfiguration(
                 questionId = question.id,
                 questionText = question.questionText,
@@ -2024,7 +2026,7 @@ class ConferenceRepositoryImplTest {
         val questionText = "Question: Are you a high-schooler and do you need visa support?"
 
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithQuestions(listOf(questionText))).success)
-        val question = requireNotNull(repository.getConference(conference.id.value)).questions.single()
+        val question = requireNotNull(repository.getConference(conference.id)).questions.single()
 
         assertEquals(StandardQuestionRoles.HighSchoolerStatus, question.role)
         assertEquals(StandardQuestionHandlingTypes.ExpectedTypedAnswer, question.handling)
@@ -2039,7 +2041,7 @@ class ConferenceRepositoryImplTest {
         val questionText = "Question: Are you a high-schooler?"
 
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithQuestions(listOf(questionText))).success)
-        val questionId = requireNotNull(repository.getConference(conference.id.value)).questions.single().id.value
+        val questionId = requireNotNull(repository.getConference(conference.id)).questions.single().id.value
         transaction(database) {
             DelegateQuestionTable.update({ DelegateQuestionTable.id eq questionId }) {
                 it[handlingTypeId] = StandardQuestionHandlingTypes.VisaSupport.id
@@ -2048,7 +2050,7 @@ class ConferenceRepositoryImplTest {
         }
 
         val migratedRepository = ConferenceRepositoryImpl(DatabaseFactory.connect(dbPath))
-        val migratedQuestion = requireNotNull(migratedRepository.getConference(conference.id.value)).questions.single()
+        val migratedQuestion = requireNotNull(migratedRepository.getConference(conference.id)).questions.single()
 
         assertEquals(StandardQuestionHandlingTypes.ExpectedTypedAnswer, migratedQuestion.handling)
     }
@@ -2061,9 +2063,9 @@ class ConferenceRepositoryImplTest {
         val conference = repository.createConference("TestConf")
 
         assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithQuestions(listOf("Question: A", "Question: B"))).success)
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val reorderedIds = loaded.questions.sortedByDescending { it.questionText }.map { it.id.value }
-        val reordered = repository.reorderQuestionConfigurations(conference.id.value, reorderedIds)
+        val reordered = repository.reorderQuestionConfigurations(conference.id, reorderedIds.map(::QuestionId))
 
         assertEquals(listOf("Question: B", "Question: A"), reordered.questions.sortedBy { it.displayOrder }.map { it.questionText })
     }

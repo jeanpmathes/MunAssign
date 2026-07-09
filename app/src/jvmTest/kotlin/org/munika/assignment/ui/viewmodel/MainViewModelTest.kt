@@ -13,10 +13,19 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
+import org.munika.assignment.domain.model.AnswerIssueResolutionId
+import org.munika.assignment.domain.model.CommitteeId
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.ConferenceId
+import org.munika.assignment.domain.model.DelegateCommentId
+import org.munika.assignment.domain.model.DelegateId
+import org.munika.assignment.domain.model.DelegationId
+import org.munika.assignment.domain.model.PositionId
 import org.munika.assignment.domain.model.QuestionConfiguration
+import org.munika.assignment.domain.model.QuestionId
+import org.munika.assignment.domain.model.ReservationId
+import org.munika.assignment.domain.model.SlotId
 import org.munika.assignment.domain.repository.ConferenceRepository
 import org.munika.assignment.domain.repository.UpdateIssue
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
@@ -897,31 +906,31 @@ private class FakeConferenceRepository(
         return created
     }
 
-    override suspend fun renameConference(conferenceId: String, newName: String): Conference = unsupported()
+    override suspend fun renameConference(conferenceId: ConferenceId, newName: String): Conference = unsupported()
 
-    override suspend fun deleteConference(conferenceId: String): Unit = unsupported()
+    override suspend fun deleteConference(conferenceId: ConferenceId): Unit = unsupported()
 
-    override suspend fun reorderConferences(conferenceIdsInOrder: List<String>): Unit = unsupported()
+    override suspend fun reorderConferences(conferenceIdsInOrder: List<ConferenceId>): Unit = unsupported()
 
     override suspend fun setCommitteeSlotsPerPosition(
-        conferenceId: String,
-        committeeId: String,
+        conferenceId: ConferenceId,
+        committeeId: CommitteeId,
         slotsPerPosition: Int,
     ): Conference = unsupported()
 
     override suspend fun setCommitteeHighSchoolStatus(
-        conferenceId: String,
-        committeeId: String,
+        conferenceId: ConferenceId,
+        committeeId: CommitteeId,
         isHighSchoolCommittee: Boolean,
     ): Conference = unsupported()
 
     override suspend fun setCommitteeMode(
-        conferenceId: String,
-        committeeId: String,
+        conferenceId: ConferenceId,
+        committeeId: CommitteeId,
         mode: CommitteeMode,
     ): Conference {
-        committeeModeConferenceId = conferenceId
-        committeeModeCommitteeId = committeeId
+        committeeModeConferenceId = conferenceId.value
+        committeeModeCommitteeId = committeeId.value
         committeeModeMode = mode
         committeeModeStarted?.complete(Unit)
         committeeModeResultDeferred?.let { return it.await().getOrThrow() }
@@ -929,117 +938,118 @@ private class FakeConferenceRepository(
     }
 
     override suspend fun setPositionMappedCommittee(
-        conferenceId: String,
-        positionId: String,
-        mappedCommitteeId: String?,
+        conferenceId: ConferenceId,
+        positionId: PositionId,
+        mappedCommitteeId: CommitteeId?,
     ): Conference {
-        positionMappedConferenceId = conferenceId
-        positionMappedPositionId = positionId
-        positionMappedCommitteeId = mappedCommitteeId
+        positionMappedConferenceId = conferenceId.value
+        positionMappedPositionId = positionId.value
+        positionMappedCommitteeId = mappedCommitteeId?.value
         return requireNotNull(positionMappedConference)
     }
 
     override suspend fun assignDelegateToSlot(
-        conferenceId: String,
-        slotId: String,
-        delegateId: String,
+        conferenceId: ConferenceId,
+        slotId: SlotId,
+        delegateId: DelegateId,
         moveExistingPending: Boolean,
     ): Conference = unsupported()
 
-    override suspend fun clearPendingSlot(conferenceId: String, slotId: String): Conference = unsupported()
+    override suspend fun clearPendingSlot(conferenceId: ConferenceId, slotId: SlotId): Conference = unsupported()
 
-    override suspend fun deactivateDelegate(conferenceId: String, delegateId: String): Conference = unsupported()
+    override suspend fun deactivateDelegate(conferenceId: ConferenceId, delegateId: DelegateId): Conference = unsupported()
 
-    override suspend fun reactivateDelegate(conferenceId: String, delegateId: String): Conference = unsupported()
+    override suspend fun reactivateDelegate(conferenceId: ConferenceId, delegateId: DelegateId): Conference = unsupported()
 
     override suspend fun createReservation(
-        conferenceId: String,
+        conferenceId: ConferenceId,
         name: String,
         highSchoolCount: Int,
         universityCount: Int,
-        delegationId: String?,
+        delegationId: DelegationId?,
     ): Conference {
-        createdReservationConferenceId = conferenceId
+        createdReservationConferenceId = conferenceId.value
         createdReservationName = name
         createdReservationHighSchoolCount = highSchoolCount
         createdReservationUniversityCount = universityCount
-        createdReservationDelegationId = delegationId
+        createdReservationDelegationId = delegationId?.value
         createReservationStarted?.complete(Unit)
         createdReservationConferenceDeferred?.let { return it.await() }
         return requireNotNull(createdReservationConference)
     }
 
     override suspend fun updateReservation(
-        conferenceId: String,
-        reservationId: String,
+        conferenceId: ConferenceId,
+        reservationId: ReservationId,
         name: String,
         highSchoolCount: Int,
         universityCount: Int,
-        delegationId: String?,
+        delegationId: DelegationId?,
     ): Conference = unsupported()
 
-    override suspend fun deleteReservation(conferenceId: String, reservationId: String): Conference = unsupported()
+    override suspend fun deleteReservation(conferenceId: ConferenceId, reservationId: ReservationId): Conference = unsupported()
 
     override suspend fun assignDelegateReservation(
-        conferenceId: String,
-        delegateId: String,
-        reservationId: String,
+        conferenceId: ConferenceId,
+        delegateId: DelegateId,
+        reservationId: ReservationId,
     ): Conference = unsupported()
 
-    override suspend fun removeDelegateReservation(conferenceId: String, delegateId: String): Conference {
+    override suspend fun removeDelegateReservation(conferenceId: ConferenceId, delegateId: DelegateId): Conference {
         removeDelegateReservationError?.let { throw IllegalArgumentException(it) }
         return requireNotNull(initialConference)
     }
 
-    override suspend fun addDelegateComment(conferenceId: String, delegateId: String, body: String): Conference = unsupported()
+    override suspend fun addDelegateComment(conferenceId: ConferenceId, delegateId: DelegateId, body: String): Conference = unsupported()
 
-    override suspend fun updateDelegateComment(conferenceId: String, commentId: String, body: String): Conference = unsupported()
+    override suspend fun updateDelegateComment(conferenceId: ConferenceId, commentId: DelegateCommentId, body: String): Conference =
+        unsupported()
 
-    override suspend fun deleteDelegateComment(conferenceId: String, commentId: String): Conference = unsupported()
+    override suspend fun deleteDelegateComment(conferenceId: ConferenceId, commentId: DelegateCommentId): Conference = unsupported()
 
     override suspend fun updateQuestionConfiguration(
-        conferenceId: String,
+        conferenceId: ConferenceId,
         configuration: QuestionConfiguration,
     ): Conference = unsupported()
 
     override suspend fun updateQuestionConfigurations(
-        conferenceId: String,
+        conferenceId: ConferenceId,
         configurations: List<QuestionConfiguration>,
     ): Conference = unsupported()
 
     override suspend fun reorderQuestionConfigurations(
-        conferenceId: String,
-        questionIdsInDisplayOrder: List<String>,
+        conferenceId: ConferenceId,
+        questionIdsInDisplayOrder: List<QuestionId>,
     ): Conference = unsupported()
 
     override suspend fun resolveAnswerIssue(
-        conferenceId: String,
-        delegateId: String,
-        questionId: String?,
+        conferenceId: ConferenceId,
+        delegateId: DelegateId,
+        questionId: QuestionId?,
         issueKey: String,
         justification: String?,
     ): Conference {
         resolveThrows?.let { throw it }
         resolveError?.let { throw IllegalArgumentException(it) }
-        resolvedDelegateId = delegateId
-        resolvedQuestionId = questionId
+        resolvedDelegateId = delegateId.value
+        resolvedQuestionId = questionId?.value
         resolvedIssueKey = issueKey
         resolvedJustification = justification
         return requireNotNull(resolvedConference)
     }
 
     override suspend fun updateAnswerIssueResolutionJustification(
-        conferenceId: String,
-        resolutionId: String,
+        conferenceId: ConferenceId,
+        resolutionId: AnswerIssueResolutionId,
         justification: String?,
     ): Conference = unsupported()
 
-    override suspend fun unresolveAnswerIssue(conferenceId: String, resolutionId: String): Conference = unsupported()
+    override suspend fun unresolveAnswerIssue(conferenceId: ConferenceId, resolutionId: AnswerIssueResolutionId): Conference = unsupported()
 
-    override suspend fun getConference(conferenceId: String): Conference? {
+    override suspend fun getConference(conferenceId: ConferenceId): Conference? {
         getConferenceStarted?.complete(Unit)
         getConferenceDeferred?.let { return it.await() }
-        return conferences.firstOrNull { it.id.value == conferenceId }
+        return conferences.firstOrNull { it.id == conferenceId }
     }
 
     private fun unsupported(): Nothing = error("Not needed for this test.")

@@ -18,6 +18,7 @@ import org.munika.assignment.data.db.repository.ConferenceRepositoryImpl
 import org.munika.assignment.data.db.tables.AnswerIssueResolutionTable
 import org.munika.assignment.data.excel.MymunWorkbookUpdater
 import org.munika.assignment.domain.model.AnswerIssueSeverity
+import org.munika.assignment.domain.model.ConferenceId
 
 class ConferenceTransferServiceTest {
     @Test
@@ -26,7 +27,7 @@ class ConferenceTransferServiceTest {
         val sourceDatabase = DatabaseFactory.connect(sourcePath)
         val sourceRepository = ConferenceRepositoryImpl(sourceDatabase)
         val sourceConference = populatedConference(sourceRepository, sourceDatabase, "KAMUN")
-        val sourceLoaded = requireNotNull(sourceRepository.getConference(sourceConference.id.value))
+        val sourceLoaded = requireNotNull(sourceRepository.getConference(sourceConference.id))
         val transferPath = Files.createTempDirectory("munassign-transfer-file").resolve("kamun.munassign")
 
         ConferenceTransferService(sourcePath).exportConference(sourceConference.id.value, transferPath)
@@ -36,7 +37,7 @@ class ConferenceTransferServiceTest {
         val targetRepository = ConferenceRepositoryImpl(targetDatabase)
         val importedId = ConferenceTransferService(targetPath).importConferenceAsNew(transferPath)
 
-        val imported = requireNotNull(targetRepository.getConference(importedId))
+        val imported = requireNotNull(targetRepository.getConference(ConferenceId(importedId)))
         assertEquals(sourceLoaded.name, imported.name)
         assertNotEquals(sourceLoaded.id, imported.id)
         assertEquals(sourceLoaded.committees.size, imported.committees.size)
@@ -81,11 +82,11 @@ class ConferenceTransferServiceTest {
         val targetRepository = ConferenceRepositoryImpl(targetDatabase)
         val first = targetRepository.createConference("First")
         val local = targetRepository.createConference("Local")
-        targetRepository.reorderConferences(listOf(local.id.value, first.id.value))
+        targetRepository.reorderConferences(listOf(local.id, first.id))
 
         val replacedId = ConferenceTransferService(targetPath).replaceConference(local.id.value, transferPath)
 
-        val replaced = requireNotNull(targetRepository.getConference(replacedId))
+        val replaced = requireNotNull(targetRepository.getConference(ConferenceId(replacedId)))
         assertEquals(local.id, replaced.id)
         assertEquals("Local", replaced.name)
         assertEquals(0, replaced.displayOrder)
@@ -128,7 +129,7 @@ class ConferenceTransferServiceTest {
 
         val importedId = ConferenceTransferService(targetPath).importConferenceAsNew(transferPath)
 
-        assertNotNull(targetRepository.getConference(importedId))
+        assertNotNull(targetRepository.getConference(ConferenceId(importedId)))
         assertEquals(DatabaseFactory.CURRENT_SCHEMA_VERSION - 1, maxSchemaVersion(transferPath))
     }
 
@@ -160,7 +161,7 @@ class ConferenceTransferServiceTest {
         val importedId = ConferenceTransferService(targetPath).importConferenceAsNew(transferPath)
 
         lockThread.join()
-        assertTrue(targetRepository.getConference(importedId) != null)
+        assertTrue(targetRepository.getConference(ConferenceId(importedId)) != null)
     }
 
     @Test
@@ -209,10 +210,10 @@ class ConferenceTransferServiceTest {
         val workbook = requireNotNull(javaClass.classLoader.getResource("export.xlsx"))
         val update = MymunWorkbookUpdater(repository).applyUpdate(conference.id.value, Path.of(workbook.toURI()))
         assertTrue(update.success, update.issues.joinToString("; ") { it.message })
-        val loaded = requireNotNull(repository.getConference(conference.id.value))
+        val loaded = requireNotNull(repository.getConference(conference.id))
         val delegate = loaded.delegates.first()
-        repository.addDelegateComment(conference.id.value, delegate.id.value, "Transfer note")
-        repository.createReservation(conference.id.value, "Transfer hold", highSchoolCount = 1, universityCount = 1, delegationId = null)
+        repository.addDelegateComment(conference.id, delegate.id, "Transfer note")
+        repository.createReservation(conference.id, "Transfer hold", highSchoolCount = 1, universityCount = 1, delegationId = null)
         val question = requireNotNull(loaded.questions.firstOrNull())
         transaction(database) {
             AnswerIssueResolutionTable.insert {
@@ -227,7 +228,7 @@ class ConferenceTransferServiceTest {
                 it[resolvedAtEpochMillis] = 1L
             }
         }
-        return requireNotNull(repository.getConference(conference.id.value))
+        return requireNotNull(repository.getConference(conference.id))
     }
 
     private fun tempDatabase(prefix: String): Path =
