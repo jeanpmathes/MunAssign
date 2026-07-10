@@ -8,6 +8,7 @@ import java.nio.file.Path
 data class AppDataPaths(
     val databasePath: Path,
     val markdownExportDirectory: Path,
+    val windowStatePath: Path,
 )
 
 /**
@@ -30,6 +31,7 @@ object AppDataPathResolver {
         return AppDataPaths(
             databasePath = dataRoot.resolve("data.db"),
             markdownExportDirectory = dataRoot.resolve("markdown-exports"),
+            windowStatePath = dataRoot.resolve("window-state.properties"),
         )
     }
 

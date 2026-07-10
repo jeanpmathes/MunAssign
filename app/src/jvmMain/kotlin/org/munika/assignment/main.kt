@@ -8,8 +8,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPlacement
+import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
+import androidx.compose.ui.window.rememberWindowState
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Component
@@ -25,6 +31,10 @@ import java.awt.dnd.DropTarget
 import java.awt.dnd.DropTargetDragEvent
 import java.awt.dnd.DropTargetDropEvent
 import java.awt.dnd.DropTargetEvent
+import java.awt.event.ComponentAdapter
+import java.awt.event.ComponentEvent
+import java.awt.event.WindowEvent
+import java.awt.event.WindowStateListener
 import java.io.File
 import java.io.FilenameFilter
 import java.net.URI
@@ -91,8 +101,22 @@ private fun MunAssignApplication(
 
     val viewModel = dependencies.viewModel
     val appDataPaths = dependencies.appDataPaths
+    val restoredWindowState = remember { dependencies.windowStateStore.load() }
+    val windowBoundsTracker = remember { WindowBoundsTracker(restoredWindowState) }
+    var mainWindow by remember { mutableStateOf<JFrame?>(null) }
+    val windowState = rememberWindowState(
+        placement = if (restoredWindowState.maximized) WindowPlacement.Maximized else WindowPlacement.Floating,
+        position = restoredWindowState.normalLocation?.let { WindowPosition(it.x.dp, it.y.dp) }
+            ?: WindowPosition(Alignment.Center),
+        size = DpSize(restoredWindowState.normalSize.width.dp, restoredWindowState.normalSize.height.dp),
+    )
     Window(
+        state = windowState,
         onCloseRequest = {
+            mainWindow?.let { window ->
+                windowBoundsTracker.capture(window)
+                dependencies.windowStateStore.save(windowBoundsTracker.toAppWindowState(window))
+            }
             viewModel.close()
             exitApplication()
         },
@@ -103,6 +127,13 @@ private fun MunAssignApplication(
         }
 
         DisposableEffect(window) {
+            mainWindow = window
+            window.minimumSize = MinimumMainWindowSize
+            windowBoundsTracker.capture(window)
+            val windowBoundsListener = WindowBoundsListener(window, windowBoundsTracker)
+            window.addComponentListener(windowBoundsListener)
+            window.addWindowStateListener(windowBoundsListener)
+
             val dropTargets = window.workbookDropTargetComponents()
             val previousDropTargets = dropTargets.associateWith { it.dropTarget }
             dropTargets.forEach { component ->
@@ -112,6 +143,12 @@ private fun MunAssignApplication(
                 )
             }
             onDispose {
+                windowBoundsTracker.capture(window)
+                window.removeComponentListener(windowBoundsListener)
+                window.removeWindowStateListener(windowBoundsListener)
+                if (mainWindow === window) {
+                    mainWindow = null
+                }
                 workbookDropFeedback = null
                 previousDropTargets.forEach { (component, dropTarget) ->
                     component.dropTarget = dropTarget
@@ -164,6 +201,41 @@ private fun MunAssignApplication(
         )
     }
 }
+
+private val MinimumMainWindowSize = Dimension(1100, 720)
+
+private class WindowBoundsTracker(initialState: AppWindowState) {
+    private var normalWindowState: AppWindowState = initialState.copy(maximized = false)
+
+    fun capture(window: JFrame) {
+        if (!window.isMaximized() && window.bounds.isValidNormalWindowBounds()) {
+            normalWindowState = normalWindowState.withNormalBounds(window.bounds)
+        }
+    }
+
+    fun toAppWindowState(window: JFrame): AppWindowState =
+        normalWindowState.copy(maximized = window.isMaximized())
+}
+
+private class WindowBoundsListener(
+    private val window: JFrame,
+    private val tracker: WindowBoundsTracker,
+) : ComponentAdapter(), WindowStateListener {
+    override fun componentMoved(event: ComponentEvent) {
+        tracker.capture(window)
+    }
+
+    override fun componentResized(event: ComponentEvent) {
+        tracker.capture(window)
+    }
+
+    override fun windowStateChanged(event: WindowEvent) {
+        tracker.capture(window)
+    }
+}
+
+private fun JFrame.isMaximized(): Boolean =
+    extendedState and Frame.MAXIMIZED_BOTH == Frame.MAXIMIZED_BOTH
 
 private fun createWorkbookDropTarget(
     viewModel: MainViewModel,
@@ -285,6 +357,7 @@ private fun startDependencies(): MainDependencies {
     return MainDependencies(
         viewModel = getKoin().get(),
         appDataPaths = getKoin().get(),
+        windowStateStore = getKoin().get(),
     )
 }
 
@@ -347,6 +420,7 @@ private class ImmediateSplashWindow {
 private data class MainDependencies(
     val viewModel: MainViewModel,
     val appDataPaths: AppDataPaths,
+    val windowStateStore: AppWindowStateStore,
 )
 
 private fun openMarkdownExportFolder(parent: Frame, directory: Path) {
