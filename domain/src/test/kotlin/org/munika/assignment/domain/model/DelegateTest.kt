@@ -75,6 +75,49 @@ class DelegateTest {
     }
 
     @Test
+    fun `profile issues warn when language level is beginner`() {
+        val delegate = delegateWithLanguageLevel(LanguageLevel.BeginnerA1A2)
+
+        assertEquals(
+            listOf(
+                AnswerIssue(
+                    message = "Delegate language level is A1/A2.",
+                    severity = AnswerIssueSeverity.Warning,
+                    key = "Warning:profile_low_language_level",
+                ),
+            ),
+            delegate.profileIssues(Today),
+        )
+    }
+
+    @Test
+    fun `profile issues do not warn for non beginner missing or unmapped language levels`() {
+        assertTrue(delegateWithLanguageLevel(LanguageLevel.IndependentUserB1B2).profileIssues(Today).isEmpty())
+        assertTrue(delegateWithLanguageLevel(LanguageLevel.ProficientUserC1C2).profileIssues(Today).isEmpty())
+        assertTrue(delegateWithLanguageLevel(null).profileIssues(Today).isEmpty())
+        assertTrue(delegateWithUnmappedLanguageAnswer().profileIssues(Today).isEmpty())
+    }
+
+    @Test
+    fun `resolved beginner language profile issue is not open`() {
+        val delegate = delegateWithLanguageLevel(LanguageLevel.BeginnerA1A2)
+        val issue = delegate.profileIssues(Today).single()
+        delegate.issueResolutions += AnswerIssueResolution(
+            id = AnswerIssueResolutionId("language-resolution"),
+            delegate = delegate,
+            questionId = null,
+            issueKey = issue.key,
+            issueMessage = issue.message,
+            severity = issue.severity,
+            justification = "Language checked manually.",
+            resolvedAt = Instant.EPOCH,
+        )
+
+        assertTrue(delegate.openProfileIssues(Today).isEmpty())
+        assertEquals("Language checked manually.", delegate.resolvedProfileIssues(Today).single().resolution.justification)
+    }
+
+    @Test
     fun `application submitted text uses singular day and clamps clock skew to zero`() {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val zoneId = ZoneId.of("UTC")
@@ -162,6 +205,53 @@ class DelegateTest {
             delegate = delegate,
             question = question,
             rawAnswer = "Answer",
+        )
+        return delegate
+    }
+
+    private fun delegateWithLanguageLevel(level: LanguageLevel?): Delegate {
+        val conference = Conference(ConferenceId("conference-language-$level"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val delegate = Delegate(
+            id = DelegateId("delegate-language-$level"),
+            conference = conference,
+            name = PersonName("Ada", "Lovelace"),
+            email = "ada@example.test",
+            profile = DelegateProfile(null, null, null, null, null, null, null, null, null, null),
+            paymentStatus = PaymentStatus.Paid,
+            isHeadDelegate = false,
+        )
+        val mappedLevel = level ?: return delegate
+        val question = Question(
+            id = QuestionId("question-language-$level"),
+            questionText = "Language",
+            role = StandardQuestionRoles.LanguageLevel,
+            handling = StandardQuestionHandlingTypes.ExpectedTypedAnswer,
+            mappings = TypedAnswerMappings(languageLevel = listOf(LanguageLevelAnswerMapping("Answer", mappedLevel))),
+        )
+        delegate.answers += QuestionAnswer(
+            id = QuestionAnswerId("answer-language-$level"),
+            delegate = delegate,
+            question = question,
+            rawAnswer = "Answer",
+        )
+        return delegate
+    }
+
+    private fun delegateWithUnmappedLanguageAnswer(): Delegate {
+        val delegate = delegateWithLanguageLevel(LanguageLevel.BeginnerA1A2)
+        delegate.answers.clear()
+        val question = Question(
+            id = QuestionId("question-language-unmapped"),
+            questionText = "Language",
+            role = StandardQuestionRoles.LanguageLevel,
+            handling = StandardQuestionHandlingTypes.ExpectedTypedAnswer,
+            mappings = TypedAnswerMappings(languageLevel = listOf(LanguageLevelAnswerMapping("Mapped", LanguageLevel.BeginnerA1A2))),
+        )
+        delegate.answers += QuestionAnswer(
+            id = QuestionAnswerId("answer-language-unmapped"),
+            delegate = delegate,
+            question = question,
+            rawAnswer = "Different",
         )
         return delegate
     }

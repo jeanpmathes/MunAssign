@@ -98,6 +98,9 @@ not configured, the delegate has no answer, or the raw answer has no configured 
 conservative fallback is intentional; organizers can correct observed raw values through the
 question configuration workflow.
 
+Language level produces a derived profile warning when the configured raw answer maps to A1/A2.
+B1/B2, C1/C2, missing answers, and unmapped raw values do not warn.
+
 The question configuration dialog includes every distinct nonblank observed raw answer for each
 role-backed question. Answers are matched using the same normalization as domain mapping lookup;
 configured values remain selected and are not duplicated, while newly observed values are shown as

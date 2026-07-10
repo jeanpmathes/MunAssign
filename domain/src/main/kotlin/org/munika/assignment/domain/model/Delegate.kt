@@ -84,24 +84,31 @@ class Delegate(
         }
 
     fun profileIssues(today: LocalDate = LocalDate.now()): List<AnswerIssue> {
-        val age = age(today) ?: return emptyList()
-        return when {
-            isHighSchooler && age >= 19 -> listOf(
+        val issues = mutableListOf<AnswerIssue>()
+        if (languageLevel == LanguageLevel.BeginnerA1A2) {
+            issues += AnswerIssue(
+                message = "Delegate language level is A1/A2.",
+                severity = AnswerIssueSeverity.Warning,
+                key = ProfileLowLanguageLevelIssueKey,
+            )
+        }
+
+        val age = age(today) ?: return issues
+        when {
+            isHighSchooler && age >= 19 -> issues +=
                 AnswerIssue(
                     message = "Delegate is marked as a high schooler but is $age years old.",
                     severity = AnswerIssueSeverity.Warning,
                     key = ProfileHighSchoolerOverAgeIssueKey,
-                ),
-            )
-            !isHighSchooler && age <= 17 -> listOf(
+                )
+            !isHighSchooler && age <= 17 -> issues +=
                 AnswerIssue(
                     message = "Delegate is $age years old but is not marked as a high schooler.",
                     severity = AnswerIssueSeverity.Warning,
                     key = ProfileMinorNotHighSchoolerIssueKey,
-                ),
-            )
-            else -> emptyList()
+                )
         }
+        return issues
     }
 
     fun openProfileIssues(today: LocalDate = LocalDate.now()): List<AnswerIssue> =
@@ -113,6 +120,7 @@ class Delegate(
         }
 
     private companion object {
+        const val ProfileLowLanguageLevelIssueKey = "Warning:profile_low_language_level"
         const val ProfileHighSchoolerOverAgeIssueKey = "Warning:profile_high_schooler_over_age"
         const val ProfileMinorNotHighSchoolerIssueKey = "Warning:profile_minor_not_high_schooler"
     }

@@ -1,6 +1,5 @@
 # TODO
 
-- Warning for low language level.
 - Larger window size / use size at last close.
 - Icon
 - Export nice PNGs with current assignment status.
