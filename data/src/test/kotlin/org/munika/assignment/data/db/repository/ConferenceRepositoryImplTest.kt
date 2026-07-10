@@ -330,7 +330,7 @@ class ConferenceRepositoryImplTest {
     }
 
     @Test
-    fun `position mapping rejects a target already used by a sibling position`() = runBlocking {
+    fun `position mapping allows a target already used by a sibling position`() = runBlocking {
         val dbPath = Files.createTempDirectory("munassign-ipc-duplicate-target").resolve("data.db")
         val repository = ConferenceRepositoryImpl(DatabaseFactory.connect(dbPath))
         val conference = repository.createConference("TestConf")
@@ -345,12 +345,16 @@ class ConferenceRepositoryImplTest {
         val target = loaded.committees.single { it.mymunName == "UNSC" }
         repository.setCommitteeMode(conference.id, ipc.id, CommitteeMode.Mapped)
         repository.setPositionMappedCommittee(conference.id, ipc.positions.first().id, target.id)
+        repository.setPositionMappedCommittee(conference.id, ipc.positions.last().id, target.id)
 
-        val error = assertFailsWith<IllegalArgumentException> {
-            repository.setPositionMappedCommittee(conference.id, ipc.positions.last().id, target.id)
-        }
+        val reloaded = requireNotNull(repository.getConference(conference.id))
+        val reloadedIpc = reloaded.committees.single { it.mymunName == "IPC" }
+        val reloadedTarget = reloaded.committees.single { it.mymunName == "UNSC" }
 
-        assertTrue(error.message.orEmpty().contains("already corresponds"))
+        assertEquals(
+            listOf(reloadedTarget.id, reloadedTarget.id),
+            reloadedIpc.positions.sortedBy { it.name }.map { it.mappedCommittee?.id },
+        )
     }
 
     @Test

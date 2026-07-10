@@ -55,7 +55,7 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It k
 - The main view is a horizontally scrollable board of committee columns.
 - High-school committee columns show the total and remaining high-school reservation capacity reminder. University committee columns show the equivalent university reminder. The reminder opens the reservation manager and does not bind reservations to that committee.
 - Mapped committee columns use a distinct header tone and do not show a reservation reminder because capacity is derived position-by-position from their correspondences.
-- Mapped positions show a correspondence dropdown listing eligible high-school and university committees. Mapped committees cannot be selected as correspondence targets.
+- Mapped positions show a correspondence dropdown listing eligible high-school and university committees. Mapped committees cannot be selected as correspondence targets. Multiple positions in one mapped committee may share the same correspondence target.
 - Each position shows slot rows, interested delegate count, and interested delegates inline when the position has no assignment.
 - Confirmed-assigned delegates are greyed out where they appear as interested delegates elsewhere.
 - Clicking a delegate opens a side panel with profile data, assignment state, reservation usage, preferences, configured question answers, comment history, and deactivate/reactivate controls. Manual reservation links can be assigned, changed, or removed there; automatic delegation links can be changed by assigning a manual reservation.

@@ -84,15 +84,20 @@ class PositionTest {
     }
 
     @Test
-    fun `sibling positions cannot share a mapping target`() {
+    fun `sibling positions can share a mapping target`() {
         val conference = conference()
         val owner = committee(conference, "owner", CommitteeMode.Mapped)
         val target = committee(conference, "target", CommitteeMode.HighSchool)
         val first = Position(PositionId("first"), owner, "France").also { owner.positions += it }
         val second = Position(PositionId("second"), owner, "Germany").also { owner.positions += it }
-        first.setMappedCommittee(target)
 
-        assertFailsWith<IllegalArgumentException> { second.setMappedCommittee(target) }
+        first.setMappedCommittee(target)
+        second.setMappedCommittee(target)
+
+        assertEquals(target, first.mappedCommittee)
+        assertEquals(target, second.mappedCommittee)
+        assertEquals(CommitteeMode.HighSchool, first.effectiveCommitteeMode)
+        assertEquals(CommitteeMode.HighSchool, second.effectiveCommitteeMode)
     }
 
     @Test

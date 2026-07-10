@@ -49,11 +49,6 @@ class Position(
             require(target.mode != CommitteeMode.Mapped) {
                 "Mapped target committee must not itself be mapped."
             }
-            require(committee.positions.none { sibling ->
-                sibling !== this && sibling.mappedCommittee?.id == target.id
-            }) {
-                "Mapped target committee is already used by another position in this committee."
-            }
         }
         mappedCommittee = target
     }

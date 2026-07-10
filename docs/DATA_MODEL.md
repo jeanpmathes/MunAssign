@@ -60,7 +60,7 @@ Committee mode determines the high-school/university bucket used by its position
 - `University` positions count as university slots.
 - `Mapped` positions inherit the mode of their mapped target committee.
 
-Mapped targets must be committees in the same conference whose mode is not `Mapped`. This prevents chained or circular IPC correspondences. Within one mapped committee, each target committee may be used by at most one position. Unmapped positions in mapped committees are treated as incomplete for board state and do not contribute to high-school or university accept capacity until a target is selected. A mapped committee cannot switch back to high-school or university mode until all of its position correspondences are cleared.
+Mapped targets must be committees in the same conference whose mode is not `Mapped`. This prevents chained or circular IPC correspondences. Multiple positions in one mapped committee may share the same target committee. Unmapped positions in mapped committees are treated as incomplete for board state and do not contribute to high-school or university accept capacity until a target is selected. A mapped committee cannot switch back to high-school or university mode until all of its position correspondences are cleared.
 
 During an update:
 

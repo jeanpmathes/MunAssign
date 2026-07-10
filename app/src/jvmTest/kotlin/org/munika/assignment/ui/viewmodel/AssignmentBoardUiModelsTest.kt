@@ -383,7 +383,7 @@ class AssignmentBoardUiModelsTest {
     }
 
     @Test
-    fun `mapped position options exclude targets used by sibling positions`() {
+    fun `mapped position options include targets used by sibling positions`() {
         val board = mappedBoard()
         val ipc = board.conference.committees.single { it.mymunName == "IPC" }
         val secondReporter = Position(PositionId("second-reporter"), ipc, "Second Reporter")
@@ -395,7 +395,7 @@ class AssignmentBoardUiModelsTest {
             .positions
 
         assertEquals(listOf("UNSC"), positions.single { it.id == "reporter" }.mappingOptions.map { it.name })
-        assertTrue(positions.single { it.id == "second-reporter" }.mappingOptions.isEmpty())
+        assertEquals(listOf("UNSC"), positions.single { it.id == "second-reporter" }.mappingOptions.map { it.name })
     }
 
     private fun board(slotCount: Int = 1, isHighSchoolCommittee: Boolean = false): Board {

@@ -328,19 +328,6 @@ class ConferenceRepositoryImpl(
         require(target == null || CommitteeMode.valueOf(target[CommitteeTable.mode]) != CommitteeMode.Mapped) {
             "Position $positionId cannot map to a mapped committee."
         }
-        if (mappedCommitteeId != null) {
-            val siblingUsingTarget = PositionTable.selectAll()
-                .where {
-                    (PositionTable.committeeId eq owningCommittee[CommitteeTable.id]) and
-                        (PositionTable.id neq positionId) and
-                        (PositionTable.mappedCommitteeId eq mappedCommitteeId)
-                }
-                .firstOrNull()
-            require(siblingUsingTarget == null) {
-                "Another position in ${owningCommittee[CommitteeTable.mymunName]} already corresponds to " +
-                    "${target?.get(CommitteeTable.mymunName)}."
-            }
-        }
         PositionTable.update({ PositionTable.id eq positionId }) {
             it[PositionTable.mappedCommitteeId] = mappedCommitteeId
         }

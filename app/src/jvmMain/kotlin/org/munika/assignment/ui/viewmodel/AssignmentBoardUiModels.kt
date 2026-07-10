@@ -240,16 +240,10 @@ private fun Committee.toMappedCommitteeUiState(): PositionMappedCommitteeUiState
         mode = mode,
     )
 
-private fun List<Committee>.toMappingOptions(position: Position): List<CommitteeMappingOptionUiState> {
-    val usedTargetIds = position.committee.positions
-        .asSequence()
-        .filter { it !== position }
-        .mapNotNull { it.mappedCommittee?.id }
-        .toSet()
-    return filter {
+private fun List<Committee>.toMappingOptions(position: Position): List<CommitteeMappingOptionUiState> =
+    filter {
         it !== position.committee &&
-            it.mode != CommitteeMode.Mapped &&
-            (it.id !in usedTargetIds || it === position.mappedCommittee)
+            it.mode != CommitteeMode.Mapped
     }
         .map {
             CommitteeMappingOptionUiState(
@@ -258,7 +252,6 @@ private fun List<Committee>.toMappingOptions(position: Position): List<Committee
                 mode = it.mode,
             )
         }
-}
 
 private fun Slot.toBoardUiState(): SlotBoardUiState =
     SlotBoardUiState(
