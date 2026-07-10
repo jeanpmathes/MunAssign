@@ -95,6 +95,115 @@ class MyMunWorkbookParserTest {
     }
 
     @Test
+    fun `countries delegation column is optional`() {
+        val workbookBytes = ByteArrayOutputStream().use { output ->
+            XSSFWorkbook().use { workbook ->
+                val countries = workbook.createSheet("Countries")
+                countries.createRow(0).apply {
+                    createCell(0).setCellValue("Committee Name")
+                    createCell(1).setCellValue("Member Name")
+                    createCell(2).setCellValue("Delegates")
+                }
+                countries.createRow(1).apply {
+                    createCell(0).setCellValue("GA")
+                    createCell(1).setCellValue("France")
+                    createCell(2).setCellValue("Alex Kim")
+                }
+
+                val delegates = workbook.createSheet("Delegates")
+                delegates.createRow(0).apply {
+                    createCell(0).setCellValue("First Name")
+                    createCell(1).setCellValue("Last Name")
+                    createCell(2).setCellValue("Email")
+                    createCell(3).setCellValue("Fee Paid")
+                }
+                delegates.createRow(1).apply {
+                    createCell(0).setCellValue("Alex")
+                    createCell(1).setCellValue("Kim")
+                    createCell(2).setCellValue("alex@example.test")
+                    createCell(3).setCellValue("yes")
+                }
+
+                workbook.write(output)
+            }
+            output.toByteArray()
+        }
+
+        val snapshot = parser.parse(ByteArrayInputStream(workbookBytes), "countries-without-delegation.xlsx")
+
+        assertTrue(snapshot.issues.none { it.code == "missing_column" }, snapshot.issues.joinToString("\n") { it.message })
+        assertEquals(
+            MymunCountryPositionRow(2, "GA", "France", null, "Alex Kim"),
+            snapshot.countryPositions.single(),
+        )
+        assertEquals("Alex Kim", snapshot.confirmedAssignmentCandidates.single().delegateDisplayName)
+    }
+
+    @Test
+    fun `preferences resolve when committee names contain parenthesized qualifiers`() {
+        val workbookBytes = ByteArrayOutputStream().use { output ->
+            XSSFWorkbook().use { workbook ->
+                val countries = workbook.createSheet("Countries")
+                countries.createRow(0).apply {
+                    createCell(0).setCellValue("Committee Name")
+                    createCell(1).setCellValue("Member Name")
+                    createCell(2).setCellValue("Delegates")
+                }
+                countries.createRow(1).apply {
+                    createCell(0).setCellValue("International Labour Organization (High School)")
+                    createCell(1).setCellValue("Netherlands")
+                }
+                countries.createRow(2).apply {
+                    createCell(0).setCellValue("IAEA (Highschool)")
+                    createCell(1).setCellValue("Saudi Arabia")
+                }
+                countries.createRow(3).apply {
+                    createCell(0).setCellValue("US Constitutional Convention of 1787")
+                    createCell(1).setCellValue("Benjamin Franklin (Pennsylvania)")
+                }
+                countries.createRow(4).apply {
+                    createCell(0).setCellValue("US Constitutional Convention of 1787")
+                    createCell(1).setCellValue("Alexander Hamilton (New York)")
+                }
+                countries.createRow(5).apply {
+                    createCell(0).setCellValue("WHO")
+                    createCell(1).setCellValue("Union of Soviet Socialist Republics (USSR)")
+                }
+
+                val delegates = workbook.createSheet("Delegates")
+                delegates.createRow(0).apply {
+                    createCell(0).setCellValue("First Name")
+                    createCell(1).setCellValue("Last Name")
+                    createCell(2).setCellValue("Email")
+                    createCell(3).setCellValue("Fee Paid")
+                    createCell(4).setCellValue("Preference 1")
+                    createCell(5).setCellValue("Preference 2")
+                    createCell(6).setCellValue("Preference 3")
+                    createCell(7).setCellValue("Preference 4")
+                }
+                delegates.createRow(1).apply {
+                    createCell(0).setCellValue("Alex")
+                    createCell(1).setCellValue("Kim")
+                    createCell(2).setCellValue("alex@example.test")
+                    createCell(3).setCellValue("yes")
+                    createCell(4).setCellValue("International Labour Organization (High School) (Netherlands)")
+                    createCell(5).setCellValue("IAEA (Highschool) (Saudi Arabia)")
+                    createCell(6).setCellValue("US Constitutional Convention of 1787 (Benjamin Franklin (Pennsylvania))")
+                    createCell(7).setCellValue("WHO (Union of Soviet Socialist Republics (USSR))")
+                }
+
+                workbook.write(output)
+            }
+            output.toByteArray()
+        }
+
+        val snapshot = parser.parse(ByteArrayInputStream(workbookBytes), "parenthesized-committee-preferences.xlsx")
+
+        assertTrue(snapshot.issues.none { it.code == "unresolved_preference" }, snapshot.issues.joinToString("\n") { it.message })
+        assertEquals(listOf(2, 3, 4, 6), snapshot.preferenceCandidates.sortedBy { it.rank }.map { it.resolvedCountryRowNumber })
+    }
+
+    @Test
     fun `invalid date cells become blocking validation issues`() {
         val workbookBytes = ByteArrayOutputStream().use { output ->
             XSSFWorkbook().use { workbook ->

@@ -67,6 +67,7 @@ import org.munika.assignment.data.excel.MymunDelegateRow
 import org.munika.assignment.data.excel.MymunDelegationRow
 import org.munika.assignment.data.excel.MymunValidationSeverity
 import org.munika.assignment.data.excel.MymunWorkbookSnapshot
+import org.munika.assignment.data.excel.toExcelColumnName
 import org.munika.assignment.domain.model.AssignmentSource
 import org.munika.assignment.domain.model.AnswerIssueResolutionId
 import org.munika.assignment.domain.model.CommitteeId
@@ -1050,6 +1051,7 @@ class ConferenceRepositoryImpl(
             }
 
         issues.forEach { issue ->
+            logUpdateIssue(issue)
             insertUpdateIssue(updateRunId, issue)
         }
 
@@ -1325,6 +1327,7 @@ class ConferenceRepositoryImpl(
                                 "room for a MyMUN-confirmed delegate in the same position.",
                         )
                         issues += warning
+                        logUpdateIssue(warning)
                         insertUpdateIssue(updateRunId, warning)
                         delta.pendingAssignmentsDisplaced++
                     }
@@ -1903,6 +1906,38 @@ class ConferenceRepositoryImpl(
             it[MymunUpdateIssueTable.rowNumber] = issue.rowNumber
             it[MymunUpdateIssueTable.columnNumber] = issue.columnNumber
             it[MymunUpdateIssueTable.columnName] = issue.columnName
+        }
+    }
+
+    private fun logUpdateIssue(issue: UpdateIssue) {
+        val location = issue.locationDescription()
+        when (issue.severity) {
+            UpdateIssueSeverity.Error -> logger.warn(
+                "MyMUN update issue severity={} code={} location={} message={}",
+                issue.severity,
+                issue.code,
+                location,
+                issue.message,
+            )
+            UpdateIssueSeverity.Warning -> logger.info(
+                "MyMUN update issue severity={} code={} location={} message={}",
+                issue.severity,
+                issue.code,
+                location,
+                issue.message,
+            )
+        }
+    }
+
+    private fun UpdateIssue.locationDescription(): String {
+        val sheet = sheetName ?: return "<workbook>"
+        val row = rowNumber
+        val column = columnNumber
+        return when {
+            row == null && column == null -> sheet
+            column != null && row != null -> "$sheet!${column.toExcelColumnName()}$row"
+            row != null -> "$sheet row $row"
+            else -> sheet
         }
     }
 

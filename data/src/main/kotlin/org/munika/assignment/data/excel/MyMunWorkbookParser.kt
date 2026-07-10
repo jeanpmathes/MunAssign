@@ -80,7 +80,7 @@ class MyMunWorkbookParser {
         issues: MutableList<MymunValidationIssue>,
     ): List<MymunCountryPositionRow> {
         val headers = headerMap(sheet)
-        val requiredHeaders = listOf(CountryCommittee, CountryMember, CountryDelegation, CountryDelegates)
+        val requiredHeaders = listOf(CountryCommittee, CountryMember, CountryDelegates)
         issues += missingColumnIssues(sheet.sheetName, headers, requiredHeaders)
 
         return dataRows(sheet).mapNotNull { row ->
@@ -345,10 +345,32 @@ class MyMunWorkbookParser {
     )
 
     private fun parsePreference(rawPreference: String): ParsedPreference? {
-        val match = PreferenceValue.matchEntire(rawPreference.trim()) ?: return null
+        val value = rawPreference.trim()
+        if (!value.endsWith(")")) return null
+
+        var depth = 0
+        val positionStart = value.indices.reversed().firstOrNull { index ->
+            when (value[index]) {
+                ')' -> {
+                    depth++
+                    false
+                }
+                '(' -> {
+                    depth--
+                    depth == 0
+                }
+                else -> false
+            }
+        } ?: return null
+
+        if (depth != 0) return null
+        val committeeName = value.substring(0, positionStart).trim()
+        val positionName = value.substring(positionStart + 1, value.lastIndex).trim()
+        if (committeeName.isEmpty() || positionName.isEmpty()) return null
+
         return ParsedPreference(
-            committeeName = match.groupValues[1].trim(),
-            positionName = match.groupValues[2].trim(),
+            committeeName = committeeName,
+            positionName = positionName,
         )
     }
 
@@ -502,7 +524,6 @@ class MyMunWorkbookParser {
 
         val Whitespace = Regex("\\s+")
         val PreferenceHeader = Regex("""Preference\s+(\d+)""", RegexOption.IGNORE_CASE)
-        val PreferenceValue = Regex("""(.+?)\s*\((.+)\)\s*""")
 
         val ToleratedDateFormats: List<DateTimeFormatter> = listOf(
             DateTimeFormatter.ISO_LOCAL_DATE,
