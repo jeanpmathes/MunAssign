@@ -223,6 +223,65 @@ class ConferenceRepositoryImplTest {
     }
 
     @Test
+    fun `new committees use name heuristics for initial mode`() = runBlocking {
+        listOf(
+            "High School Committee" to CommitteeMode.HighSchool,
+            "highschool debate" to CommitteeMode.HighSchool,
+            "IPC" to CommitteeMode.Mapped,
+            "ipc" to CommitteeMode.University,
+            "High School IPC" to CommitteeMode.HighSchool,
+        ).forEach { (committeeName, expectedMode) ->
+            val dbPath = Files.createTempDirectory("munassign-committee-heuristics").resolve("data.db")
+            val database = DatabaseFactory.connect(dbPath)
+            val repository = ConferenceRepositoryImpl(database)
+            val conference = repository.createConference("TestConf")
+
+            val result = repository.applyMymunUpdateSnapshot(
+                conference.id.value,
+                snapshotWithCommitteeNames(committeeName),
+            )
+
+            assertTrue(result.success, result.issues.joinToString("; ") { it.message })
+            val loaded = requireNotNull(repository.getConference(conference.id))
+            val committee = loaded.committees.single()
+            assertEquals(expectedMode, committee.mode)
+            assertEquals(expectedMode == CommitteeMode.HighSchool, committee.isHighSchoolCommittee)
+
+            transaction(database) {
+                val legacyFlag = CommitteeTable.selectAll().single()[CommitteeTable.isHighSchoolCommittee]
+                assertEquals(expectedMode == CommitteeMode.HighSchool, legacyFlag)
+            }
+        }
+    }
+
+    @Test
+    fun `committee name heuristics do not reclassify retained committees`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-committee-heuristics-preserve").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        val firstResult = repository.applyMymunUpdateSnapshot(
+            conference.id.value,
+            snapshotWithCommitteeNames("High School Committee"),
+        )
+        assertTrue(firstResult.success, firstResult.issues.joinToString("; ") { it.message })
+        val committee = requireNotNull(repository.getConference(conference.id)).committees.single()
+
+        repository.setCommitteeMode(conference.id, committee.id, CommitteeMode.University)
+
+        val repeatedResult = repository.applyMymunUpdateSnapshot(
+            conference.id.value,
+            snapshotWithCommitteeNames("High School Committee"),
+        )
+
+        assertTrue(repeatedResult.success, repeatedResult.issues.joinToString("; ") { it.message })
+        val reloaded = requireNotNull(repository.getConference(conference.id)).committees.single()
+        assertEquals(CommitteeMode.University, reloaded.mode)
+        assertFalse(reloaded.isHighSchoolCommittee)
+    }
+
+    @Test
     fun `position mapping rejects mapped target and normal owning committee`() = runBlocking {
         val dbPath = Files.createTempDirectory("munassign-ipc-reject").resolve("data.db")
         val database = DatabaseFactory.connect(dbPath)
@@ -2147,6 +2206,27 @@ class ConferenceRepositoryImplTest {
             questionAnswers = emptyList(),
             preferenceCandidates = emptyList(),
             confirmedAssignmentCandidates = confirmedAssignments,
+            issues = emptyList(),
+        )
+
+    private fun snapshotWithCommitteeNames(vararg committeeNames: String): MymunWorkbookSnapshot =
+        MymunWorkbookSnapshot(
+            workbookName = "committees.xlsx",
+            delegates = listOf(delegate()),
+            countryPositions = committeeNames.mapIndexed { index, committeeName ->
+                MymunCountryPositionRow(
+                    rowNumber = 2 + index,
+                    committeeName = committeeName,
+                    memberName = "Position $index",
+                    delegationName = null,
+                    delegatesRaw = null,
+                )
+            },
+            delegations = emptyList(),
+            questionColumns = emptyList(),
+            questionAnswers = emptyList(),
+            preferenceCandidates = emptyList(),
+            confirmedAssignmentCandidates = emptyList(),
             issues = emptyList(),
         )
 

@@ -1124,6 +1124,7 @@ class ConferenceRepositoryImpl(
             val slotsPerPosition = existingCommittee?.get(CommitteeTable.slotsPerPosition) ?: requiredSlots
             retainedCommitteeIds += committeeId
             if (existingCommittee == null) {
+                val initialMode = initialCommitteeMode(first.committeeName)
                 CommitteeTable.insert {
                     it[CommitteeTable.id] = committeeId
                     it[CommitteeTable.conferenceId] = conferenceId
@@ -1131,8 +1132,8 @@ class ConferenceRepositoryImpl(
                     it[normalizedMymunName] = committeeNormalized
                     it[alias] = null
                     it[CommitteeTable.slotsPerPosition] = slotsPerPosition
-                    it[CommitteeTable.isHighSchoolCommittee] = false
-                    it[CommitteeTable.mode] = CommitteeMode.University.name
+                    it[CommitteeTable.isHighSchoolCommittee] = initialMode == CommitteeMode.HighSchool
+                    it[CommitteeTable.mode] = initialMode.name
                 }
                 delta.committeesCreated++
             } else {
@@ -2014,6 +2015,15 @@ class ConferenceRepositoryImpl(
                 it[normalizedRawValue] = normalizeAnswer(mapping.rawValue)
                 it[mappedValue] = mapping.value.name
             }
+        }
+    }
+
+    private fun initialCommitteeMode(committeeName: String): CommitteeMode {
+        val lowercaseName = committeeName.lowercase()
+        return when {
+            "high school" in lowercaseName || "highschool" in lowercaseName -> CommitteeMode.HighSchool
+            "IPC" in committeeName -> CommitteeMode.Mapped
+            else -> CommitteeMode.University
         }
     }
 

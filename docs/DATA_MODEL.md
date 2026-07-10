@@ -41,6 +41,7 @@ There is no stable MyMUN delegate ID. Matching should use:
 Email is useful but not authoritative by itself. Duplicate delegates with the same full matching identity are blocking validation errors.
 
 Committee and position matching use normalized workbook names. Committee aliases are display-only and never replace the MyMUN name for update matching.
+When an update creates a committee that is not already present in the conference, the initial committee mode is inferred from the MyMUN committee name: `high school` and `highschool` match case-insensitively as `HighSchool`, `IPC` matches case-sensitively as `Mapped`, and `HighSchool` wins when both patterns are present. Existing committees keep their organizer-managed mode on later updates.
 Position flags are display-only derived data. They are resolved from bundled Unicode emoji flag names and conservative matching rules at runtime, rendered with bundled Twemoji image assets where available, and are never persisted or used for MyMUN update matching.
 
 ## Assignment Rules

@@ -15,6 +15,7 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It k
 - A delegate can consume at most one reservation. Manual delegate links are explicit organizer choices. Automatic delegation links are persisted rows rebuilt from active, paid, accepted delegates in submission-date order, skipping delegates that already consume a reservation.
 - Deactivated delegates never consume reservations. Extra delegates in a linked delegation simply stop consuming reservation capacity once the reservation count is full; there is no over-use state.
 - Committees can be marked high-school, university, or mapped. Mapped committees are for IPC-style committees where each position corresponds to another non-mapped committee and inherits that committee's high-school or university bucket.
+- Newly discovered MyMUN committees are initialized from conservative name heuristics: names containing `high school` or `highschool` are high-school, names containing case-sensitive `IPC` are mapped, and all others are university. These heuristics only run when a committee is first created; later updates preserve organizer-managed committee mode.
 
 ## Technology
 
