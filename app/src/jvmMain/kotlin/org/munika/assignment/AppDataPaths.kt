@@ -3,12 +3,13 @@ package org.munika.assignment
 import java.nio.file.Path
 
 /**
- * Resolved filesystem locations for MunAssign's local database and safety exports.
+ * Resolved filesystem locations for MunAssign's local database, exports, and app-local state.
  */
 data class AppDataPaths(
     val databasePath: Path,
     val markdownExportDirectory: Path,
     val windowStatePath: Path,
+    val lastSelectedConferencePath: Path,
 )
 
 /**
@@ -32,6 +33,7 @@ object AppDataPathResolver {
             databasePath = dataRoot.resolve("data.db"),
             markdownExportDirectory = dataRoot.resolve("markdown-exports"),
             windowStatePath = dataRoot.resolve("window-state.properties"),
+            lastSelectedConferencePath = dataRoot.resolve("last-selected-conference.properties"),
         )
     }
 

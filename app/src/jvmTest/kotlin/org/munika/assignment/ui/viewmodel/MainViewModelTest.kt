@@ -1,5 +1,6 @@
 package org.munika.assignment.ui.viewmodel
 
+import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
 import kotlin.test.Test
@@ -13,6 +14,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
+import org.munika.assignment.LastSelectedConferenceStore
 import org.munika.assignment.domain.model.AnswerIssueResolutionId
 import org.munika.assignment.domain.model.CommitteeId
 import org.munika.assignment.domain.model.Conference
@@ -68,6 +70,42 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `startup restores saved selected conference`() {
+        val conferenceA = Conference(ConferenceId("conference-a"), "Conference A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val conferenceB = Conference(ConferenceId("conference-b"), "Conference B", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val store = tempLastSelectedConferenceStore()
+        store.save("conference-b")
+
+        val viewModel = viewModelWith(
+            FakeConferenceRepository(initialConference = conferenceA, conferences = listOf(conferenceA, conferenceB)),
+            lastSelectedConferenceStore = store,
+        )
+
+        waitUntil { viewModel.state.value.selectedConference === conferenceB }
+        assertEquals("conference-b", viewModel.state.value.selectedConferenceId)
+        assertEquals("conference-b", store.load())
+        viewModel.close()
+    }
+
+    @Test
+    fun `startup falls back to first conference when saved selected conference is missing`() {
+        val conferenceA = Conference(ConferenceId("conference-a"), "Conference A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val conferenceB = Conference(ConferenceId("conference-b"), "Conference B", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val store = tempLastSelectedConferenceStore()
+        store.save("missing-conference")
+
+        val viewModel = viewModelWith(
+            FakeConferenceRepository(initialConference = conferenceA, conferences = listOf(conferenceA, conferenceB)),
+            lastSelectedConferenceStore = store,
+        )
+
+        waitUntil { viewModel.state.value.selectedConference === conferenceA }
+        assertEquals("conference-a", viewModel.state.value.selectedConferenceId)
+        assertEquals("conference-a", store.load())
+        viewModel.close()
+    }
+
+    @Test
     fun `create conference failure surfaces as conference action error instead of crashing silently`() {
         val conferenceA = Conference(ConferenceId("conference-a"), "Conference A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val repository = FakeConferenceRepository(
@@ -88,7 +126,11 @@ class MainViewModelTest {
     fun `selecting another conference clears conference scoped UI state`() {
         val conferenceA = Conference(ConferenceId("conference-a"), "Conference A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val conferenceB = Conference(ConferenceId("conference-b"), "Conference B", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
-        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conferenceA, conferences = listOf(conferenceA, conferenceB)))
+        val store = tempLastSelectedConferenceStore()
+        val viewModel = viewModelWith(
+            FakeConferenceRepository(initialConference = conferenceA, conferences = listOf(conferenceA, conferenceB)),
+            lastSelectedConferenceStore = store,
+        )
         waitUntil { viewModel.state.value.selectedConference === conferenceA }
         viewModel.openDelegateDetail("delegate-a")
         viewModel.openDelegateList()
@@ -101,6 +143,28 @@ class MainViewModelTest {
         assertFalse(viewModel.state.value.delegateListOpen)
         assertFalse(viewModel.state.value.questionConfigurationOpen)
         assertFalse(viewModel.state.value.reservationManagerOpen)
+        assertEquals("conference-b", store.load())
+        viewModel.close()
+    }
+
+    @Test
+    fun `creating a conference persists it as the last selected conference`() {
+        val conferenceA = Conference(ConferenceId("conference-a"), "Conference A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val created = Conference(ConferenceId("conference-created"), "Created", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val store = tempLastSelectedConferenceStore()
+        val repository = FakeConferenceRepository(
+            initialConference = conferenceA,
+            conferences = listOf(conferenceA),
+            createdConferenceDeferred = CompletableDeferred(created),
+            conferencesAfterCreate = listOf(conferenceA, created),
+        )
+        val viewModel = viewModelWith(repository, lastSelectedConferenceStore = store)
+        waitUntil { viewModel.state.value.selectedConference === conferenceA }
+
+        assertTrue(viewModel.createConference("Created"))
+
+        waitUntil { viewModel.state.value.selectedConference === created }
+        assertEquals("conference-created", store.load())
         viewModel.close()
     }
 
@@ -396,13 +460,16 @@ class MainViewModelTest {
 
     @Test
     fun `startup without conferences completes into empty conference state`() {
-        val viewModel = viewModelWith(FakeConferenceRepository())
+        val store = tempLastSelectedConferenceStore()
+        store.save("missing-conference")
+        val viewModel = viewModelWith(FakeConferenceRepository(), lastSelectedConferenceStore = store)
 
         waitUntil { !viewModel.state.value.startupLoading }
 
         assertTrue(viewModel.state.value.conferences.isEmpty())
         assertNull(viewModel.state.value.selectedConferenceId)
         assertNull(viewModel.state.value.selectedConference)
+        assertNull(store.load())
         assertFalse(viewModel.state.value.loading)
         viewModel.close()
     }
@@ -467,7 +534,8 @@ class MainViewModelTest {
         val imported = Conference(ConferenceId("imported"), "Imported", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val repository = FakeConferenceRepository(initialConference = existing, conferences = listOf(existing, imported))
         val transfer = FakeConferenceTransferRunner(importedId = "imported")
-        val viewModel = viewModelWith(repository, conferenceTransfer = transfer)
+        val store = tempLastSelectedConferenceStore()
+        val viewModel = viewModelWith(repository, conferenceTransfer = transfer, lastSelectedConferenceStore = store)
         waitUntil { viewModel.state.value.selectedConference === existing }
 
         viewModel.importConferenceAsNew(Path.of("import.munassign"))
@@ -476,6 +544,7 @@ class MainViewModelTest {
         assertEquals(Path.of("import.munassign"), transfer.importSourcePath)
         assertEquals("imported", viewModel.state.value.selectedConferenceId)
         assertSame(imported, viewModel.state.value.selectedConference)
+        assertEquals("imported", store.load())
         assertEquals("Conference imported.", viewModel.state.value.transferNotice?.message)
         assertFalse(viewModel.state.value.loading)
         viewModel.close()
@@ -487,7 +556,8 @@ class MainViewModelTest {
         val replaced = Conference(ConferenceId("conference"), "Local", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH.plusSeconds(1))
         val repository = FakeConferenceRepository(initialConference = original, conferences = listOf(replaced))
         val transfer = FakeConferenceTransferRunner(replacedId = "conference")
-        val viewModel = viewModelWith(repository, conferenceTransfer = transfer)
+        val store = tempLastSelectedConferenceStore()
+        val viewModel = viewModelWith(repository, conferenceTransfer = transfer, lastSelectedConferenceStore = store)
         waitUntil { viewModel.state.value.selectedConference === replaced }
 
         viewModel.replaceConference("conference", Path.of("replacement.munassign"))
@@ -497,6 +567,7 @@ class MainViewModelTest {
         assertEquals(Path.of("replacement.munassign"), transfer.replaceSourcePath)
         assertEquals("conference", viewModel.state.value.selectedConferenceId)
         assertSame(replaced, viewModel.state.value.selectedConference)
+        assertEquals("conference", store.load())
         assertEquals("Conference replaced.", viewModel.state.value.transferNotice?.message)
         assertFalse(viewModel.state.value.loading)
         viewModel.close()
@@ -751,18 +822,64 @@ class MainViewModelTest {
         viewModel.close()
     }
 
+    @Test
+    fun `deleting selected conference persists fallback selection`() {
+        val conferenceA = Conference(ConferenceId("conference-a"), "Conference A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val conferenceB = Conference(ConferenceId("conference-b"), "Conference B", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val store = tempLastSelectedConferenceStore()
+        val repository = FakeConferenceRepository(
+            initialConference = conferenceA,
+            conferences = listOf(conferenceA, conferenceB),
+            conferencesAfterDelete = listOf(conferenceB),
+        )
+        val viewModel = viewModelWith(repository, lastSelectedConferenceStore = store)
+        waitUntil { viewModel.state.value.selectedConference === conferenceA }
+
+        viewModel.deleteConference("conference-a")
+
+        waitUntil { viewModel.state.value.selectedConference === conferenceB }
+        assertEquals("conference-b", viewModel.state.value.selectedConferenceId)
+        assertEquals("conference-b", store.load())
+        viewModel.close()
+    }
+
+    @Test
+    fun `deleting final conference clears saved selection`() {
+        val conference = Conference(ConferenceId("conference"), "Conference", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val store = tempLastSelectedConferenceStore()
+        val repository = FakeConferenceRepository(
+            initialConference = conference,
+            conferences = listOf(conference),
+            conferencesAfterDelete = emptyList(),
+        )
+        val viewModel = viewModelWith(repository, lastSelectedConferenceStore = store)
+        waitUntil { viewModel.state.value.selectedConference === conference }
+
+        viewModel.deleteConference("conference")
+
+        waitUntil { !viewModel.state.value.loading && viewModel.state.value.conferences.isEmpty() }
+        assertNull(viewModel.state.value.selectedConferenceId)
+        assertNull(store.load())
+        viewModel.close()
+    }
+
     private fun viewModelWith(
         repository: ConferenceRepository,
         conferenceTransfer: ConferenceTransferRunner = FakeConferenceTransferRunner(),
         markdownSafetyExport: MarkdownSafetyExportRunner = FakeMarkdownSafetyExportRunner(),
+        lastSelectedConferenceStore: LastSelectedConferenceStore = tempLastSelectedConferenceStore(),
         workbookUpdate: suspend (String, Path) -> UpdateResult = { _, _ -> UpdateResult(true, emptyList()) },
     ): MainViewModel = MainViewModel(
         repository,
         WorkbookUpdateRunner { conferenceId, path -> workbookUpdate(conferenceId, path) },
         conferenceTransfer,
         markdownSafetyExport,
+        lastSelectedConferenceStore,
         CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
     )
+
+    private fun tempLastSelectedConferenceStore(): LastSelectedConferenceStore =
+        LastSelectedConferenceStore(Files.createTempDirectory("munassign-last-selected").resolve("last-selected.properties"))
 
     private fun waitUntil(predicate: () -> Boolean) {
         repeat(100) {
@@ -862,8 +979,10 @@ private class FakeConferenceRepository(
     private val positionMappedConference: Conference? = initialConference,
     private val getConferenceStarted: CompletableDeferred<Unit>? = null,
     private val getConferenceDeferred: CompletableDeferred<Conference?>? = null,
+    private val conferencesAfterDelete: List<Conference>? = null,
 ) : ConferenceRepository {
     private var conferenceCreated: Boolean = false
+    private var conferenceDeleted: Boolean = false
     var resolvedDelegateId: String? = null
         private set
     var resolvedQuestionId: String? = null
@@ -896,7 +1015,11 @@ private class FakeConferenceRepository(
         private set
 
     override suspend fun listConferences(): List<Conference> =
-        if (conferenceCreated) conferencesAfterCreate ?: conferences else conferences
+        when {
+            conferenceDeleted -> conferencesAfterDelete ?: conferences
+            conferenceCreated -> conferencesAfterCreate ?: conferences
+            else -> conferences
+        }
 
     override suspend fun createConference(name: String): Conference {
         createConferenceStarted?.complete(Unit)
@@ -908,7 +1031,9 @@ private class FakeConferenceRepository(
 
     override suspend fun renameConference(conferenceId: ConferenceId, newName: String): Conference = unsupported()
 
-    override suspend fun deleteConference(conferenceId: ConferenceId): Unit = unsupported()
+    override suspend fun deleteConference(conferenceId: ConferenceId) {
+        conferenceDeleted = true
+    }
 
     override suspend fun reorderConferences(conferenceIdsInOrder: List<ConferenceId>): Unit = unsupported()
 
@@ -1049,7 +1174,7 @@ private class FakeConferenceRepository(
     override suspend fun getConference(conferenceId: ConferenceId): Conference? {
         getConferenceStarted?.complete(Unit)
         getConferenceDeferred?.let { return it.await() }
-        return conferences.firstOrNull { it.id == conferenceId }
+        return listConferences().firstOrNull { it.id == conferenceId }
     }
 
     private fun unsupported(): Nothing = error("Not needed for this test.")

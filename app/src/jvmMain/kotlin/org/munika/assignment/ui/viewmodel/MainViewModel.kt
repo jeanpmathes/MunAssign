@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
+import org.munika.assignment.LastSelectedConferenceStore
 import org.munika.assignment.data.db.ConferenceTransferService
 import org.munika.assignment.data.excel.MymunWorkbookUpdater
 import org.munika.assignment.domain.model.AnswerIssueResolutionId
@@ -55,6 +56,7 @@ class MainViewModel internal constructor(
     private val workbookUpdater: WorkbookUpdateRunner,
     private val conferenceTransfer: ConferenceTransferRunner,
     private val markdownSafetyExport: MarkdownSafetyExportRunner,
+    private val lastSelectedConferenceStore: LastSelectedConferenceStore,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) : AutoCloseable {
     constructor(
@@ -62,6 +64,7 @@ class MainViewModel internal constructor(
         workbookUpdater: MymunWorkbookUpdater,
         conferenceTransferService: ConferenceTransferService,
         markdownSafetyExportService: MarkdownSafetyExportService,
+        lastSelectedConferenceStore: LastSelectedConferenceStore,
     ) : this(
         repository = repository,
         workbookUpdater = WorkbookUpdateRunner { conferenceId, path ->
@@ -79,6 +82,7 @@ class MainViewModel internal constructor(
                 conferenceTransferService.replaceConference(targetConferenceId, sourcePath)
         },
         markdownSafetyExport = markdownSafetyExportService,
+        lastSelectedConferenceStore = lastSelectedConferenceStore,
     )
 
     private val _state = MutableStateFlow(MainUiState())
@@ -93,8 +97,11 @@ class MainViewModel internal constructor(
     fun refreshConferences(exportMarkdownOnComplete: Boolean = false) {
         scope.launch {
             val conferences = repository.listConferences()
-            val selectedId = _state.value.selectedConferenceId?.takeIf { selected -> conferences.any { it.id.value == selected } }
+            val knownConferenceIds = conferences.map { it.id.value }.toSet()
+            val selectedId = _state.value.selectedConferenceId?.takeIf { it in knownConferenceIds }
+                ?: lastSelectedConferenceStore.load()?.takeIf { it in knownConferenceIds }
                 ?: conferences.firstOrNull()?.id?.value
+            lastSelectedConferenceStore.save(selectedId)
             _state.update { current ->
                 current.copy(
                     conferences = conferences,
@@ -112,6 +119,7 @@ class MainViewModel internal constructor(
     }
 
     fun selectConference(conferenceId: String) {
+        lastSelectedConferenceStore.save(conferenceId)
         _state.update {
             it.copy(
                 selectedConferenceId = conferenceId,
@@ -150,6 +158,7 @@ class MainViewModel internal constructor(
             val conferences = repository.listConferences()
             _state.update { current ->
                 if (current.selectedConferenceId == expectedSelectedConferenceId) {
+                    lastSelectedConferenceStore.save(created.id.value)
                     current.copy(
                         conferences = conferences,
                         selectedConferenceId = created.id.value,
@@ -197,6 +206,7 @@ class MainViewModel internal constructor(
                 else -> conferences.firstOrNull()?.id?.value
             }
             val nextConference = nextId?.let { repository.getConference(ConferenceId(it)) }
+            lastSelectedConferenceStore.save(nextId)
             _state.update { current ->
                 if (current.selectedConferenceId != previousSelectedId) {
                     current.copy(conferences = conferences, conferenceActionError = null)
@@ -892,6 +902,7 @@ class MainViewModel internal constructor(
                 val importedId = conferenceTransfer.importConferenceAsNew(sourcePath)
                 val conferences = repository.listConferences()
                 val imported = repository.getConference(ConferenceId(importedId))
+                lastSelectedConferenceStore.save(importedId)
                 _state.update {
                     it.copy(
                         conferences = conferences,
@@ -922,6 +933,7 @@ class MainViewModel internal constructor(
                 val replacedId = conferenceTransfer.replaceConference(conferenceId, sourcePath)
                 val conferences = repository.listConferences()
                 val replaced = repository.getConference(ConferenceId(replacedId))
+                lastSelectedConferenceStore.save(replacedId)
                 _state.update {
                     it.copy(
                         conferences = conferences,

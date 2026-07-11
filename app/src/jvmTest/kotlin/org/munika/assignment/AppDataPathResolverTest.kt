@@ -18,6 +18,7 @@ class AppDataPathResolverTest {
         assertEquals(Path.of("C:\\Users\\organizer\\.munassign\\data.db"), paths.databasePath)
         assertEquals(Path.of("C:\\Users\\organizer\\.munassign\\markdown-exports"), paths.markdownExportDirectory)
         assertEquals(Path.of("C:\\Users\\organizer\\.munassign\\window-state.properties"), paths.windowStatePath)
+        assertEquals(Path.of("C:\\Users\\organizer\\.munassign\\last-selected-conference.properties"), paths.lastSelectedConferencePath)
     }
 
     @Test
@@ -31,6 +32,7 @@ class AppDataPathResolverTest {
         assertEquals(Path.of("E:\\MunAssign\\data\\data.db"), paths.databasePath)
         assertEquals(Path.of("E:\\MunAssign\\data\\markdown-exports"), paths.markdownExportDirectory)
         assertEquals(Path.of("E:\\MunAssign\\data\\window-state.properties"), paths.windowStatePath)
+        assertEquals(Path.of("E:\\MunAssign\\data\\last-selected-conference.properties"), paths.lastSelectedConferencePath)
     }
 
     @Test
