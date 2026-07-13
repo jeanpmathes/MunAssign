@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.toPainter
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -25,6 +26,8 @@ import java.awt.Dimension
 import java.awt.FileDialog
 import java.awt.Font
 import java.awt.Frame
+import java.awt.Image
+import java.awt.image.BufferedImage
 import java.awt.datatransfer.DataFlavor
 import java.awt.dnd.DnDConstants
 import java.awt.dnd.DropTarget
@@ -41,6 +44,7 @@ import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.swing.BorderFactory
+import javax.swing.ImageIcon
 import javax.swing.JLabel
 import javax.swing.JFrame
 import javax.swing.JPanel
@@ -59,12 +63,14 @@ import org.munika.assignment.ui.viewmodel.MainViewModel
 private val UriListFlavor = DataFlavor("text/uri-list;class=java.lang.String")
 
 fun main() {
-    val splashWindow = ImmediateSplashWindow()
+    val appIcon = loadAppIcon()
+    val splashWindow = ImmediateSplashWindow(appIcon)
     splashWindow.show()
     val dependencies = startDependencies()
 
     application {
         MunAssignApplication(
+            appIcon = appIcon,
             splashWindow = splashWindow,
             dependencies = dependencies,
             exitApplication = ::exitApplication,
@@ -74,6 +80,7 @@ fun main() {
 
 @Composable
 private fun MunAssignApplication(
+    appIcon: BufferedImage?,
     splashWindow: ImmediateSplashWindow,
     dependencies: MainDependencies,
     exitApplication: () -> Unit,
@@ -103,6 +110,7 @@ private fun MunAssignApplication(
     val appDataPaths = dependencies.appDataPaths
     val restoredWindowState = remember { dependencies.windowStateStore.load() }
     val windowBoundsTracker = remember { WindowBoundsTracker(restoredWindowState) }
+    val windowIcon = remember(appIcon) { appIcon?.toPainter() }
     var mainWindow by remember { mutableStateOf<JFrame?>(null) }
     val windowState = rememberWindowState(
         placement = if (restoredWindowState.maximized) WindowPlacement.Maximized else WindowPlacement.Floating,
@@ -121,6 +129,7 @@ private fun MunAssignApplication(
             exitApplication()
         },
         title = "MunAssign",
+        icon = windowIcon,
     ) {
         LaunchedEffect(Unit) {
             mainWindowComposed = true
@@ -361,7 +370,7 @@ private fun startDependencies(): MainDependencies {
     )
 }
 
-private class ImmediateSplashWindow {
+private class ImmediateSplashWindow(appIcon: BufferedImage?) {
     private val window: JWindow = JWindow()
 
     init {
@@ -371,7 +380,7 @@ private class ImmediateSplashWindow {
                 BorderFactory.createLineBorder(Color(0xDD, 0xE1, 0xE6)),
                 BorderFactory.createEmptyBorder(32, 36, 28, 36),
             )
-            preferredSize = Dimension(360, 220)
+            preferredSize = Dimension(360, if (appIcon == null) 220 else 320)
         }
         val title = JLabel("MunAssign", SwingConstants.CENTER).apply {
             font = Font(Font.SANS_SERIF, Font.BOLD, 28)
@@ -386,12 +395,23 @@ private class ImmediateSplashWindow {
             add(title, BorderLayout.NORTH)
             add(message, BorderLayout.CENTER)
         }
+        val contentPanel = JPanel(BorderLayout(0, 12)).apply {
+            background = panel.background
+            if (appIcon != null) {
+                val scaledIcon = appIcon.getScaledInstance(96, 96, Image.SCALE_SMOOTH)
+                add(
+                    JLabel(ImageIcon(scaledIcon), SwingConstants.CENTER),
+                    BorderLayout.NORTH,
+                )
+            }
+            add(textPanel, BorderLayout.CENTER)
+        }
         val progress = JProgressBar().apply {
             isIndeterminate = true
             isBorderPainted = false
         }
 
-        panel.add(textPanel, BorderLayout.CENTER)
+        panel.add(contentPanel, BorderLayout.CENTER)
         panel.add(progress, BorderLayout.SOUTH)
 
         window.setContentPane(panel)

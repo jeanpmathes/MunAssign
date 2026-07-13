@@ -52,6 +52,10 @@ compose.desktop {
             modules("java.sql")
             packageName = "MunAssign"
             packageVersion = portablePackageVersion
+
+            windows {
+                iconFile.set(project.file("src/jvmMain/resources/icons/munassign.ico"))
+            }
         }
     }
 }
