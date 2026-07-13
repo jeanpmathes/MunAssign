@@ -32,7 +32,16 @@ class DelegationOverviewUiModelsTest {
     @Test
     fun `overview shows linked reservations active paid accepted count and delegate reservations`() {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
-        val delegation = Delegation(DelegationId("delegation"), conference, "Alpha Delegation", "Finland", 4, 3)
+        val delegation = Delegation(
+            DelegationId("delegation"),
+            conference,
+            "Alpha Delegation",
+            "Finland",
+            4,
+            3,
+            isHighSchoolDelegation = true,
+            needsReview = true,
+        )
         val otherDelegation = Delegation(DelegationId("other"), conference, "Beta Delegation", "Norway", 2, 1)
         val manual = delegate(conference, "manual", "Manual", "Delegate", delegation, "Accepted", PaymentStatus.Paid, true, true)
         val automatic = delegate(conference, "automatic", "Automatic", "Delegate", delegation, "Assigned", PaymentStatus.Paid, true, false)
@@ -65,12 +74,15 @@ class DelegationOverviewUiModelsTest {
         link(reservation, manual, ReservationLinkSource.Manual)
         link(reservation, automatic, ReservationLinkSource.DelegationAuto)
 
-        val row = conference.toDelegationOverviewUiState().delegations.single { it.id == "delegation" }
+        val overview = conference.toDelegationOverviewUiState()
+        val row = overview.delegations.single { it.id == "delegation" }
 
         assertEquals("Alpha Delegation", row.name)
         assertEquals("Finland", row.country)
         assertEquals(4, row.expectedDelegateCount)
         assertEquals(3, row.currentDelegateCountFromMymun)
+        assertEquals(true, row.isHighSchoolDelegation)
+        assertEquals(true, row.needsReview)
         assertEquals(2, row.activePaidAcceptedDelegateCount)
         assertEquals(listOf("Alpha Hold"), row.linkedReservations.map { it.name })
         assertEquals(1, row.linkedReservations.single().usedHighSchoolCount)

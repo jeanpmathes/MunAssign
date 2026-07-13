@@ -16,6 +16,8 @@ data class DelegationOverviewRowUiState(
     val country: String?,
     val expectedDelegateCount: Int?,
     val currentDelegateCountFromMymun: Int?,
+    val isHighSchoolDelegation: Boolean,
+    val needsReview: Boolean,
     val activePaidAcceptedDelegateCount: Int,
     val linkedReservations: List<DelegationReservationUiState>,
     val acceptedDelegates: List<DelegationDelegateUiState>,
@@ -53,6 +55,8 @@ private fun Delegation.toOverviewRowUiState(conference: Conference): DelegationO
         country = country,
         expectedDelegateCount = expectedDelegateCount,
         currentDelegateCountFromMymun = currentDelegateCountFromMymun,
+        isHighSchoolDelegation = isHighSchoolDelegation,
+        needsReview = needsReview,
         activePaidAcceptedDelegateCount = delegates.count { it.isActivePaidAcceptedOrAssigned() },
         linkedReservations = conference.reservations
             .filter { it.delegation === this }

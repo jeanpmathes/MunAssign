@@ -16,6 +16,7 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It k
 - Deactivated delegates never consume reservations. Extra delegates in a linked delegation simply stop consuming reservation capacity once the reservation count is full; there is no over-use state.
 - Committees can be marked high-school, university, or mapped. Mapped committees are for IPC-style committees where each position corresponds to another non-mapped committee and inherits that committee's high-school or university bucket.
 - Newly discovered MyMUN committees are initialized from conservative name heuristics: names containing `high school` or `highschool` are high-school, names containing case-sensitive `IPC` are mapped, and all others are university. These heuristics only run when a committee is first created; later updates preserve organizer-managed committee mode.
+- Delegations default to university and can be marked high-school by the organizer. Newly discovered delegations remain marked for review across restarts until the delegation overview is explicitly closed; later MyMUN updates preserve both organizer-managed properties.
 
 ## Technology
 
@@ -60,7 +61,7 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It k
 - Confirmed-assigned delegates are greyed out where they appear as interested delegates elsewhere.
 - Clicking a delegate opens a side panel with profile data, assignment state, reservation usage, preferences, configured question answers, comment history, and deactivate/reactivate controls. Manual reservation links can be assigned, changed, or removed there; automatic delegation links can be changed by assigning a manual reservation.
 - The delegate list panel shows active paid delegates by default, with search, assignment/payment/active/committee filters, presets, and sorting by submitted date, difficulty, name, assignment status, and warning/notice count. Difficulty is a sort key only. The difficulty sort is intentionally ascending (easiest-to-place delegates first), so organizers clear easy delegates and are left with only the hard ones.
-- The delegation overview is a non-modal workspace panel similar to the delegate overview. It shows delegation membership, accepted active paid counts, linked reservation capacity, and current consumption.
+- The delegation overview is a non-modal workspace panel similar to the delegate overview. It shows delegation membership, accepted active paid counts, linked reservation capacity, and current consumption. Each delegation can be marked high-school and can open a directly prefilled reservation editor using its full expected count; absent or non-positive counts prefill as zero. New delegations show review markers on their cards and on the top-bar delegation action until the panel is explicitly closed.
 - The reservation manager is a compact modal for creating, editing, deleting, and linking reservations to delegations.
 - Slot count is committee-level; every position in a committee has the same number of slots. Changing the count requires confirmation.
 

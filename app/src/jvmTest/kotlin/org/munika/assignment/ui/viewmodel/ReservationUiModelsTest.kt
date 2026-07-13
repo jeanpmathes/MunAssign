@@ -5,6 +5,7 @@ import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.ConferenceId
 import org.munika.assignment.domain.model.Delegate
@@ -87,6 +88,57 @@ class ReservationUiModelsTest {
         assertEquals(listOf("Alpha Hold", "Beta Hold"), manager.reservations.map { it.name })
         assertEquals(listOf("Alpha Delegation - Finland", "Zed Delegation - Norway"), manager.delegations.map { it.label })
         assertNull(manager.reservations.single { it.id == "alpha" }.delegationId)
+    }
+
+    @Test
+    fun `quick reservation draft assigns the full expected count to the delegation level`() {
+        val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val university = Delegation(DelegationId("university"), conference, "University Team", null, 6, null)
+        val highSchool = Delegation(
+            DelegationId("high-school"),
+            conference,
+            "School Team",
+            null,
+            4,
+            null,
+            isHighSchoolDelegation = true,
+        )
+        conference.reservations += Reservation(
+            ReservationId("existing"),
+            conference,
+            "Existing",
+            highSchoolCount = 0,
+            universityCount = 6,
+            delegation = university,
+            createdAt = Instant.EPOCH,
+            updatedAt = Instant.EPOCH,
+        )
+
+        val universityDraft = university.toQuickReservationDraftUiState()
+        val highSchoolDraft = highSchool.toQuickReservationDraftUiState()
+
+        assertEquals("University Team", universityDraft.name)
+        assertEquals("university", universityDraft.delegationId)
+        assertEquals(0, universityDraft.highSchoolCount)
+        assertEquals(6, universityDraft.universityCount)
+        assertEquals(4, highSchoolDraft.highSchoolCount)
+        assertEquals(0, highSchoolDraft.universityCount)
+    }
+
+    @Test
+    fun `quick reservation draft uses zero when expected count is missing or negative`() {
+        val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val missing = Delegation(DelegationId("missing"), conference, "Missing", null, null, null)
+        val negative = Delegation(DelegationId("negative"), conference, "Negative", null, -2, null, isHighSchoolDelegation = true)
+
+        val missingDraft = missing.toQuickReservationDraftUiState()
+        val negativeDraft = negative.toQuickReservationDraftUiState()
+
+        assertEquals(0, missingDraft.highSchoolCount)
+        assertEquals(0, missingDraft.universityCount)
+        assertEquals(0, negativeDraft.highSchoolCount)
+        assertEquals(0, negativeDraft.universityCount)
+        assertTrue(missingDraft.delegationId.isNotBlank())
     }
 
     private fun delegate(

@@ -1,6 +1,7 @@
 package org.munika.assignment.data.db.repository
 
 import java.nio.file.Files
+import java.sql.DriverManager
 import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -1585,6 +1586,81 @@ class ConferenceRepositoryImplTest {
         assertEquals(0, result.summary.delegatesUpdated)
         assertEquals(0, result.summary.questionsUpdated)
         assertEquals(0, result.summary.assignmentsConfirmed)
+    }
+
+    @Test
+    fun `delegation school level and review state are organizer managed across updates`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-delegation-organizer-state").resolve("data.db")
+        val repository = ConferenceRepositoryImpl(DatabaseFactory.connect(dbPath))
+        val conference = repository.createConference("TestConf")
+        val originalSnapshot = reservationSnapshot(
+            delegations = listOf(delegation("School Delegation")),
+        )
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, originalSnapshot).success)
+        val created = requireNotNull(repository.getConference(conference.id)).delegations.single()
+        assertFalse(created.isHighSchoolDelegation)
+        assertTrue(created.needsReview)
+
+        repository.setDelegationHighSchoolStatus(conference.id, created.id, isHighSchoolDelegation = true)
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, originalSnapshot).success)
+        val retained = requireNotNull(repository.getConference(conference.id)).delegations.single()
+        assertTrue(retained.isHighSchoolDelegation)
+        assertTrue(retained.needsReview)
+
+        val reviewed = repository.markDelegationsReviewed(conference.id)
+        assertFalse(reviewed.delegations.single().needsReview)
+
+        val expandedSnapshot = reservationSnapshot(
+            delegations = listOf(
+                delegation("School Delegation"),
+                delegation("New Delegation"),
+            ),
+        )
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, expandedSnapshot).success)
+        val updated = requireNotNull(repository.getConference(conference.id))
+        val original = updated.delegations.single { it.name == "School Delegation" }
+        val added = updated.delegations.single { it.name == "New Delegation" }
+        assertTrue(original.isHighSchoolDelegation)
+        assertFalse(original.needsReview)
+        assertFalse(added.isHighSchoolDelegation)
+        assertTrue(added.needsReview)
+    }
+
+    @Test
+    fun `delegation school level rejects a delegation from another conference`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-delegation-school-level-scope").resolve("data.db")
+        val repository = ConferenceRepositoryImpl(DatabaseFactory.connect(dbPath))
+        val first = repository.createConference("First")
+        val second = repository.createConference("Second")
+        assertTrue(repository.applyMymunUpdateSnapshot(first.id.value, reservationSnapshot()).success)
+        val delegation = requireNotNull(repository.getConference(first.id)).delegations.single()
+
+        assertFailsWith<IllegalArgumentException> {
+            repository.setDelegationHighSchoolStatus(second.id, delegation.id, isHighSchoolDelegation = true)
+        }
+        Unit
+    }
+
+    @Test
+    fun `delegation organizer state migration defaults existing rows to university and reviewed`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-delegation-organizer-migration").resolve("data.db")
+        val repository = ConferenceRepositoryImpl(DatabaseFactory.connect(dbPath))
+        val conference = repository.createConference("TestConf")
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, reservationSnapshot()).success)
+
+        DriverManager.getConnection("jdbc:sqlite:${dbPath.toAbsolutePath()}").use { connection ->
+            connection.createStatement().use { statement ->
+                statement.executeUpdate("ALTER TABLE delegations DROP COLUMN is_high_school_delegation")
+                statement.executeUpdate("ALTER TABLE delegations DROP COLUMN needs_review")
+                statement.executeUpdate("DELETE FROM schema_migrations WHERE version = 10")
+            }
+        }
+
+        val migratedRepository = ConferenceRepositoryImpl(DatabaseFactory.connect(dbPath))
+        val delegation = requireNotNull(migratedRepository.getConference(conference.id)).delegations.single()
+        assertFalse(delegation.isHighSchoolDelegation)
+        assertFalse(delegation.needsReview)
     }
 
     @Test

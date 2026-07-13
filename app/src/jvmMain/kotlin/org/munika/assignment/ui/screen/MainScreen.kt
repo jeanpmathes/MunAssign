@@ -85,6 +85,7 @@ import org.munika.assignment.domain.model.PaymentStatus
 import org.munika.assignment.domain.model.QuestionConfiguration
 import org.munika.assignment.ui.screen.dialog.IssueManagerPanel
 import org.munika.assignment.ui.screen.dialog.QuestionConfigurationDialog
+import org.munika.assignment.ui.screen.dialog.ReservationEditorDialog
 import org.munika.assignment.ui.screen.dialog.ReservationManagerDialog
 import org.munika.assignment.ui.screen.component.AssignmentBoard
 import org.munika.assignment.ui.screen.component.DelegateListPanel
@@ -132,9 +133,19 @@ fun MainScreen(
     onOpenDelegationOverview: () -> Unit = {},
     onOpenDelegationOverviewFor: (delegationId: String) -> Unit = {},
     onCloseDelegationOverview: () -> Unit = {},
+    onSetDelegationHighSchoolStatus: (delegationId: String, isHighSchoolDelegation: Boolean) -> Unit = { _, _ -> },
+    onOpenDelegationReservationEditor: (delegationId: String) -> Unit = {},
+    onCloseDelegationReservationEditor: () -> Unit = {},
     onOpenReservationManager: (delegationId: String?) -> Unit = {},
     onCloseReservationManager: () -> Unit = {},
     onCreateReservation: (
+        conferenceId: String,
+        name: String,
+        highSchoolCount: Int,
+        universityCount: Int,
+        delegationId: String?,
+    ) -> Unit = { _, _, _, _, _ -> },
+    onCreateDelegationReservation: (
         conferenceId: String,
         name: String,
         highSchoolCount: Int,
@@ -257,6 +268,8 @@ fun MainScreen(
                             onClearPendingSlot = onClearPendingSlot,
                             onCloseDelegateList = onCloseDelegateList,
                             onCloseDelegationOverview = onCloseDelegationOverview,
+                            onSetDelegationHighSchoolStatus = onSetDelegationHighSchoolStatus,
+                            onOpenDelegationReservationEditor = onOpenDelegationReservationEditor,
                             onOpenReservationManager = onOpenReservationManager,
                             onUpdateDelegateListControls = onUpdateDelegateListControls,
                             onApplyDelegateListPreset = onApplyDelegateListPreset,
@@ -356,6 +369,32 @@ fun MainScreen(
             onDismiss = onCloseQuestionConfiguration,
             onSave = onUpdateQuestionConfigurations,
         )
+    }
+
+    state.delegationReservationDraft?.let { draft ->
+        if (selectedConference != null) {
+            ReservationEditorDialog(
+                title = "Create reservation",
+                confirmLabel = "Create",
+                delegations = selectedConference.toReservationManagerUiState().delegations,
+                initialName = draft.name,
+                initialHighSchoolCount = draft.highSchoolCount,
+                initialUniversityCount = draft.universityCount,
+                initialDelegationId = draft.delegationId,
+                error = state.delegationReservationActionError,
+                submitting = state.loading,
+                onDismiss = onCloseDelegationReservationEditor,
+                onSubmit = { name, highSchoolCount, universityCount, delegationId ->
+                    onCreateDelegationReservation(
+                        selectedConference.id.value,
+                        name,
+                        highSchoolCount,
+                        universityCount,
+                        delegationId,
+                    )
+                },
+            )
+        }
     }
 
     if (state.reservationManagerOpen && selectedConference != null) {
@@ -518,9 +557,9 @@ private fun TopBar(
                     onClick = onOpenDelegateList,
                     enabled = !state.loading && state.selectedConference != null,
                 )
-                TooltipIconButton(
-                    tooltip = "Open delegation overview",
-                    icon = Icons.Filled.Groups,
+                val unreviewedDelegationCount = state.selectedConference?.delegations?.count { it.needsReview } ?: 0
+                DelegationIconButton(
+                    unreviewedCount = unreviewedDelegationCount,
                     onClick = onOpenDelegationOverview,
                     enabled = !state.loading && state.selectedConference != null,
                 )
@@ -781,6 +820,46 @@ private fun NoticeIconButton(
 }
 
 @Composable
+private fun DelegationIconButton(
+    unreviewedCount: Int,
+    onClick: () -> Unit,
+    enabled: Boolean,
+) {
+    val tooltip = if (unreviewedCount > 0) {
+        "Open delegation overview ($unreviewedCount new)"
+    } else {
+        "Open delegation overview"
+    }
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(positioning = TooltipAnchorPosition.Above),
+        tooltip = { PlainTooltip { Text(tooltip) } },
+        state = rememberTooltipState(),
+    ) {
+        Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+            IconButton(onClick = onClick, enabled = enabled) {
+                Icon(
+                    Icons.Filled.Groups,
+                    contentDescription = tooltip,
+                    tint = if (enabled) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                    },
+                )
+            }
+            if (unreviewedCount > 0) {
+                Box(modifier = Modifier.align(Alignment.BottomCenter).padding(top = 27.dp)) {
+                    NoticeCountBadge(
+                        count = unreviewedCount,
+                        tone = DelegateStatusTone.Yellow,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun NoticeBadgeRow(warningCount: Int, noticeCount: Int, modifier: Modifier = Modifier) {
     if (warningCount == 0 && noticeCount == 0) return
     Row(
@@ -881,6 +960,8 @@ private fun ConferenceWorkspace(
     onClearPendingSlot: (slotId: String) -> Unit,
     onCloseDelegateList: () -> Unit,
     onCloseDelegationOverview: () -> Unit,
+    onSetDelegationHighSchoolStatus: (String, Boolean) -> Unit,
+    onOpenDelegationReservationEditor: (String) -> Unit,
     onOpenReservationManager: (delegationId: String?) -> Unit,
     onUpdateDelegateListControls: (DelegateListControlsUiState) -> Unit,
     onApplyDelegateListPreset: (DelegateListPreset) -> Unit,
@@ -934,7 +1015,10 @@ private fun ConferenceWorkspace(
                 DelegationOverviewPanel(
                     overview = conference.toDelegationOverviewUiState(),
                     targetDelegationId = delegationOverviewTargetId,
+                    loading = loading,
                     onOpenReservationManager = onOpenReservationManager,
+                    onCreateReservation = onOpenDelegationReservationEditor,
+                    onSetHighSchoolStatus = onSetDelegationHighSchoolStatus,
                     onOpenDelegateDetail = onOpenDelegateDetail,
                     onClose = onCloseDelegationOverview,
                 )

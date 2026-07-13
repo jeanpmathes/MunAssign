@@ -19,13 +19,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -46,7 +49,10 @@ import org.munika.assignment.ui.viewmodel.DelegationReservationUiState
 fun DelegationOverviewPanel(
     overview: DelegationOverviewUiState,
     targetDelegationId: String?,
+    loading: Boolean,
     onOpenReservationManager: (delegationId: String?) -> Unit,
+    onCreateReservation: (delegationId: String) -> Unit,
+    onSetHighSchoolStatus: (delegationId: String, isHighSchoolDelegation: Boolean) -> Unit,
     onOpenDelegateDetail: (String) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
@@ -87,7 +93,12 @@ fun DelegationOverviewPanel(
                     DelegationCard(
                         delegation = delegation,
                         highlighted = delegation.id == targetDelegationId,
+                        loading = loading,
                         onOpenReservationManager = { onOpenReservationManager(delegation.id) },
+                        onCreateReservation = { onCreateReservation(delegation.id) },
+                        onSetHighSchoolStatus = { isHighSchool ->
+                            onSetHighSchoolStatus(delegation.id, isHighSchool)
+                        },
                         onOpenDelegateDetail = onOpenDelegateDetail,
                     )
                 }
@@ -117,7 +128,10 @@ private fun Header(onClose: () -> Unit) {
 private fun DelegationCard(
     delegation: DelegationOverviewRowUiState,
     highlighted: Boolean,
+    loading: Boolean,
     onOpenReservationManager: () -> Unit,
+    onCreateReservation: () -> Unit,
+    onSetHighSchoolStatus: (Boolean) -> Unit,
     onOpenDelegateDetail: (String) -> Unit,
 ) {
     Surface(
@@ -132,7 +146,26 @@ private fun DelegationCard(
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(delegation.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            delegation.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (delegation.needsReview) {
+                            BoardTooltip("New delegation not yet reviewed") {
+                                Icon(
+                                    Icons.Filled.Warning,
+                                    contentDescription = "New delegation",
+                                    tint = NewDelegationColor,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                    }
                     Text(
                         delegation.country ?: "No country recorded",
                         style = MaterialTheme.typography.bodySmall,
@@ -141,8 +174,37 @@ private fun DelegationCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+                val schoolTooltip = if (delegation.isHighSchoolDelegation) {
+                    "Mark ${delegation.name} as a university delegation."
+                } else {
+                    "Mark ${delegation.name} as a high-school delegation."
+                }
+                BoardTooltip(schoolTooltip) {
+                    IconToggleButton(
+                        checked = delegation.isHighSchoolDelegation,
+                        onCheckedChange = onSetHighSchoolStatus,
+                        enabled = !loading,
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Icon(
+                            Icons.Filled.School,
+                            contentDescription = schoolTooltip,
+                            tint = if (delegation.isHighSchoolDelegation) {
+                                HighSchoolColor
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+                BoardTooltip("Create a prefilled reservation for ${delegation.name}.") {
+                    IconButton(onClick = onCreateReservation, enabled = !loading, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Filled.Add, contentDescription = "Create reservation", modifier = Modifier.size(19.dp))
+                    }
+                }
                 BoardTooltip("Open reservation manager for ${delegation.name}.") {
-                    Button(onClick = onOpenReservationManager) {
+                    Button(onClick = onOpenReservationManager, enabled = !loading) {
                         Text("Reservations")
                     }
                 }
@@ -272,3 +334,4 @@ private fun InfoChip(text: String) {
 }
 
 private val HighSchoolColor = Color(0xFF8E24AA)
+private val NewDelegationColor = Color(0xFFF9A825)

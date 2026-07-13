@@ -337,6 +337,40 @@ class ConferenceRepositoryImpl(
         loadConferenceGraph(conferenceId)
     }
 
+    override suspend fun setDelegationHighSchoolStatus(
+        conferenceId: ConferenceId,
+        delegationId: DelegationId,
+        isHighSchoolDelegation: Boolean,
+    ): Conference = db {
+        val conferenceId = conferenceId.value
+        val delegationId = delegationId.value
+        val updated = DelegationTable.update({
+            (DelegationTable.id eq delegationId) and (DelegationTable.conferenceId eq conferenceId)
+        }) {
+            it[DelegationTable.isHighSchoolDelegation] = isHighSchoolDelegation
+        }
+        require(updated == 1) { "Delegation $delegationId does not belong to conference $conferenceId." }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = Instant.now().toEpochMilli()
+        }
+        loadConferenceGraph(conferenceId)
+    }
+
+    override suspend fun markDelegationsReviewed(conferenceId: ConferenceId): Conference = db {
+        val conferenceId = conferenceId.value
+        val updated = DelegationTable.update({
+            (DelegationTable.conferenceId eq conferenceId) and (DelegationTable.needsReview eq true)
+        }) {
+            it[needsReview] = false
+        }
+        if (updated > 0) {
+            ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+                it[updatedAtEpochMillis] = Instant.now().toEpochMilli()
+            }
+        }
+        loadConferenceGraph(conferenceId)
+    }
+
     override suspend fun getConference(conferenceId: ConferenceId): Conference? = db {
         val conferenceId = conferenceId.value
         if (ConferenceTable.selectAll().where { ConferenceTable.id eq conferenceId }.empty()) {
@@ -1092,6 +1126,8 @@ class ConferenceRepositoryImpl(
                     it[DelegationTable.country] = delegation.country
                     it[DelegationTable.expectedDelegateCount] = delegation.expectedDelegates
                     it[DelegationTable.currentDelegateCountFromMymun] = delegation.currentDelegates
+                    it[DelegationTable.isHighSchoolDelegation] = false
+                    it[DelegationTable.needsReview] = true
                     it[DelegationTable.headDelegateId] = null
                 }
                 delta.delegationsCreated++
@@ -2073,6 +2109,8 @@ class ConferenceRepositoryImpl(
                     country = row[DelegationTable.country],
                     expectedDelegateCount = row[DelegationTable.expectedDelegateCount],
                     currentDelegateCountFromMymun = row[DelegationTable.currentDelegateCountFromMymun],
+                    isHighSchoolDelegation = row[DelegationTable.isHighSchoolDelegation],
+                    needsReview = row[DelegationTable.needsReview],
                     headDelegateId = row[DelegationTable.headDelegateId],
                 )
             },

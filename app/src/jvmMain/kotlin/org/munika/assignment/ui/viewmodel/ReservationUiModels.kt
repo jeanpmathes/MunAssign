@@ -2,6 +2,7 @@ package org.munika.assignment.ui.viewmodel
 
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.Delegate
+import org.munika.assignment.domain.model.Delegation
 import org.munika.assignment.domain.model.Reservation
 import org.munika.assignment.domain.model.ReservationDelegateLink
 import org.munika.assignment.domain.model.ReservationLinkSource
@@ -37,6 +38,13 @@ data class ReservationDelegationOptionUiState(
     val label: String,
 )
 
+data class DelegationReservationDraftUiState(
+    val name: String,
+    val highSchoolCount: Int,
+    val universityCount: Int,
+    val delegationId: String,
+)
+
 fun Conference.toReservationManagerUiState(): ReservationManagerUiState =
     ReservationManagerUiState(
         reservations = reservations
@@ -51,6 +59,16 @@ fun Conference.toReservationManagerUiState(): ReservationManagerUiState =
             }
             .sortedBy { it.label },
     )
+
+fun Delegation.toQuickReservationDraftUiState(): DelegationReservationDraftUiState {
+    val count = expectedDelegateCount?.coerceAtLeast(0) ?: 0
+    return DelegationReservationDraftUiState(
+        name = name,
+        highSchoolCount = if (isHighSchoolDelegation) count else 0,
+        universityCount = if (isHighSchoolDelegation) 0 else count,
+        delegationId = id.value,
+    )
+}
 
 private fun Reservation.toSummaryUiState(): ReservationSummaryUiState =
     ReservationSummaryUiState(

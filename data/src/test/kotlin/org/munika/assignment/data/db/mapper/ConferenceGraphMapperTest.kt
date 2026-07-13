@@ -42,6 +42,8 @@ class ConferenceGraphMapperTest {
         assertSame(pendingSlot, delegateAda.currentSlot)
         assertSame(delegation, delegateAda.delegation)
         assertSame(delegateAda, delegation.headDelegate)
+        assertEquals(true, delegation.isHighSchoolDelegation)
+        assertEquals(true, delegation.needsReview)
         assertEquals(LanguageLevel.BeginnerA1A2, delegateAda.languageLevel)
         assertSame(position, delegateAda.preferences.single().position)
     }
@@ -102,6 +104,8 @@ class ConferenceGraphMapperTest {
                     country = "UK",
                     expectedDelegateCount = 2,
                     currentDelegateCountFromMymun = 2,
+                    isHighSchoolDelegation = true,
+                    needsReview = true,
                     headDelegateId = "delegate-ada",
                 ),
             ),

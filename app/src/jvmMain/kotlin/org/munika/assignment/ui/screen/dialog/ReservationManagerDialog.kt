@@ -263,7 +263,7 @@ private fun ConsumerPill(consumer: ReservationConsumerUiState) {
 }
 
 @Composable
-private fun ReservationEditorDialog(
+fun ReservationEditorDialog(
     title: String,
     confirmLabel: String,
     delegations: List<ReservationDelegationOptionUiState>,
@@ -272,6 +272,7 @@ private fun ReservationEditorDialog(
     initialUniversityCount: Int,
     initialDelegationId: String?,
     error: String?,
+    submitting: Boolean = false,
     onDismiss: () -> Unit,
     onSubmit: (name: String, highSchoolCount: Int, universityCount: Int, delegationId: String?) -> Unit,
 ) {
@@ -286,7 +287,7 @@ private fun ReservationEditorDialog(
         (highSchoolNumber == 0 && universityNumber == 0)
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!submitting) onDismiss() },
         title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -332,13 +333,13 @@ private fun ReservationEditorDialog(
                 onClick = {
                     onSubmit(name.trim(), highSchoolNumber ?: 0, universityNumber ?: 0, selectedDelegationId)
                 },
-                enabled = name.isNotBlank() && !countError,
+                enabled = name.isNotBlank() && !countError && !submitting,
             ) {
                 Text(confirmLabel)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = onDismiss, enabled = !submitting) {
                 Text("Cancel")
             }
         },

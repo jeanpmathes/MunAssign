@@ -80,6 +80,21 @@ interface ConferenceRepository {
     ): Conference
 
     /**
+     * Marks whether one delegation should prefill high-school reservation capacity.
+     *
+     * This organizer-managed setting must be preserved across MyMUN updates for retained
+     * delegations and does not change delegate classifications or existing reservations.
+     */
+    suspend fun setDelegationHighSchoolStatus(
+        conferenceId: ConferenceId,
+        delegationId: DelegationId,
+        isHighSchoolDelegation: Boolean,
+    ): Conference
+
+    /** Clears the persistent review marker from every delegation in one conference. */
+    suspend fun markDelegationsReviewed(conferenceId: ConferenceId): Conference
+
+    /**
      * Creates or replaces a pending MunAssign assignment for one slot.
      *
      * Implementations must never overwrite MyMUN-confirmed assignments. If the chosen delegate

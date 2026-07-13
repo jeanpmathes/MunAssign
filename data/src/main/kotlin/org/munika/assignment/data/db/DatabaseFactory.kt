@@ -173,6 +173,10 @@ object DatabaseFactory {
                 """.trimIndent(),
             )
         },
+        SchemaMigration(version = 10, name = "add_delegation_organizer_state") {
+            addColumnIfMissing("delegations", "is_high_school_delegation", "BOOLEAN NOT NULL DEFAULT FALSE")
+            addColumnIfMissing("delegations", "needs_review", "BOOLEAN NOT NULL DEFAULT FALSE")
+        },
     )
 
     private fun addColumnIfMissing(tableName: String, columnName: String, definition: String) {

@@ -135,6 +135,8 @@ class MainViewModel internal constructor(
                 noticeManagerDelegateId = null,
                 delegationOverviewOpen = false,
                 delegationOverviewTargetId = null,
+                delegationReservationDraft = null,
+                delegationReservationActionError = null,
                 reservationManagerOpen = false,
                 reservationManagerDelegationId = null,
                 reservationActionError = null,
@@ -312,7 +314,78 @@ class MainViewModel internal constructor(
     }
 
     fun closeDelegationOverview(): Unit {
+        val selectedId = selectedIdOrNull()
+        val hasUnreviewedDelegations = _state.value.selectedConference?.delegations?.any { it.needsReview } == true
         _state.update { it.copy(delegationOverviewOpen = false, delegationOverviewTargetId = null) }
+        if (selectedId == null || !hasUnreviewedDelegations) return
+        scope.launch {
+            try {
+                val conference = repository.markDelegationsReviewed(ConferenceId(selectedId))
+                updateConferenceState(selectedId) {
+                    it.copy(selectedConference = conference, boardActionError = null)
+                }
+            } catch (exception: IllegalArgumentException) {
+                updateConferenceState(selectedId) {
+                    it.copy(boardActionError = exception.message ?: "Delegations could not be marked as reviewed.")
+                }
+            } catch (exception: Exception) {
+                updateConferenceState(selectedId) {
+                    it.copy(
+                        boardActionError = "Delegation review update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
+                    )
+                }
+            }
+        }
+    }
+
+    fun setDelegationHighSchoolStatus(delegationId: String, isHighSchoolDelegation: Boolean): Unit {
+        val selectedId = selectedIdOrNull() ?: return
+        scope.launch {
+            updateConferenceState(selectedId) { it.copy(loading = true, boardActionError = null) }
+            try {
+                val conference = repository.setDelegationHighSchoolStatus(
+                    conferenceId = ConferenceId(selectedId),
+                    delegationId = DelegationId(delegationId),
+                    isHighSchoolDelegation = isHighSchoolDelegation,
+                )
+                updateConferenceState(selectedId) {
+                    it.copy(selectedConference = conference, loading = false, boardActionError = null)
+                }
+            } catch (exception: IllegalArgumentException) {
+                updateConferenceState(selectedId) {
+                    it.copy(
+                        loading = false,
+                        boardActionError = exception.message ?: "Delegation school level could not be changed.",
+                    )
+                }
+            } catch (exception: Exception) {
+                updateConferenceState(selectedId) {
+                    it.copy(
+                        loading = false,
+                        boardActionError = "Delegation school level update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
+                    )
+                }
+            }
+        }
+    }
+
+    fun openDelegationReservationEditor(delegationId: String): Unit {
+        val delegation = _state.value.selectedConference?.delegations?.firstOrNull { it.id.value == delegationId } ?: return
+        _state.update {
+            it.copy(
+                delegationReservationDraft = delegation.toQuickReservationDraftUiState(),
+                delegationReservationActionError = null,
+            )
+        }
+    }
+
+    fun closeDelegationReservationEditor(): Unit {
+        _state.update {
+            it.copy(
+                delegationReservationDraft = null,
+                delegationReservationActionError = null,
+            )
+        }
     }
 
     fun openReservationManager(delegationId: String? = null): Unit {
@@ -609,6 +682,52 @@ class MainViewModel internal constructor(
                 universityCount = universityCount,
                 delegationId = delegationId?.let(::DelegationId),
             )
+        }
+    }
+
+    fun createDelegationReservation(
+        conferenceId: String,
+        name: String,
+        highSchoolCount: Int,
+        universityCount: Int,
+        delegationId: String?,
+    ): Unit {
+        updateConferenceState(conferenceId) {
+            it.copy(loading = true, delegationReservationActionError = null)
+        }
+        scope.launch {
+            try {
+                val conference = repository.createReservation(
+                    conferenceId = ConferenceId(conferenceId),
+                    name = name,
+                    highSchoolCount = highSchoolCount,
+                    universityCount = universityCount,
+                    delegationId = delegationId?.let(::DelegationId),
+                )
+                updateConferenceState(conferenceId) {
+                    it.copy(
+                        selectedConference = conference,
+                        loading = false,
+                        delegationReservationDraft = null,
+                        delegationReservationActionError = null,
+                    )
+                }
+            } catch (exception: IllegalArgumentException) {
+                updateConferenceState(conferenceId) {
+                    it.copy(
+                        loading = false,
+                        delegationReservationActionError = exception.message ?: "Reservation could not be created.",
+                    )
+                }
+            } catch (exception: Exception) {
+                updateConferenceState(conferenceId) {
+                    it.copy(
+                        loading = false,
+                        delegationReservationActionError =
+                            "Reservation creation failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
+                    )
+                }
+            }
         }
     }
 
@@ -1143,6 +1262,8 @@ data class MainUiState(
     val noticeManagerDelegateId: String? = null,
     val delegationOverviewOpen: Boolean = false,
     val delegationOverviewTargetId: String? = null,
+    val delegationReservationDraft: DelegationReservationDraftUiState? = null,
+    val delegationReservationActionError: String? = null,
     val reservationManagerOpen: Boolean = false,
     val reservationManagerDelegationId: String? = null,
     val reservationActionError: String? = null,

@@ -11,6 +11,8 @@ object DelegationTable : Table("delegations") {
     val country = varchar("country", 255).nullable()
     val expectedDelegateCount = integer("expected_delegate_count").nullable()
     val currentDelegateCountFromMymun = integer("current_delegate_count_from_mymun").nullable()
+    val isHighSchoolDelegation = bool("is_high_school_delegation").default(false)
+    val needsReview = bool("needs_review").default(false)
     val headDelegateId = varchar("head_delegate_id", 36).nullable()
 
     override val primaryKey = PrimaryKey(id)

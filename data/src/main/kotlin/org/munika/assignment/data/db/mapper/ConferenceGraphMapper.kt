@@ -115,6 +115,8 @@ object ConferenceGraphMapper {
                 country = row.country,
                 expectedDelegateCount = row.expectedDelegateCount,
                 currentDelegateCountFromMymun = row.currentDelegateCountFromMymun,
+                isHighSchoolDelegation = row.isHighSchoolDelegation,
+                needsReview = row.needsReview,
             )
             conference.delegations += delegation
             row.id to delegation

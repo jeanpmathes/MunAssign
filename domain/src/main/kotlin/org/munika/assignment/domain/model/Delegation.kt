@@ -3,7 +3,8 @@ package org.munika.assignment.domain.model
 /**
  * Delegation context imported from MyMUN.
  *
- * Delegations help organizers interpret delegate groups but do not own assignment state.
+ * Delegations help organizers interpret delegate groups but do not own assignment state. School
+ * level and review state are organizer-managed guidance preserved across MyMUN updates.
  */
 class Delegation(
     override val id: DelegationId,
@@ -12,6 +13,8 @@ class Delegation(
     val country: String?,
     val expectedDelegateCount: Int?,
     val currentDelegateCountFromMymun: Int?,
+    val isHighSchoolDelegation: Boolean = false,
+    val needsReview: Boolean = false,
 ) : DomainObject<DelegationId> {
     var headDelegate: Delegate? = null
         private set

@@ -27,6 +27,12 @@ class ConferenceTransferServiceTest {
         val sourceDatabase = DatabaseFactory.connect(sourcePath)
         val sourceRepository = ConferenceRepositoryImpl(sourceDatabase)
         val sourceConference = populatedConference(sourceRepository, sourceDatabase, "KAMUN")
+        val sourceDelegation = requireNotNull(sourceRepository.getConference(sourceConference.id)).delegations.single()
+        sourceRepository.setDelegationHighSchoolStatus(
+            conferenceId = sourceConference.id,
+            delegationId = sourceDelegation.id,
+            isHighSchoolDelegation = true,
+        )
         val sourceLoaded = requireNotNull(sourceRepository.getConference(sourceConference.id))
         val transferPath = Files.createTempDirectory("munassign-transfer-file").resolve("kamun.munassign")
 
@@ -48,6 +54,8 @@ class ConferenceTransferServiceTest {
         assertEquals(sourceLoaded.delegates.sumOf { it.preferences.size }, imported.delegates.sumOf { it.preferences.size })
         assertEquals(sourceLoaded.delegates.sumOf { it.answers.size }, imported.delegates.sumOf { it.answers.size })
         assertEquals(sourceLoaded.delegates.sumOf { it.issueResolutions.size }, imported.delegates.sumOf { it.issueResolutions.size })
+        assertTrue(imported.delegations.single().isHighSchoolDelegation)
+        assertTrue(imported.delegations.single().needsReview)
         assertTrue(imported.committees.flatMap { it.positions }.flatMap { it.slots }.isNotEmpty())
         assertTrue(imported.delegates.none { sourceLoaded.delegates.map { source -> source.id }.contains(it.id) })
     }

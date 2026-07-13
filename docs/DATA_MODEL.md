@@ -11,7 +11,7 @@ This document records persistence and update rules that are not obvious from the
 - `Delegate` stores MyMUN profile data plus organizer-managed active/inactive state.
 - `Question` stores dynamic MyMUN question text plus local handling configuration.
 - `Preference` resolves a delegate's ranked MyMUN preference to a position.
-- `Delegation` stores delegation context from MyMUN where available.
+- `Delegation` stores delegation context from MyMUN plus organizer-managed school level and review state.
 - `Reservation` stores organizer-managed high-school and university capacity holds, with an optional linked delegation.
 - `ReservationDelegateLink` stores current reservation consumption by one delegate, either manual or delegation-automatic.
 
@@ -138,6 +138,7 @@ MyMUN updates preserve where the referenced objects still exist:
 - pending app assignments not contradicted by confirmed MyMUN assignments;
 - committee aliases;
 - committee mode and position correspondences;
+- delegation high-school status and review state;
 - question handling configuration.
 - organizer-managed reservations;
 - manual reservation links for retained active delegates;
@@ -150,6 +151,10 @@ Automatic reservation links are rebuilt after updates. If a reservation's linked
 Reservations reduce accept capacity before delegates have applied. They are owned by one conference and can hold high-school count, university count, or both. Counts must be zero or greater, and at least one count must be greater than zero.
 
 A reservation may link to one MyMUN delegation. The linked delegation identity itself remains MyMUN-managed; organizers do not edit delegation names or contact fields in MunAssign.
+
+Delegations default to university. The organizer-managed high-school flag only controls which reservation bucket receives the expected count when opening the delegation quick-create editor; it does not change delegate classifications or existing reservations. Quick-create uses the full non-negative MyMUN expected count even when other reservations are already linked, and uses zero when no positive expected count is available.
+
+A delegation created by a MyMUN update starts with a persistent review marker. Existing delegations retain their review state across updates, and explicitly closing the delegation overview clears every current marker for that conference. Existing databases migrate with prior delegations already reviewed.
 
 Reservation consumption is persisted in `reservation_delegate_links` so the application does not have to infer current usage from scratch at load time. A delegate can have at most one reservation link in a conference:
 
