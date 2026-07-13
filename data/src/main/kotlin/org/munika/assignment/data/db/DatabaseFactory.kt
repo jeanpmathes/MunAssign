@@ -3,9 +3,12 @@ package org.munika.assignment.data.db
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.DriverManager
+import java.util.UUID
 import kotlin.io.path.Path
 import org.jetbrains.exposed.v1.core.IntegerColumnType
 import org.jetbrains.exposed.v1.core.VarCharColumnType
+import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.SchemaUtils
 import org.jetbrains.exposed.v1.jdbc.insert
@@ -15,7 +18,12 @@ import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.slf4j.LoggerFactory
 import org.munika.assignment.data.db.tables.AnswerIssueResolutionTable
 import org.munika.assignment.data.db.tables.AnswerRuleTypeTable
+import org.munika.assignment.data.db.tables.ConferenceTable
 import org.munika.assignment.data.db.tables.MunAssignTables
+import org.munika.assignment.data.db.tables.MymunUpdateFilenamePartTable
+import org.munika.assignment.data.db.tables.MymunUpdateFilenameSignatureTable
+import org.munika.assignment.data.db.tables.MymunUpdateIssueTable
+import org.munika.assignment.data.db.tables.MymunUpdateRunTable
 import org.munika.assignment.data.db.tables.QuestionHandlingTypeTable
 import org.munika.assignment.data.db.tables.QuestionRoleTable
 import org.munika.assignment.data.db.tables.ReservationDelegateLinkTable
@@ -23,6 +31,8 @@ import org.munika.assignment.data.db.tables.ReservationTable
 import org.munika.assignment.data.db.tables.SchemaMigrationTable
 import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
+import org.munika.assignment.domain.model.MymunUpdateFilenameCandidate
+import org.munika.assignment.domain.repository.UpdateIssueSeverity
 import org.sqlite.SQLiteConfig
 
 /**
@@ -177,7 +187,49 @@ object DatabaseFactory {
             addColumnIfMissing("delegations", "is_high_school_delegation", "BOOLEAN NOT NULL DEFAULT FALSE")
             addColumnIfMissing("delegations", "needs_review", "BOOLEAN NOT NULL DEFAULT FALSE")
         },
+        SchemaMigration(version = 11, name = "add_mymun_update_filename_signatures") {
+            SchemaUtils.create(MymunUpdateFilenameSignatureTable, MymunUpdateFilenamePartTable)
+            backfillMymunUpdateFilenameSignatures()
+        },
     )
+
+    private fun backfillMymunUpdateFilenameSignatures() {
+        ConferenceTable.selectAll().toList().forEach { conference ->
+            val conferenceId = conference[ConferenceTable.id]
+            val latestSuccessfulRun = MymunUpdateRunTable.selectAll()
+                .where { MymunUpdateRunTable.conferenceId eq conferenceId }
+                .orderBy(
+                    MymunUpdateRunTable.completedAtEpochMillis to org.jetbrains.exposed.v1.core.SortOrder.DESC,
+                    MymunUpdateRunTable.startedAtEpochMillis to org.jetbrains.exposed.v1.core.SortOrder.DESC,
+                )
+                .toList()
+                .firstOrNull { run ->
+                    run[MymunUpdateRunTable.completedAtEpochMillis] != null &&
+                        MymunUpdateIssueTable.selectAll().where {
+                            (MymunUpdateIssueTable.updateRunId eq run[MymunUpdateRunTable.id]) and
+                                (MymunUpdateIssueTable.severity eq UpdateIssueSeverity.Error.name)
+                        }.none()
+                }
+            val filename = latestSuccessfulRun?.get(MymunUpdateRunTable.sourceFilename) ?: return@forEach
+            val candidate = MymunUpdateFilenameCandidate.fromFilename(filename)
+            if (candidate.parts.isEmpty()) return@forEach
+
+            val signatureId = UUID.randomUUID().toString()
+            MymunUpdateFilenameSignatureTable.insert {
+                it[id] = signatureId
+                it[MymunUpdateFilenameSignatureTable.conferenceId] = conferenceId
+                it[trustedAtEpochMillis] = latestSuccessfulRun[MymunUpdateRunTable.completedAtEpochMillis]!!
+            }
+            candidate.parts.forEachIndexed { index, part ->
+                MymunUpdateFilenamePartTable.insert {
+                    it[MymunUpdateFilenamePartTable.signatureId] = signatureId
+                    it[displayOrder] = index
+                    it[displayValue] = part.displayValue
+                    it[normalizedValue] = part.normalizedValue
+                }
+            }
+        }
+    }
 
     private fun addColumnIfMissing(tableName: String, columnName: String, definition: String) {
         if (!columnExists(tableName, columnName)) {

@@ -106,6 +106,7 @@ class ConferenceTransferService(
         val reservationIds = copyByConference(source, target, "reservations", conferenceId)
         val questionIds = copyByConference(source, target, "delegate_questions", conferenceId)
         val updateRunIds = copyByConference(source, target, "mymun_update_runs", conferenceId)
+        val filenameSignatureIds = copyByConference(source, target, "mymun_update_filename_signatures", conferenceId)
 
         copyByIds(source, target, "slots", "position_id", positionIds)
         copyByIds(source, target, "preferences", "delegate_id", delegateIds)
@@ -118,6 +119,7 @@ class ConferenceTransferService(
         copyByIds(source, target, "answer_issue_resolutions", "conference_id", setOf(conferenceId))
         copyByIds(source, target, "reservation_delegate_links", "reservation_id", reservationIds)
         copyByIds(source, target, "mymun_update_issues", "update_run_id", updateRunIds)
+        copyByIds(source, target, "mymun_update_filename_signature_parts", "signature_id", filenameSignatureIds)
     }
 
     private fun importConferenceRows(source: Connection, target: Connection, replaceTargetConferenceId: String?): String {
@@ -138,6 +140,11 @@ class ConferenceTransferService(
         val reservationIdMap = source.idMap("reservations", "conference_id = ?", listOf(sourceConferenceId))
         val questionIdMap = source.idMap("delegate_questions", "conference_id = ?", listOf(sourceConferenceId))
         val updateRunIdMap = source.idMap("mymun_update_runs", "conference_id = ?", listOf(sourceConferenceId))
+        val filenameSignatureIdMap = source.idMap(
+            "mymun_update_filename_signatures",
+            "conference_id = ?",
+            listOf(sourceConferenceId),
+        )
         val slotIdMap = source.idMapIn("slots", "position_id", positionIdMap.keys)
         val preferenceIdMap = source.idMapIn("preferences", "delegate_id", delegateIdMap.keys)
         val commentIdMap = source.idMapIn("delegate_comments", "delegate_id", delegateIdMap.keys)
@@ -206,6 +213,9 @@ class ConferenceTransferService(
         copyImportedByConference(source, target, "mymun_update_runs", sourceConferenceId) { row ->
             row.remap("id", updateRunIdMap).remap("conference_id", conferenceIdMap)
         }
+        copyImportedByConference(source, target, "mymun_update_filename_signatures", sourceConferenceId) { row ->
+            row.remap("id", filenameSignatureIdMap).remap("conference_id", conferenceIdMap)
+        }
 
         copyImportedByIds(source, target, "slots", "position_id", positionIdMap.keys) { row ->
             row.remap("id", slotIdMap)
@@ -251,6 +261,13 @@ class ConferenceTransferService(
         copyImportedByIds(source, target, "mymun_update_issues", "update_run_id", updateRunIdMap.keys) { row ->
             row.remap("id", updateIssueIdMap).remap("update_run_id", updateRunIdMap)
         }
+        copyImportedByIds(
+            source,
+            target,
+            "mymun_update_filename_signature_parts",
+            "signature_id",
+            filenameSignatureIdMap.keys,
+        ) { row -> row.remap("signature_id", filenameSignatureIdMap) }
 
         return targetConferenceId
     }
@@ -292,9 +309,16 @@ class ConferenceTransferService(
         val questionIds = connection.ids("delegate_questions", "conference_id = ?", listOf(conferenceId))
         val reservationIds = connection.ids("reservations", "conference_id = ?", listOf(conferenceId))
         val updateRunIds = connection.ids("mymun_update_runs", "conference_id = ?", listOf(conferenceId))
+        val filenameSignatureIds = connection.ids(
+            "mymun_update_filename_signatures",
+            "conference_id = ?",
+            listOf(conferenceId),
+        )
 
         connection.deleteIn("mymun_update_issues", "update_run_id", updateRunIds)
         connection.deleteWhere("mymun_update_runs", "conference_id = ?", listOf(conferenceId))
+        connection.deleteIn("mymun_update_filename_signature_parts", "signature_id", filenameSignatureIds)
+        connection.deleteWhere("mymun_update_filename_signatures", "conference_id = ?", listOf(conferenceId))
         connection.deleteWhere("answer_issue_resolutions", "conference_id = ?", listOf(conferenceId))
         connection.deleteIn("reservation_delegate_links", "reservation_id", reservationIds)
         connection.deleteWhere("reservations", "conference_id = ?", listOf(conferenceId))

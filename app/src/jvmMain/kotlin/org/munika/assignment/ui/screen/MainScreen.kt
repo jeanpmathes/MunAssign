@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -54,6 +55,7 @@ import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TooltipBox
@@ -97,6 +99,7 @@ import org.munika.assignment.ui.viewmodel.DelegateListControlsUiState
 import org.munika.assignment.ui.viewmodel.DelegateListPreset
 import org.munika.assignment.ui.viewmodel.DelegateStatusTone
 import org.munika.assignment.ui.viewmodel.MainUiState
+import org.munika.assignment.ui.viewmodel.PendingWorkbookUpdate
 import org.munika.assignment.ui.viewmodel.ReservationSummaryUiState
 import org.munika.assignment.ui.viewmodel.toIssueManagerUiState
 import org.munika.assignment.ui.viewmodel.toQuestionConfigurationListUiState
@@ -184,6 +187,9 @@ fun MainScreen(
     onUpdateDelegateComment: (commentId: String, body: String) -> Unit,
     onDeleteDelegateComment: (commentId: String) -> Unit,
     onOpenWorkbook: () -> Unit,
+    onConfirmPendingWorkbookUpdate: () -> Unit,
+    onCancelPendingWorkbookUpdate: () -> Unit,
+    onDeleteMymunUpdateFilenameSignature: (conferenceId: String, signatureId: String) -> Unit,
     onExportConference: (String, String) -> Unit,
     onImportConferenceAsNew: () -> Unit,
     onReplaceConference: (String, String) -> Unit,
@@ -357,7 +363,16 @@ fun MainScreen(
             onExportConference = onExportConference,
             onImportConferenceAsNew = onImportConferenceAsNew,
             onReplaceConference = onReplaceConference,
+            onDeleteMymunUpdateFilenameSignature = onDeleteMymunUpdateFilenameSignature,
             onClearConferenceActionError = onClearConferenceActionError,
+        )
+    }
+
+    state.pendingWorkbookUpdate?.let { pending ->
+        WorkbookFilenameMismatchDialog(
+            pending = pending,
+            onDismiss = onCancelPendingWorkbookUpdate,
+            onConfirm = onConfirmPendingWorkbookUpdate,
         )
     }
 
@@ -484,7 +499,7 @@ private fun TopBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(
-                modifier = Modifier.weight(0.82f),
+                modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -511,7 +526,7 @@ private fun TopBar(
             }
 
             Row(
-                modifier = Modifier.weight(0.72f),
+                modifier = Modifier.weight(0.8f),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -538,7 +553,7 @@ private fun TopBar(
             }
 
             Row(
-                modifier = Modifier.weight(1.56f),
+                modifier = Modifier.weight(1.5f),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.End,
             ) {
@@ -608,7 +623,7 @@ private fun ConferenceDropdown(
             trailingIcon = {
                 ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
             },
-            modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled).width(300.dp),
+            modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled).width(200.dp),
         )
         DropdownMenu(
             expanded = expanded,
@@ -723,7 +738,7 @@ private fun StatGroup(label: String, value: String, tooltip: String) {
         Column(
             modifier = Modifier
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(6.dp))
-                .padding(horizontal = 10.dp, vertical = 6.dp),
+                .padding(horizontal = 8.dp, vertical = 6.dp),
             horizontalAlignment = Alignment.Start,
         ) {
             Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -745,14 +760,20 @@ private fun CapacityStatGroup(capacity: AcceptanceCapacityUiState) {
     ) {
         Column(
             modifier = Modifier
+                .widthIn(min = 108.dp)
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(6.dp))
-                .padding(horizontal = 10.dp, vertical = 6.dp),
+                .padding(horizontal = 8.dp, vertical = 6.dp),
             horizontalAlignment = Alignment.Start,
         ) {
             Text("Capacity", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 CapacityValue("${capacity.highSchoolCount} HS", capacity.highSchoolCount)
-                Text("·", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "·",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
                 CapacityValue("${capacity.universityCount} Uni", capacity.universityCount)
             }
         }
@@ -766,6 +787,8 @@ private fun CapacityValue(text: String, value: Int) {
         style = MaterialTheme.typography.labelMedium,
         fontWeight = FontWeight.SemiBold,
         color = if (value < 0) CapacityNegativeColor else CapacityPositiveColor,
+        maxLines = 1,
+        softWrap = false,
     )
 }
 
@@ -1063,6 +1086,51 @@ private fun ConferenceWorkspace(
 }
 
 @Composable
+private fun WorkbookFilenameMismatchDialog(
+    pending: PendingWorkbookUpdate,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Unexpected update filename") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Selected file: ${pending.path.fileName}")
+                if (pending.emptyCandidate) {
+                    Text(
+                        "MunAssign could not identify conference-specific parts in this filename. " +
+                            "This filename will require confirmation every time.",
+                    )
+                } else {
+                    Text("This filename does not match a trusted filename for the selected conference.")
+                    Text("Expected: ${pending.expectedParts.joinToString(" + ")}")
+                    Text(
+                        "Missing expected parts: ${pending.missingParts.ifEmpty { listOf("None") }.joinToString()}",
+                    )
+                    Text(
+                        "Unexpected parts: ${pending.unexpectedParts.ifEmpty { listOf("None") }.joinToString()}",
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+        dismissButton = {
+            ArmedConfirmationAction(
+                revealLabel = "Update anyway",
+                confirmLabel = "Update",
+                armTooltip = "Arm this update",
+                onConfirm = onConfirm,
+            )
+        },
+    )
+}
+
+@Composable
 private fun ConferenceNameDialog(
     title: String,
     confirmLabel: String,
@@ -1111,6 +1179,7 @@ private fun ConferenceManagementDialog(
     onExportConference: (String, String) -> Unit,
     onImportConferenceAsNew: () -> Unit,
     onReplaceConference: (String, String) -> Unit,
+    onDeleteMymunUpdateFilenameSignature: (conferenceId: String, signatureId: String) -> Unit,
     onClearConferenceActionError: () -> Unit,
 ) {
     val orderedConferences = remember { state.conferences.toMutableStateList() }
@@ -1118,6 +1187,7 @@ private fun ConferenceManagementDialog(
     var renameTarget by remember { mutableStateOf<Conference?>(null) }
     var deleteTarget by remember { mutableStateOf<Conference?>(null) }
     var replaceTarget by remember { mutableStateOf<Conference?>(null) }
+    var filenameSignatureTargetId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(state.conferences) {
         orderedConferences.replaceAll(state.conferences)
@@ -1151,6 +1221,10 @@ private fun ConferenceManagementDialog(
                             onReplace = {
                                 onClearConferenceActionError()
                                 replaceTarget = conference
+                            },
+                            onManageFilenameSignatures = {
+                                onClearConferenceActionError()
+                                filenameSignatureTargetId = conference.id.value
                             },
                             onMoved = {
                                 onReorderConferences(orderedConferences.map { it.id.value })
@@ -1252,6 +1326,105 @@ private fun ConferenceManagementDialog(
             },
         )
     }
+
+    filenameSignatureTargetId?.let { conferenceId ->
+        state.conferences.firstOrNull { it.id.value == conferenceId }?.let { conference ->
+            TrustedFilenameSignaturesDialog(
+                conference = conference,
+                error = state.conferenceActionError,
+                onDismiss = {
+                    filenameSignatureTargetId = null
+                    onClearConferenceActionError()
+                },
+                onDelete = { signatureId ->
+                    onDeleteMymunUpdateFilenameSignature(conferenceId, signatureId)
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun TrustedFilenameSignaturesDialog(
+    conference: Conference,
+    error: String?,
+    onDismiss: () -> Unit,
+    onDelete: (String) -> Unit,
+) {
+    var deleteTargetId by remember { mutableStateOf<String?>(null) }
+    val signatures = conference.mymunUpdateFilenameSignatures.sortedByDescending { it.trustedAt }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Trusted update filenames - ${conference.name}") },
+        text = {
+            Column(
+                modifier = Modifier.width(520.dp).fillMaxHeight(0.65f),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    "A selected Excel file must match one complete set of parts. " +
+                        "Deleting the final set makes the next successful update the new baseline.",
+                )
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                if (signatures.isEmpty()) {
+                    Text("No trusted filename parts are stored for this conference.")
+                } else {
+                    LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        itemsIndexed(signatures, key = { _, signature -> signature.id.value }) { _, signature ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth()
+                                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+                                    .padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text(
+                                    signature.parts.joinToString(" + ") { it.displayValue },
+                                    modifier = Modifier.weight(1f),
+                                )
+                                TooltipIconButton(
+                                    tooltip = "Delete this trusted filename",
+                                    icon = Icons.Filled.Delete,
+                                    onClick = { deleteTargetId = signature.id.value },
+                                    enabled = true,
+                                    tint = MaterialTheme.colorScheme.error,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) {
+                Text("OK")
+            }
+        },
+    )
+
+    deleteTargetId?.let { signatureId ->
+        AlertDialog(
+            onDismissRequest = { deleteTargetId = null },
+            title = { Text("Delete trusted filename") },
+            text = { Text("Future update files matching only this set of parts will require confirmation again.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDelete(signatureId)
+                        deleteTargetId = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteTargetId = null }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
 }
 
 @Composable
@@ -1264,6 +1437,7 @@ private fun ReorderableConferenceRow(
     onDelete: () -> Unit,
     onExport: () -> Unit,
     onReplace: () -> Unit,
+    onManageFilenameSignatures: () -> Unit,
     onMoved: () -> Unit,
 ) {
     var accumulatedDrag by remember { mutableFloatStateOf(0f) }
@@ -1313,6 +1487,12 @@ private fun ReorderableConferenceRow(
             tooltip = "Replace ${conference.name} from .munassign",
             icon = Icons.Filled.UploadFile,
             onClick = onReplace,
+            enabled = reorderEnabled,
+        )
+        TooltipIconButton(
+            tooltip = "Manage trusted update filenames for ${conference.name}",
+            icon = Icons.Filled.Bookmark,
+            onClick = onManageFilenameSignatures,
             enabled = reorderEnabled,
         )
         TooltipIconButton(
@@ -1376,19 +1556,69 @@ private fun DeleteConferenceDialog(
             )
         },
         confirmButton = {
-            Button(
-                onClick = onConfirm,
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-            ) {
-                Text("Delete")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
+            Button(onClick = onDismiss) {
                 Text("Cancel")
             }
         },
+        dismissButton = {
+            ArmedConfirmationAction(
+                revealLabel = "Delete conference",
+                confirmLabel = "Delete",
+                armTooltip = "Arm conference deletion",
+                destructive = true,
+                onConfirm = onConfirm,
+            )
+        },
     )
+}
+
+@Composable
+private fun ArmedConfirmationAction(
+    revealLabel: String,
+    confirmLabel: String,
+    armTooltip: String,
+    onConfirm: () -> Unit,
+    destructive: Boolean = false,
+) {
+    var state by remember { mutableStateOf(ArmedConfirmationState()) }
+    if (!state.revealed) {
+        OutlinedButton(
+            onClick = { state = state.reveal() },
+            modifier = Modifier.width(176.dp),
+        ) {
+            Text(revealLabel)
+        }
+    } else {
+        Surface(
+            modifier = Modifier.width(176.dp).height(40.dp).offset(y = 3.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize().padding(start = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                WithTooltip(armTooltip) {
+                    Switch(
+                        checked = state.armed,
+                        onCheckedChange = { armed -> state = state.setArmed(armed) },
+                    )
+                }
+                Button(
+                    onClick = onConfirm,
+                    enabled = state.confirmationEnabled,
+                    colors = if (destructive) {
+                        ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    } else {
+                        ButtonDefaults.buttonColors()
+                    },
+                ) {
+                    Text(confirmLabel)
+                }
+            }
+        }
+    }
 }
 
 private fun SnapshotStateList<Conference>.replaceAll(conferences: List<Conference>) {

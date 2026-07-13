@@ -18,6 +18,7 @@ class Conference(
     val delegates: MutableList<Delegate> = mutableListOf(),
     val questions: MutableList<Question> = mutableListOf(),
     val reservations: MutableList<Reservation> = mutableListOf(),
+    val mymunUpdateFilenameSignatures: MutableList<MymunUpdateFilenameSignature> = mutableListOf(),
     val createdAt: Instant,
     var updatedAt: Instant,
     val lastMymunUpdateAt: Instant? = null,

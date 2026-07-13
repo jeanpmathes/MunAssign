@@ -1,5 +1,5 @@
 # TODO
 
-- Validate imported file name, e.g. mymun-2026-07-10-0853-KAMUN_ The Black Forest Summit 2026-Applications-Export
 - Icon
-- Export nice PNGs with current assignment status.
+- Export nice PNGs with current assignment status, per committee info, reservations, etc. and share that in whatsapp
+- Automatic share to google drive, or some other service, maybe onedrive save location and location-stationary import

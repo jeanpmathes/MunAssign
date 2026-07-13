@@ -24,6 +24,9 @@ import org.munika.assignment.domain.model.ConferenceId
 import org.munika.assignment.domain.model.DelegateCommentId
 import org.munika.assignment.domain.model.DelegateId
 import org.munika.assignment.domain.model.DelegationId
+import org.munika.assignment.domain.model.MymunUpdateFilenameAssessment
+import org.munika.assignment.domain.model.MymunUpdateFilenameCandidate
+import org.munika.assignment.domain.model.MymunUpdateFilenameSignatureId
 import org.munika.assignment.domain.model.PositionId
 import org.munika.assignment.domain.model.QuestionConfiguration
 import org.munika.assignment.domain.model.QuestionId
@@ -37,7 +40,11 @@ import org.munika.assignment.export.MarkdownSafetyExportService
 import org.munika.assignment.export.MarkdownSafetyExportTrigger
 
 internal fun interface WorkbookUpdateRunner {
-    suspend fun applyUpdate(conferenceId: String, path: Path): UpdateResult
+    suspend fun applyUpdate(
+        conferenceId: String,
+        path: Path,
+        signatureToTrust: MymunUpdateFilenameCandidate?,
+    ): UpdateResult
 }
 
 internal interface ConferenceTransferRunner {
@@ -67,8 +74,8 @@ class MainViewModel internal constructor(
         lastSelectedConferenceStore: LastSelectedConferenceStore,
     ) : this(
         repository = repository,
-        workbookUpdater = WorkbookUpdateRunner { conferenceId, path ->
-            workbookUpdater.applyUpdate(conferenceId, path)
+        workbookUpdater = WorkbookUpdateRunner { conferenceId, path, signatureToTrust ->
+            workbookUpdater.applyUpdate(conferenceId, path, signatureToTrust)
         },
         conferenceTransfer = object : ConferenceTransferRunner {
             override suspend fun exportConference(conferenceId: String, destinationPath: Path) {
@@ -143,6 +150,7 @@ class MainViewModel internal constructor(
                 delegateReservationActionError = null,
                 questionConfigurationOpen = false,
                 questionConfigurationError = null,
+                pendingWorkbookUpdate = null,
             )
         }
         loadConference(conferenceId)
@@ -952,20 +960,105 @@ class MainViewModel internal constructor(
 
     fun updateFromWorkbook(path: Path) {
         val selectedId = selectedIdOrNull() ?: return
-        scope.launch {
-            updateConferenceState(selectedId) { it.copy(loading = true, workbookUpdateNotice = null) }
-            try {
-                val result = workbookUpdater.applyUpdate(selectedId, path)
-                val conference = repository.getConference(ConferenceId(selectedId))
-                updateConferenceState(selectedId) {
+        val conference = _state.value.selectedConference ?: return
+        val candidate = MymunUpdateFilenameCandidate.fromFilename(path.fileName.toString())
+        when (val assessment = candidate.assess(conference.mymunUpdateFilenameSignatures)) {
+            is MymunUpdateFilenameAssessment.FirstUse -> applyWorkbookUpdate(selectedId, path, candidate)
+            is MymunUpdateFilenameAssessment.Match -> applyWorkbookUpdate(selectedId, path, signatureToTrust = null)
+            is MymunUpdateFilenameAssessment.Empty -> {
+                _state.update {
                     it.copy(
+                        pendingWorkbookUpdate = PendingWorkbookUpdate(
+                            conferenceId = selectedId,
+                            path = path,
+                            candidate = candidate,
+                            expectedParts = emptyList(),
+                            missingParts = emptyList(),
+                            unexpectedParts = emptyList(),
+                            emptyCandidate = true,
+                        ),
+                    )
+                }
+            }
+            is MymunUpdateFilenameAssessment.Mismatch -> {
+                _state.update {
+                    it.copy(
+                        pendingWorkbookUpdate = PendingWorkbookUpdate(
+                            conferenceId = selectedId,
+                            path = path,
+                            candidate = candidate,
+                            expectedParts = assessment.closestSignature.parts.map { part -> part.displayValue },
+                            missingParts = assessment.missingParts,
+                            unexpectedParts = assessment.unexpectedParts,
+                            emptyCandidate = false,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    fun confirmPendingWorkbookUpdate() {
+        val pending = _state.value.pendingWorkbookUpdate ?: return
+        if (_state.value.selectedConferenceId != pending.conferenceId) {
+            cancelPendingWorkbookUpdate()
+            return
+        }
+        _state.update { it.copy(pendingWorkbookUpdate = null) }
+        applyWorkbookUpdate(
+            conferenceId = pending.conferenceId,
+            path = pending.path,
+            signatureToTrust = pending.candidate.takeUnless { pending.emptyCandidate },
+        )
+    }
+
+    fun cancelPendingWorkbookUpdate() {
+        _state.update { it.copy(pendingWorkbookUpdate = null) }
+    }
+
+    fun deleteMymunUpdateFilenameSignature(conferenceId: String, signatureId: String) {
+        scope.launch {
+            try {
+                val updated = repository.deleteMymunUpdateFilenameSignature(
+                    ConferenceId(conferenceId),
+                    MymunUpdateFilenameSignatureId(signatureId),
+                )
+                val conferences = repository.listConferences()
+                _state.update { current ->
+                    current.copy(
+                        conferences = conferences,
+                        selectedConference = if (current.selectedConferenceId == conferenceId) updated else current.selectedConference,
+                        conferenceActionError = null,
+                    )
+                }
+            } catch (exception: Exception) {
+                _state.update { it.copy(conferenceActionError = exception.readableMessage()) }
+            }
+        }
+    }
+
+    private fun applyWorkbookUpdate(
+        conferenceId: String,
+        path: Path,
+        signatureToTrust: MymunUpdateFilenameCandidate?,
+    ) {
+        scope.launch {
+            updateConferenceState(conferenceId) { it.copy(loading = true, workbookUpdateNotice = null) }
+            try {
+                val result = workbookUpdater.applyUpdate(conferenceId, path, signatureToTrust)
+                val conference = repository.getConference(ConferenceId(conferenceId))
+                updateConferenceState(conferenceId) { current ->
+                    current.copy(
                         selectedConference = conference,
+                        conferences = if (conference == null) current.conferences else current.conferences.map { listed ->
+                            if (listed.id == conference.id) conference else listed
+                        },
                         workbookUpdateNotice = result.toWorkbookUpdateNotice(),
                         loading = false,
                     )
                 }
             } catch (exception: Exception) {
-                updateConferenceState(selectedId) {
+                updateConferenceState(conferenceId) {
                     it.copy(
                         workbookUpdateNotice = WorkbookUpdateNotice(
                             id = nextWorkbookUpdateNoticeId(),
@@ -1270,6 +1363,17 @@ data class MainUiState(
     val delegateReservationActionError: String? = null,
     val questionConfigurationOpen: Boolean = false,
     val questionConfigurationError: String? = null,
+    val pendingWorkbookUpdate: PendingWorkbookUpdate? = null,
+)
+
+data class PendingWorkbookUpdate(
+    val conferenceId: String,
+    val path: Path,
+    val candidate: MymunUpdateFilenameCandidate,
+    val expectedParts: List<String>,
+    val missingParts: List<String>,
+    val unexpectedParts: List<String>,
+    val emptyCandidate: Boolean,
 )
 
 data class WorkbookUpdateNotice(

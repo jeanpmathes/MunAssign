@@ -37,6 +37,8 @@ import org.munika.assignment.data.db.model.DelegationRow
 import org.munika.assignment.data.db.model.HighSchoolerAnswerMappingRow
 import org.munika.assignment.data.db.model.LanguageLevelAnswerMappingRow
 import org.munika.assignment.data.db.model.MunExperienceAnswerMappingRow
+import org.munika.assignment.data.db.model.MymunUpdateFilenamePartRow
+import org.munika.assignment.data.db.model.MymunUpdateFilenameSignatureRow
 import org.munika.assignment.data.db.model.PositionRow
 import org.munika.assignment.data.db.model.PreferenceRow
 import org.munika.assignment.data.db.model.ReservationDelegateLinkRow
@@ -56,6 +58,8 @@ import org.munika.assignment.data.db.tables.LanguageLevelAnswerMappingTable
 import org.munika.assignment.data.db.tables.MunExperienceAnswerMappingTable
 import org.munika.assignment.data.db.tables.MymunUpdateIssueTable
 import org.munika.assignment.data.db.tables.MymunUpdateRunTable
+import org.munika.assignment.data.db.tables.MymunUpdateFilenamePartTable
+import org.munika.assignment.data.db.tables.MymunUpdateFilenameSignatureTable
 import org.munika.assignment.data.db.tables.PositionTable
 import org.munika.assignment.data.db.tables.PreferenceTable
 import org.munika.assignment.data.db.tables.ReservationDelegateLinkTable
@@ -83,6 +87,8 @@ import org.munika.assignment.domain.model.LanguageLevelAnswerMapping
 import org.munika.assignment.domain.model.MinimumSentenceCount
 import org.munika.assignment.domain.model.MinimumTextLength
 import org.munika.assignment.domain.model.MunExperienceAnswerMapping
+import org.munika.assignment.domain.model.MymunUpdateFilenameCandidate
+import org.munika.assignment.domain.model.MymunUpdateFilenameSignatureId
 import org.munika.assignment.domain.model.NoticeWhenAffirmative
 import org.munika.assignment.domain.model.NoticeWhenNonBlank
 import org.munika.assignment.domain.model.PaymentStatus
@@ -125,6 +131,7 @@ class ConferenceRepositoryImpl(
                 ConferenceTable.createdAtEpochMillis to SortOrder.ASC,
                 ConferenceTable.updatedAtEpochMillis to SortOrder.ASC,
             )
+            .toList()
             .map { row ->
                 ConferenceGraphMapper.toDomain(
                     ConferenceGraphRows(
@@ -145,6 +152,7 @@ class ConferenceRepositoryImpl(
                         languageLevelMappings = emptyList(),
                         answers = emptyList(),
                         issueResolutions = emptyList(),
+                        mymunUpdateFilenameSignatures = loadMymunUpdateFilenameSignatureRows(row[ConferenceTable.id]),
                     ),
                 )
             }
@@ -331,6 +339,22 @@ class ConferenceRepositoryImpl(
         PositionTable.update({ PositionTable.id eq positionId }) {
             it[PositionTable.mappedCommitteeId] = mappedCommitteeId
         }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = Instant.now().toEpochMilli()
+        }
+        loadConferenceGraph(conferenceId)
+    }
+
+    override suspend fun deleteMymunUpdateFilenameSignature(
+        conferenceId: ConferenceId,
+        signatureId: MymunUpdateFilenameSignatureId,
+    ): Conference = db {
+        val conferenceId = conferenceId.value
+        val signatureId = signatureId.value
+        val deleted = MymunUpdateFilenameSignatureTable.deleteWhere {
+            (id eq signatureId) and (MymunUpdateFilenameSignatureTable.conferenceId eq conferenceId)
+        }
+        require(deleted == 1) { "Trusted MyMUN update filename signature $signatureId does not belong to conference $conferenceId." }
         ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
             it[updatedAtEpochMillis] = Instant.now().toEpochMilli()
         }
@@ -904,6 +928,7 @@ class ConferenceRepositoryImpl(
         conferenceId: String,
         snapshot: MymunWorkbookSnapshot,
         sourceFilename: String? = snapshot.workbookName,
+        signatureToTrust: MymunUpdateFilenameCandidate? = null,
     ): UpdateResult = db {
         logger.info(
             "Starting MyMUN update for conference={} source={} delegates={} positions={} delegations={} confirmedAssignments={} parserIssues={}",
@@ -1383,6 +1408,10 @@ class ConferenceRepositoryImpl(
             it[ConferenceTable.lastMymunUpdateAtEpochMillis] = Instant.now().toEpochMilli()
         }
         reconcileReservations(conferenceId, Instant.now().toEpochMilli())
+
+        signatureToTrust?.let { candidate ->
+            trustMymunUpdateFilenameSignature(conferenceId, candidate, Instant.now().toEpochMilli())
+        }
 
         MymunUpdateRunTable.update({ MymunUpdateRunTable.id eq updateRunId }) {
             it[MymunUpdateRunTable.completedAtEpochMillis] = Instant.now().toEpochMilli()
@@ -2245,8 +2274,60 @@ class ConferenceRepositoryImpl(
                     resolvedAtEpochMillis = row[AnswerIssueResolutionTable.resolvedAtEpochMillis],
                 )
             },
+            mymunUpdateFilenameSignatures = loadMymunUpdateFilenameSignatureRows(conferenceId),
         )
         return ConferenceGraphMapper.toDomain(rows)
+    }
+
+    private fun loadMymunUpdateFilenameSignatureRows(conferenceId: String): List<MymunUpdateFilenameSignatureRow> =
+        MymunUpdateFilenameSignatureTable.selectAll()
+            .where { MymunUpdateFilenameSignatureTable.conferenceId eq conferenceId }
+            .orderBy(MymunUpdateFilenameSignatureTable.trustedAtEpochMillis to SortOrder.DESC)
+            .toList()
+            .map { signature ->
+                val signatureId = signature[MymunUpdateFilenameSignatureTable.id]
+                MymunUpdateFilenameSignatureRow(
+                    id = signatureId,
+                    conferenceId = conferenceId,
+                    trustedAtEpochMillis = signature[MymunUpdateFilenameSignatureTable.trustedAtEpochMillis],
+                    parts = MymunUpdateFilenamePartTable.selectAll()
+                        .where { MymunUpdateFilenamePartTable.signatureId eq signatureId }
+                        .orderBy(MymunUpdateFilenamePartTable.displayOrder to SortOrder.ASC)
+                        .map { part ->
+                            MymunUpdateFilenamePartRow(
+                                displayOrder = part[MymunUpdateFilenamePartTable.displayOrder],
+                                displayValue = part[MymunUpdateFilenamePartTable.displayValue],
+                                normalizedValue = part[MymunUpdateFilenamePartTable.normalizedValue],
+                            )
+                        },
+                )
+            }
+
+    private fun trustMymunUpdateFilenameSignature(
+        conferenceId: String,
+        candidate: MymunUpdateFilenameCandidate,
+        trustedAtEpochMillis: Long,
+    ) {
+        if (candidate.parts.isEmpty()) return
+        val alreadyTrusted = loadMymunUpdateFilenameSignatureRows(conferenceId).any { signature ->
+            signature.parts.mapTo(mutableSetOf()) { it.normalizedValue } == candidate.normalizedParts
+        }
+        if (alreadyTrusted) return
+
+        val signatureId = UUID.randomUUID().toString()
+        MymunUpdateFilenameSignatureTable.insert {
+            it[id] = signatureId
+            it[MymunUpdateFilenameSignatureTable.conferenceId] = conferenceId
+            it[MymunUpdateFilenameSignatureTable.trustedAtEpochMillis] = trustedAtEpochMillis
+        }
+        candidate.parts.forEachIndexed { index, part ->
+            MymunUpdateFilenamePartTable.insert {
+                it[MymunUpdateFilenamePartTable.signatureId] = signatureId
+                it[displayOrder] = index
+                it[displayValue] = part.displayValue
+                it[normalizedValue] = part.normalizedValue
+            }
+        }
     }
 
     private fun ResultRow.toConferenceRow(): ConferenceRow =

@@ -14,6 +14,7 @@ This document records persistence and update rules that are not obvious from the
 - `Delegation` stores delegation context from MyMUN plus organizer-managed school level and review state.
 - `Reservation` stores organizer-managed high-school and university capacity holds, with an optional linked delegation.
 - `ReservationDelegateLink` stores current reservation consumption by one delegate, either manual or delegation-automatic.
+- `MymunUpdateFilenameSignature` stores one organizer-trusted set of meaningful filename parts for a conference.
 
 Domain objects expose derived properties such as slot status, current assignment, display labels, typed answers, and interested delegates. Do not duplicate those derivations in documentation unless the rule affects persistence or updates.
 
@@ -68,6 +69,13 @@ During an update:
 - Existing pending assignments are preserved where possible when MyMUN does not contradict them.
 - If `Countries.Delegates` implies more assigned delegates for a position than the committee slot count allows, the update must abort before writing and name the affected committee/counts.
 - If a confirmed delegate cannot be matched, the update must abort before writing.
+- A staged filename signature is persisted only when the update completes without blocking errors.
+
+Trusted filename signatures are organizer-managed conference state. Matching uses the exact
+unordered set of normalized parts, while readable values and source order are retained for warning
+and management UI. Multiple signatures may be trusted. Empty signatures and normalized duplicates
+are not stored. Existing databases seed one signature from the latest completed update run without
+blocking errors. `.munassign` transfer carries signatures with the owning conference.
 
 `Countries.Delegates` is comma-separated and may contain inconsistent whitespace, trailing commas, or single names.
 
@@ -142,6 +150,7 @@ MyMUN updates preserve where the referenced objects still exist:
 - question handling configuration.
 - organizer-managed reservations;
 - manual reservation links for retained active delegates;
+- trusted MyMUN update filename signatures;
 
 MyMUN updates remove delegates, preferences, assignments, and answers that no longer exist in the workbook source.
 Automatic reservation links are rebuilt after updates. If a reservation's linked delegation no longer exists, the reservation is preserved but its delegation link is cleared.
@@ -199,6 +208,8 @@ Update metadata tables:
 
 - `mymun_update_runs`
 - `mymun_update_issues`
+- `mymun_update_filename_signatures`
+- `mymun_update_filename_signature_parts`
 
 ## Constraints And Indexes
 
@@ -215,6 +226,7 @@ Update metadata tables:
 - `reservation_delegate_links(reservation_id, delegate_id)` unique.
 - Current slot assignments enforce at most one occupied slot per delegate per conference.
 - Conference-owned foreign keys cascade on delete.
+- Filename signature parts are unique by normalized value and display order within one signature.
 - `conferences.display_order` stores the organizer-managed order used by the top-bar selector and management screen.
 - `committees.mode` stores `HighSchool`, `University`, or `Mapped`; the legacy high-school boolean is derived from the mode for compatibility.
 - `positions.mapped_committee_id` stores the optional mapped target committee. The repository clears this value when the owning committee leaves mapped mode, when the target disappears, or when the target becomes mapped.

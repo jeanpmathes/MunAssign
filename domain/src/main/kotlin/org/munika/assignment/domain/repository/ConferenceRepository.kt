@@ -8,6 +8,7 @@ import org.munika.assignment.domain.model.ConferenceId
 import org.munika.assignment.domain.model.DelegateCommentId
 import org.munika.assignment.domain.model.DelegateId
 import org.munika.assignment.domain.model.DelegationId
+import org.munika.assignment.domain.model.MymunUpdateFilenameSignatureId
 import org.munika.assignment.domain.model.PositionId
 import org.munika.assignment.domain.model.QuestionConfiguration
 import org.munika.assignment.domain.model.QuestionId
@@ -29,6 +30,12 @@ interface ConferenceRepository {
     suspend fun deleteConference(conferenceId: ConferenceId)
 
     suspend fun reorderConferences(conferenceIdsInOrder: List<ConferenceId>)
+
+    /** Deletes one organizer-trusted MyMUN update filename signature from a conference. */
+    suspend fun deleteMymunUpdateFilenameSignature(
+        conferenceId: ConferenceId,
+        signatureId: MymunUpdateFilenameSignatureId,
+    ): Conference
 
     /**
      * Sets the uniform slot count for every position in one committee.

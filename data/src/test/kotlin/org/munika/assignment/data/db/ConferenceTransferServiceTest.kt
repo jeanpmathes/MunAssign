@@ -19,6 +19,7 @@ import org.munika.assignment.data.db.tables.AnswerIssueResolutionTable
 import org.munika.assignment.data.excel.MymunWorkbookUpdater
 import org.munika.assignment.domain.model.AnswerIssueSeverity
 import org.munika.assignment.domain.model.ConferenceId
+import org.munika.assignment.domain.model.MymunUpdateFilenameCandidate
 
 class ConferenceTransferServiceTest {
     @Test
@@ -56,6 +57,10 @@ class ConferenceTransferServiceTest {
         assertEquals(sourceLoaded.delegates.sumOf { it.issueResolutions.size }, imported.delegates.sumOf { it.issueResolutions.size })
         assertTrue(imported.delegations.single().isHighSchoolDelegation)
         assertTrue(imported.delegations.single().needsReview)
+        assertEquals(
+            sourceLoaded.mymunUpdateFilenameSignatures.map { it.normalizedParts },
+            imported.mymunUpdateFilenameSignatures.map { it.normalizedParts },
+        )
         assertTrue(imported.committees.flatMap { it.positions }.flatMap { it.slots }.isNotEmpty())
         assertTrue(imported.delegates.none { sourceLoaded.delegates.map { source -> source.id }.contains(it.id) })
     }
@@ -99,6 +104,7 @@ class ConferenceTransferServiceTest {
         assertEquals("Local", replaced.name)
         assertEquals(0, replaced.displayOrder)
         assertTrue(replaced.committees.isNotEmpty())
+        assertTrue(replaced.mymunUpdateFilenameSignatures.isNotEmpty())
         assertEquals(listOf("Local", "First"), targetRepository.listConferences().map { it.name })
     }
 
@@ -216,7 +222,13 @@ class ConferenceTransferServiceTest {
     ): org.munika.assignment.domain.model.Conference {
         val conference = repository.createConference(name)
         val workbook = requireNotNull(javaClass.classLoader.getResource("export.xlsx"))
-        val update = MymunWorkbookUpdater(repository).applyUpdate(conference.id.value, Path.of(workbook.toURI()))
+        val update = MymunWorkbookUpdater(repository).applyUpdate(
+            conference.id.value,
+            Path.of(workbook.toURI()),
+            signatureToTrust = MymunUpdateFilenameCandidate.fromFilename(
+                "mymun-2026-$name-Applications-Export.xlsx",
+            ),
+        )
         assertTrue(update.success, update.issues.joinToString("; ") { it.message })
         val loaded = requireNotNull(repository.getConference(conference.id))
         val delegate = loaded.delegates.first()

@@ -24,6 +24,8 @@ import org.munika.assignment.domain.model.DelegateCommentId
 import org.munika.assignment.domain.model.DelegateId
 import org.munika.assignment.domain.model.Delegation
 import org.munika.assignment.domain.model.DelegationId
+import org.munika.assignment.domain.model.MymunUpdateFilenameCandidate
+import org.munika.assignment.domain.model.MymunUpdateFilenameSignatureId
 import org.munika.assignment.domain.model.PositionId
 import org.munika.assignment.domain.model.QuestionConfiguration
 import org.munika.assignment.domain.model.QuestionId
@@ -390,7 +392,7 @@ class MainViewModelTest {
     @Test
     fun `workbook success emits non-technical completion notice`() {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
-        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conference)) { _, _ ->
+        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conference)) { _, _, _ ->
             UpdateResult(true, emptyList(), UpdateSummary(delegatesCreated = 4))
         }
         waitUntil { viewModel.state.value.selectedConference === conference }
@@ -472,6 +474,126 @@ class MainViewModelTest {
         assertNull(viewModel.state.value.selectedConference)
         assertNull(store.load())
         assertFalse(viewModel.state.value.loading)
+        viewModel.close()
+    }
+
+    @Test
+    fun `mismatching workbook waits for confirmation and stages signature`() {
+        val trusted = MymunUpdateFilenameCandidate.fromFilename("KAMUN-Spring Summit.xlsx").withIdentity(
+            MymunUpdateFilenameSignatureId("trusted"),
+            Instant.EPOCH,
+        )
+        val conference = Conference(
+            ConferenceId("conference"),
+            "KAMUN",
+            mymunUpdateFilenameSignatures = mutableListOf(trusted),
+            createdAt = Instant.EPOCH,
+            updatedAt = Instant.EPOCH,
+        )
+        var staged: MymunUpdateFilenameCandidate? = null
+        var updateStarted = false
+        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conference)) { _, _, candidate ->
+            updateStarted = true
+            staged = candidate
+            UpdateResult(true, emptyList())
+        }
+        waitUntil { viewModel.state.value.selectedConference === conference }
+
+        viewModel.updateFromWorkbook(Path.of("KAMUN-Autumn Summit.xlsx"))
+
+        assertFalse(updateStarted)
+        val pending = requireNotNull(viewModel.state.value.pendingWorkbookUpdate)
+        assertEquals(listOf("Spring Summit"), pending.missingParts)
+        assertEquals(listOf("Autumn Summit"), pending.unexpectedParts)
+
+        viewModel.confirmPendingWorkbookUpdate()
+
+        waitUntil { updateStarted }
+        assertEquals(setOf("kamun", "autumn summit"), staged?.normalizedParts)
+        viewModel.close()
+    }
+
+    @Test
+    fun `empty workbook filename always waits and is never staged for trust`() {
+        val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        var staged: MymunUpdateFilenameCandidate? = MymunUpdateFilenameCandidate.fromFilename("sentinel.xlsx")
+        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conference)) { _, _, candidate ->
+            staged = candidate
+            UpdateResult(true, emptyList())
+        }
+        waitUntil { viewModel.state.value.selectedConference === conference }
+
+        viewModel.updateFromWorkbook(Path.of("mymun-2026-Applications-Export.xlsx"))
+
+        assertTrue(viewModel.state.value.pendingWorkbookUpdate?.emptyCandidate == true)
+        viewModel.confirmPendingWorkbookUpdate()
+        waitUntil { viewModel.state.value.workbookUpdateNotice != null }
+        assertNull(staged)
+        viewModel.close()
+    }
+
+    @Test
+    fun `trusted workbook match proceeds directly without staging another signature`() {
+        val trusted = MymunUpdateFilenameCandidate.fromFilename("KAMUN-Spring Summit.xlsx").withIdentity(
+            MymunUpdateFilenameSignatureId("trusted"),
+            Instant.EPOCH,
+        )
+        val conference = Conference(
+            ConferenceId("conference"),
+            "KAMUN",
+            mymunUpdateFilenameSignatures = mutableListOf(trusted),
+            createdAt = Instant.EPOCH,
+            updatedAt = Instant.EPOCH,
+        )
+        var updateStarted = false
+        var staged: MymunUpdateFilenameCandidate? = MymunUpdateFilenameCandidate.fromFilename("sentinel.xlsx")
+        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conference)) { _, _, candidate ->
+            updateStarted = true
+            staged = candidate
+            UpdateResult(true, emptyList())
+        }
+        waitUntil { viewModel.state.value.selectedConference === conference }
+
+        viewModel.updateFromWorkbook(Path.of("spring summit-kamun.xlsx"))
+
+        waitUntil { updateStarted }
+        assertNull(viewModel.state.value.pendingWorkbookUpdate)
+        assertNull(staged)
+        viewModel.close()
+    }
+
+    @Test
+    fun `selecting another conference cancels pending workbook mismatch`() {
+        val trusted = MymunUpdateFilenameCandidate.fromFilename("KAMUN-Spring Summit.xlsx").withIdentity(
+            MymunUpdateFilenameSignatureId("trusted"),
+            Instant.EPOCH,
+        )
+        val conferenceA = Conference(
+            ConferenceId("conference-a"),
+            "KAMUN",
+            mymunUpdateFilenameSignatures = mutableListOf(trusted),
+            createdAt = Instant.EPOCH,
+            updatedAt = Instant.EPOCH,
+        )
+        val conferenceB = Conference(
+            ConferenceId("conference-b"),
+            "Other",
+            createdAt = Instant.EPOCH,
+            updatedAt = Instant.EPOCH,
+        )
+        val viewModel = viewModelWith(
+            FakeConferenceRepository(
+                initialConference = conferenceA,
+                conferences = listOf(conferenceA, conferenceB),
+            ),
+        )
+        waitUntil { viewModel.state.value.selectedConference === conferenceA }
+        viewModel.updateFromWorkbook(Path.of("KAMUN-Autumn Summit.xlsx"))
+        assertTrue(viewModel.state.value.pendingWorkbookUpdate != null)
+
+        viewModel.selectConference("conference-b")
+
+        assertNull(viewModel.state.value.pendingWorkbookUpdate)
         viewModel.close()
     }
 
@@ -754,7 +876,7 @@ class MainViewModelTest {
     @Test
     fun `workbook success with warnings emits warning count notice`() {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
-        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conference)) { _, _ ->
+        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conference)) { _, _, _ ->
             UpdateResult(
                 success = true,
                 issues = listOf(
@@ -777,7 +899,7 @@ class MainViewModelTest {
     @Test
     fun `workbook failure emits concise failure notice`() {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
-        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conference)) { _, _ ->
+        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conference)) { _, _, _ ->
             UpdateResult(
                 success = false,
                 issues = listOf(UpdateIssue(UpdateIssueSeverity.Error, "Countries sheet is missing.")),
@@ -797,7 +919,7 @@ class MainViewModelTest {
     @Test
     fun `workbook exception emits concise failure notice`() {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
-        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conference)) { _, _ ->
+        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conference)) { _, _, _ ->
             throw IllegalStateException("File could not be read.")
         }
         waitUntil { viewModel.state.value.selectedConference === conference }
@@ -830,7 +952,7 @@ class MainViewModelTest {
         val started = CompletableDeferred<Unit>()
         val result = CompletableDeferred<Result<UpdateResult>>()
         val repository = FakeConferenceRepository(initialConference = conferenceA, conferences = listOf(conferenceA, conferenceB))
-        val viewModel = viewModelWith(repository) { _, _ ->
+        val viewModel = viewModelWith(repository) { _, _, _ ->
             started.complete(Unit)
             result.await().getOrThrow()
         }
@@ -855,7 +977,7 @@ class MainViewModelTest {
         val started = CompletableDeferred<Unit>()
         val result = CompletableDeferred<Result<UpdateResult>>()
         val repository = FakeConferenceRepository(initialConference = conferenceA, conferences = listOf(conferenceA, conferenceB))
-        val viewModel = viewModelWith(repository) { _, _ ->
+        val viewModel = viewModelWith(repository) { _, _, _ ->
             started.complete(Unit)
             result.await().getOrThrow()
         }
@@ -1031,10 +1153,14 @@ class MainViewModelTest {
         conferenceTransfer: ConferenceTransferRunner = FakeConferenceTransferRunner(),
         markdownSafetyExport: MarkdownSafetyExportRunner = FakeMarkdownSafetyExportRunner(),
         lastSelectedConferenceStore: LastSelectedConferenceStore = tempLastSelectedConferenceStore(),
-        workbookUpdate: suspend (String, Path) -> UpdateResult = { _, _ -> UpdateResult(true, emptyList()) },
+        workbookUpdate: suspend (String, Path, MymunUpdateFilenameCandidate?) -> UpdateResult = { _, _, _ ->
+            UpdateResult(true, emptyList())
+        },
     ): MainViewModel = MainViewModel(
         repository,
-        WorkbookUpdateRunner { conferenceId, path -> workbookUpdate(conferenceId, path) },
+        WorkbookUpdateRunner { conferenceId, path, signatureToTrust ->
+            workbookUpdate(conferenceId, path, signatureToTrust)
+        },
         conferenceTransfer,
         markdownSafetyExport,
         lastSelectedConferenceStore,
@@ -1207,6 +1333,15 @@ private class FakeConferenceRepository(
     }
 
     override suspend fun reorderConferences(conferenceIdsInOrder: List<ConferenceId>): Unit = unsupported()
+
+    override suspend fun deleteMymunUpdateFilenameSignature(
+        conferenceId: ConferenceId,
+        signatureId: MymunUpdateFilenameSignatureId,
+    ): Conference {
+        val conference = requireNotNull(conferences.firstOrNull { it.id == conferenceId })
+        conference.mymunUpdateFilenameSignatures.removeAll { it.id == signatureId }
+        return conference
+    }
 
     override suspend fun setCommitteeSlotsPerPosition(
         conferenceId: ConferenceId,

@@ -8,6 +8,8 @@ import org.jetbrains.exposed.v1.core.Table
 val MunAssignTables: Array<Table> = arrayOf(
     SchemaMigrationTable,
     ConferenceTable,
+    MymunUpdateFilenameSignatureTable,
+    MymunUpdateFilenamePartTable,
     CommitteeTable,
     PositionTable,
     DelegationTable,

@@ -28,6 +28,9 @@ import org.munika.assignment.domain.model.LanguageLevel
 import org.munika.assignment.domain.model.LanguageLevelAnswerMapping
 import org.munika.assignment.domain.model.MinimumSentenceCount
 import org.munika.assignment.domain.model.MinimumTextLength
+import org.munika.assignment.domain.model.MymunUpdateFilenamePart
+import org.munika.assignment.domain.model.MymunUpdateFilenameSignature
+import org.munika.assignment.domain.model.MymunUpdateFilenameSignatureId
 import org.munika.assignment.domain.model.MunExperienceAnswerMapping
 import org.munika.assignment.domain.model.MunExperienceLevel
 import org.munika.assignment.domain.model.NoticeWhenAffirmative
@@ -68,6 +71,17 @@ object ConferenceGraphMapper {
             createdAt = rows.conference.createdAtEpochMillis.toInstant(),
             updatedAt = rows.conference.updatedAtEpochMillis.toInstant(),
             lastMymunUpdateAt = rows.conference.lastMymunUpdateAtEpochMillis?.toInstant(),
+            mymunUpdateFilenameSignatures = rows.mymunUpdateFilenameSignatures
+                .sortedByDescending { it.trustedAtEpochMillis }
+                .mapTo(mutableListOf()) { signature ->
+                    MymunUpdateFilenameSignature(
+                        id = MymunUpdateFilenameSignatureId(signature.id),
+                        parts = signature.parts.sortedBy { it.displayOrder }.map { part ->
+                            MymunUpdateFilenamePart(part.displayValue, part.normalizedValue)
+                        },
+                        trustedAt = signature.trustedAtEpochMillis.toInstant(),
+                    )
+                },
         )
 
         val committeesById = rows.committees.associate { row ->

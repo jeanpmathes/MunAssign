@@ -6,6 +6,7 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It k
 
 - A conference is the top-level boundary. Deleting a conference deletes its committees, positions, slots, delegates, preferences, questions, answers, comments, delegations, reservations, and update metadata.
 - MyMUN Excel updates replace MyMUN-managed data for the selected conference and preserve organizer-managed state where the referenced delegate or position still exists.
+- Successful MyMUN updates establish conference-specific trusted filename signatures. Later filenames that do not match any trusted signature require explicit confirmation before the workbook is read.
 - `.munassign` import/export transfers one complete conference as a self-contained SQLite snapshot.
 - MyMUN-confirmed assignments come from the `Countries.Delegates` column.
 - App-created assignments are pending until a later MyMUN update confirms them.
@@ -64,6 +65,7 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It k
 - The delegation overview is a non-modal workspace panel similar to the delegate overview. It shows delegation membership, accepted active paid counts, linked reservation capacity, and current consumption. Each delegation can be marked high-school and can open a directly prefilled reservation editor using its full expected count; absent or non-positive counts prefill as zero. New delegations show review markers on their cards and on the top-bar delegation action until the panel is explicitly closed.
 - The reservation manager is a compact modal for creating, editing, deleting, and linking reservations to delegations.
 - Slot count is committee-level; every position in a committee has the same number of slots. Changing the count requires confirmation.
+- Unexpected update filenames and conference deletion use a two-stage armed confirmation. Cancel is the prominent action; the risky action first reveals an off switch and a disabled final button, and the final action becomes available only after the organizer arms it.
 
 ## Update And Transfer
 
@@ -76,6 +78,13 @@ MyMUN update uses:
 `Chairs`, `Faculty Advisors`, and `Observers` are intentionally ignored for assignment.
 
 The parser should tolerate whitespace variation in headers and comma-separated `Countries.Delegates` values. Preference cells are expected to follow `Committee Name (Position Name)` and must resolve against positions from the `Countries` sheet; when committee or position names themselves contain parentheses, the final balanced parenthesized group is treated as the position name.
+
+Before parsing, the update filename is normalized into meaningful parts. The extension is removed,
+hyphens delimit parts, underscores are removed, whitespace is normalized, and numeric-only plus
+`mymun`, `applications`, and `export` parts are ignored. Parts match case-insensitively as an exact
+unordered set. The first non-empty signature and explicitly accepted mismatches become trusted only
+after a successful update. Filenames with no meaningful parts require confirmation every time and
+are never trusted. Organizers can delete individual trusted signatures from the conference manager.
 
 `.munassign` export writes one complete conference to a SQLite snapshot. Import remaps conference-owned IDs, can create a new conference with a duplicate visible name, or replace a selected conference while preserving the local conference name and display order. Older transfer files are migrated from a temporary copy before import; transfer files from newer schema versions are rejected.
 

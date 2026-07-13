@@ -18,4 +18,5 @@ data class ConferenceGraphRows(
     val languageLevelMappings: List<LanguageLevelAnswerMappingRow>,
     val answers: List<DelegateQuestionAnswerRow>,
     val issueResolutions: List<AnswerIssueResolutionRow>,
+    val mymunUpdateFilenameSignatures: List<MymunUpdateFilenameSignatureRow> = emptyList(),
 )
