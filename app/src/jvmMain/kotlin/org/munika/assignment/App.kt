@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.ui.screen.MainScreen
 import org.munika.assignment.ui.screen.WorkbookDropFeedback
 import org.munika.assignment.ui.viewmodel.MainViewModel
@@ -20,6 +21,7 @@ fun App(
     onImportConferenceAsNew: () -> Unit,
     onReplaceConference: (String, String) -> Unit,
     onOpenMarkdownExportFolder: () -> Unit,
+    onCopyStatusImage: (Conference) -> Result<Unit>,
 ) {
     val state by viewModel.state.collectAsState()
 
@@ -81,6 +83,7 @@ fun App(
                 onImportConferenceAsNew = onImportConferenceAsNew,
                 onReplaceConference = onReplaceConference,
                 onOpenMarkdownExportFolder = onOpenMarkdownExportFolder,
+                onCopyStatusImage = onCopyStatusImage,
                 onClearConferenceActionError = viewModel::clearConferenceActionError,
                 onClearBoardActionError = viewModel::clearBoardActionError,
                 onClearReservationActionError = viewModel::clearReservationActionError,

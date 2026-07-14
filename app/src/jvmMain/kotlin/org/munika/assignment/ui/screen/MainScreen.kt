@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -25,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FolderOpen
@@ -68,6 +70,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.runtime.setValue
@@ -80,8 +83,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
-import org.munika.assignment.domain.model.Conference
+import kotlinx.coroutines.launch
 import org.munika.assignment.domain.model.CommitteeMode
+import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.Delegate
 import org.munika.assignment.domain.model.PaymentStatus
 import org.munika.assignment.domain.model.QuestionConfiguration
@@ -194,6 +198,7 @@ fun MainScreen(
     onImportConferenceAsNew: () -> Unit,
     onReplaceConference: (String, String) -> Unit,
     onOpenMarkdownExportFolder: () -> Unit,
+    onCopyStatusImage: (Conference) -> Result<Unit>,
     onClearConferenceActionError: () -> Unit,
     onClearBoardActionError: () -> Unit,
     onClearReservationActionError: () -> Unit = {},
@@ -203,6 +208,7 @@ fun MainScreen(
     var managementOpen by remember { mutableStateOf(false) }
     val selectedConference = state.selectedConference
     val snackbarHostState = remember { SnackbarHostState() }
+    val snackbarScope = rememberCoroutineScope()
 
     LaunchedEffect(state.workbookUpdateNotice?.id) {
         val notice = state.workbookUpdateNotice ?: return@LaunchedEffect
@@ -239,6 +245,15 @@ fun MainScreen(
                     onOpenQuestionConfiguration = onOpenQuestionConfiguration,
                     onOpenWorkbook = onOpenWorkbook,
                     onOpenMarkdownExportFolder = onOpenMarkdownExportFolder,
+                    onCopyStatusImage = { conference ->
+                        val message = onCopyStatusImage(conference).fold(
+                            onSuccess = { "Status image copied to clipboard." },
+                            onFailure = { error ->
+                                "Could not copy status image: ${error.message ?: error::class.simpleName.orEmpty()}"
+                            },
+                        )
+                        snackbarScope.launch { snackbarHostState.showSnackbar(message) }
+                    },
                 )
                 Box(modifier = Modifier.fillMaxSize().padding(24.dp)) {
                     when {
@@ -492,44 +507,109 @@ private fun TopBar(
     onOpenQuestionConfiguration: () -> Unit,
     onOpenWorkbook: (() -> Unit)? = null,
     onOpenMarkdownExportFolder: () -> Unit,
+    onCopyStatusImage: (Conference) -> Unit,
 ) {
     Surface(shadowElevation = 2.dp, color = MaterialTheme.colorScheme.surface) {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(
-                modifier = Modifier.weight(1f),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                ConferenceDropdown(
-                    conferences = state.conferences,
-                    selectedConferenceId = state.selectedConferenceId,
-                    enabled = !state.loading,
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val compact = maxWidth < 1600.dp
+            Column {
+                TopBarActionRow(
+                    state = state,
+                    compact = compact,
                     onSelectConference = onSelectConference,
                     onOpenCreate = onOpenCreate,
                     onOpenRename = onOpenRename,
+                    onOpenManagement = onOpenManagement,
+                    onOpenDelegateList = onOpenDelegateList,
+                    onOpenNoticeManager = onOpenNoticeManager,
+                    onOpenDelegationOverview = onOpenDelegationOverview,
+                    onOpenReservationManager = onOpenReservationManager,
+                    onOpenQuestionConfiguration = onOpenQuestionConfiguration,
+                    onOpenWorkbook = onOpenWorkbook,
+                    onOpenMarkdownExportFolder = onOpenMarkdownExportFolder,
+                    onCopyStatusImage = onCopyStatusImage,
                 )
-                TooltipIconButton(
-                    tooltip = "Manage conferences",
-                    icon = Icons.Filled.ManageAccounts,
-                    onClick = onOpenManagement,
-                    enabled = !state.loading,
-                )
-                TooltipIconButton(
-                    tooltip = "Open textual exports folder",
-                    icon = Icons.Filled.FolderOpen,
-                    onClick = onOpenMarkdownExportFolder,
-                    enabled = !state.loading,
-                )
+                if (compact) {
+                    HorizontalDivider()
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        TopBarStatus(state)
+                    }
+                }
             }
+        }
+    }
+}
 
-            Row(
-                modifier = Modifier.weight(0.8f),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
+@Composable
+private fun TopBarActionRow(
+    state: MainUiState,
+    compact: Boolean,
+    onSelectConference: (String) -> Unit,
+    onOpenCreate: () -> Unit,
+    onOpenRename: (Conference) -> Unit,
+    onOpenManagement: () -> Unit,
+    onOpenDelegateList: () -> Unit,
+    onOpenNoticeManager: () -> Unit,
+    onOpenDelegationOverview: () -> Unit,
+    onOpenReservationManager: () -> Unit,
+    onOpenQuestionConfiguration: () -> Unit,
+    onOpenWorkbook: (() -> Unit)?,
+    onOpenMarkdownExportFolder: () -> Unit,
+    onCopyStatusImage: (Conference) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().height(if (compact) 64.dp else 72.dp).padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ConferenceDropdown(
+                conferences = state.conferences,
+                selectedConferenceId = state.selectedConferenceId,
+                enabled = !state.loading,
+                onSelectConference = onSelectConference,
+                onOpenCreate = onOpenCreate,
+                onOpenRename = onOpenRename,
+            )
+            TooltipIconButton(
+                tooltip = "Manage conferences",
+                icon = Icons.Filled.ManageAccounts,
+                onClick = onOpenManagement,
+                enabled = !state.loading,
+            )
+            TooltipIconButton(
+                tooltip = "Open textual exports folder",
+                icon = Icons.Filled.FolderOpen,
+                onClick = onOpenMarkdownExportFolder,
+                enabled = !state.loading,
+            )
+            TooltipIconButton(
+                tooltip = "Copy conference status image",
+                icon = Icons.Filled.ContentCopy,
+                onClick = { state.selectedConference?.let(onCopyStatusImage) },
+                enabled = !state.loading && state.selectedConference != null,
+            )
+        }
+
+        Spacer(Modifier.weight(1f))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (compact) {
+                TooltipIconButton(
+                    tooltip = "Update conference from a MyMUN workbook",
+                    icon = Icons.Filled.UploadFile,
+                    onClick = { onOpenWorkbook?.invoke() },
+                    enabled = !state.loading && state.selectedConferenceId != null && onOpenWorkbook != null,
+                )
+                TooltipIconButton(
+                    tooltip = "Configure application questions",
+                    icon = Icons.Filled.Edit,
+                    onClick = onOpenQuestionConfiguration,
+                    enabled = !state.loading && state.selectedConference?.questions?.isNotEmpty() == true,
+                )
+            } else {
                 WithTooltip("Choose the online Excel file for this conference update.") {
                     Button(
                         onClick = { onOpenWorkbook?.invoke() },
@@ -551,49 +631,53 @@ private fun TopBar(
                     }
                 }
             }
+        }
 
-            Row(
-                modifier = Modifier.weight(1.5f),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.End,
-            ) {
-                val issueManager = state.selectedConference?.toIssueManagerUiState()
-                val openIssueCount = (issueManager?.openWarningCount ?: 0) + (issueManager?.openNoticeCount ?: 0)
-                NoticeIconButton(
-                    tooltip = "Open issues ($openIssueCount unresolved)",
-                    warningCount = issueManager?.openWarningCount ?: 0,
-                    noticeCount = issueManager?.openNoticeCount ?: 0,
-                    onClick = onOpenNoticeManager,
-                    enabled = !state.loading && state.selectedConference != null,
-                )
-                TooltipIconButton(
-                    tooltip = "Open delegate list",
-                    icon = Icons.Filled.People,
-                    onClick = onOpenDelegateList,
-                    enabled = !state.loading && state.selectedConference != null,
-                )
-                val unreviewedDelegationCount = state.selectedConference?.delegations?.count { it.needsReview } ?: 0
-                DelegationIconButton(
-                    unreviewedCount = unreviewedDelegationCount,
-                    onClick = onOpenDelegationOverview,
-                    enabled = !state.loading && state.selectedConference != null,
-                )
-                TooltipIconButton(
-                    tooltip = "Open reservation manager",
-                    icon = Icons.Filled.Bookmark,
-                    onClick = onOpenReservationManager,
-                    enabled = !state.loading && state.selectedConference != null,
-                )
+        Spacer(Modifier.weight(1f))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val issueManager = state.selectedConference?.toIssueManagerUiState()
+            val openIssueCount = (issueManager?.openWarningCount ?: 0) + (issueManager?.openNoticeCount ?: 0)
+            NoticeIconButton(
+                tooltip = "Open issues ($openIssueCount unresolved)",
+                warningCount = issueManager?.openWarningCount ?: 0,
+                noticeCount = issueManager?.openNoticeCount ?: 0,
+                onClick = onOpenNoticeManager,
+                enabled = !state.loading && state.selectedConference != null,
+            )
+            TooltipIconButton(
+                tooltip = "Open delegate list",
+                icon = Icons.Filled.People,
+                onClick = onOpenDelegateList,
+                enabled = !state.loading && state.selectedConference != null,
+            )
+            val unreviewedDelegationCount = state.selectedConference?.delegations?.count { it.needsReview } ?: 0
+            DelegationIconButton(
+                unreviewedCount = unreviewedDelegationCount,
+                onClick = onOpenDelegationOverview,
+                enabled = !state.loading && state.selectedConference != null,
+            )
+            TooltipIconButton(
+                tooltip = "Open reservation manager",
+                icon = Icons.Filled.Bookmark,
+                onClick = onOpenReservationManager,
+                enabled = !state.loading && state.selectedConference != null,
+            )
+            if (!compact) {
                 Spacer(Modifier.width(8.dp))
-                if (state.loading) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Updating", style = MaterialTheme.typography.bodyMedium)
-                } else {
-                    state.selectedConference?.let { ConferenceStats(it) }
-                }
+                TopBarStatus(state)
             }
         }
+    }
+}
+
+@Composable
+private fun TopBarStatus(state: MainUiState) {
+    if (state.loading) {
+        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+        Spacer(Modifier.width(8.dp))
+        Text("Updating", style = MaterialTheme.typography.bodyMedium)
+    } else {
+        state.selectedConference?.let { ConferenceStats(it) }
     }
 }
 
@@ -716,11 +800,11 @@ internal fun Conference.toAcceptanceCapacityUiState(): AcceptanceCapacityUiState
     val universitySlots = positions
         .filter { it.effectiveCommitteeMode == CommitteeMode.University }
         .sumOf { it.slots.size }
-    val acceptedPaidActiveDelegates = delegates.filter {
-        it.active && it.paymentStatus == PaymentStatus.Paid && it.hasActionableApplicationStatus()
+    val acceptedActiveDelegates = delegates.filter {
+        it.active && it.hasActionableApplicationStatus()
     }
-    val acceptedHighSchoolDelegates = acceptedPaidActiveDelegates.count { it.isHighSchooler }
-    val acceptedUniversityDelegates = acceptedPaidActiveDelegates.count { !it.isHighSchooler }
+    val acceptedHighSchoolDelegates = acceptedActiveDelegates.count { it.isHighSchooler }
+    val acceptedUniversityDelegates = acceptedActiveDelegates.count { !it.isHighSchooler }
 
     return AcceptanceCapacityUiState(
         highSchoolCount = highSchoolSlots - acceptedHighSchoolDelegates - remainingHighSchoolReservationCount,
@@ -741,8 +825,22 @@ private fun StatGroup(label: String, value: String, tooltip: String) {
                 .padding(horizontal = 8.dp, vertical = 6.dp),
             horizontalAlignment = Alignment.Start,
         ) {
-            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -753,7 +851,7 @@ private fun CapacityStatGroup(capacity: AcceptanceCapacityUiState) {
         positionProvider = TooltipDefaults.rememberTooltipPositionProvider(positioning = TooltipAnchorPosition.Above),
         tooltip = {
             PlainTooltip {
-                Text("Remaining high-school and university places after accepted paid delegates and reservation holds are counted.")
+                Text("Remaining high-school and university places after accepted delegates and reservation holds are counted.")
             }
         },
         state = rememberTooltipState(),
@@ -765,7 +863,14 @@ private fun CapacityStatGroup(capacity: AcceptanceCapacityUiState) {
                 .padding(horizontal = 8.dp, vertical = 6.dp),
             horizontalAlignment = Alignment.Start,
         ) {
-            Text("Capacity", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                text = "Capacity",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 CapacityValue("${capacity.highSchoolCount} HS", capacity.highSchoolCount)
                 Text(

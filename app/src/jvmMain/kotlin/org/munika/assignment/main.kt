@@ -57,6 +57,7 @@ import kotlinx.coroutines.delay
 import org.koin.core.context.startKoin
 import org.koin.java.KoinJavaComponent.getKoin
 import org.munika.assignment.di.appModule
+import org.munika.assignment.export.ConferenceStatusImageClipboard
 import org.munika.assignment.ui.screen.WorkbookDropFeedback
 import org.munika.assignment.ui.viewmodel.MainViewModel
 
@@ -206,7 +207,10 @@ private fun MunAssignApplication(
             },
             onOpenMarkdownExportFolder = {
                 openMarkdownExportFolder(window, appDataPaths.markdownExportDirectory)
-            }
+            },
+            onCopyStatusImage = { conference ->
+                runCatching { dependencies.statusImageClipboard.copy(conference) }
+            },
         )
     }
 }
@@ -367,6 +371,7 @@ private fun startDependencies(): MainDependencies {
         viewModel = getKoin().get(),
         appDataPaths = getKoin().get(),
         windowStateStore = getKoin().get(),
+        statusImageClipboard = getKoin().get(),
     )
 }
 
@@ -441,6 +446,7 @@ private data class MainDependencies(
     val viewModel: MainViewModel,
     val appDataPaths: AppDataPaths,
     val windowStateStore: AppWindowStateStore,
+    val statusImageClipboard: ConferenceStatusImageClipboard,
 )
 
 private fun openMarkdownExportFolder(parent: Frame, directory: Path) {

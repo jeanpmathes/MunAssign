@@ -55,17 +55,22 @@ class ReservationReconcilerTest {
     }
 
     @Test
-    fun `delegation auto links active paid accepted delegates by submission date`() {
+    fun `delegation auto links active accepted delegates regardless of payment by submission date`() {
         val fixture = fixture()
         val delegation = fixture.delegation()
         val later = fixture.delegate(id = "later", delegation = delegation, submittedAt = Instant.ofEpochMilli(20))
         val earlier = fixture.delegate(id = "earlier", delegation = delegation, submittedAt = Instant.ofEpochMilli(10))
         val noSubmission = fixture.delegate(id = "no-submission", delegation = delegation, submittedAt = null)
-        fixture.delegate(id = "unpaid", delegation = delegation, paymentStatus = PaymentStatus.Unpaid, submittedAt = Instant.ofEpochMilli(1))
+        val unpaid = fixture.delegate(
+            id = "unpaid",
+            delegation = delegation,
+            paymentStatus = PaymentStatus.Unpaid,
+            submittedAt = Instant.ofEpochMilli(1),
+        )
         fixture.delegate(id = "rejected", delegation = delegation, applicationStatus = "Rejected", submittedAt = Instant.ofEpochMilli(2))
         val reservation = fixture.reservation(
             id = "reservation",
-            highSchoolCount = 3,
+            highSchoolCount = 4,
             universityCount = 0,
             delegation = delegation,
         )
@@ -77,10 +82,10 @@ class ReservationReconcilerTest {
             idFactory = fixture.idFactory("auto-"),
         )
 
-        assertEquals(listOf(earlier.id, later.id, noSubmission.id), result.links.map { it.delegate.id })
-        assertEquals(List(3) { ReservationLinkSource.DelegationAuto }, result.links.map { it.source })
-        assertEquals(listOf("auto-1", "auto-2", "auto-3"), result.links.map { it.id.value })
-        assertEquals(3, reservation.usedHighSchoolCount)
+        assertEquals(listOf(unpaid.id, earlier.id, later.id, noSubmission.id), result.links.map { it.delegate.id })
+        assertEquals(List(4) { ReservationLinkSource.DelegationAuto }, result.links.map { it.source })
+        assertEquals(listOf("auto-1", "auto-2", "auto-3", "auto-4"), result.links.map { it.id.value })
+        assertEquals(4, reservation.usedHighSchoolCount)
         assertSame(reservation, earlier.reservationLink?.reservation)
     }
 

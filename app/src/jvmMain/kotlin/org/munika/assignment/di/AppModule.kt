@@ -13,6 +13,7 @@ import org.munika.assignment.data.excel.MymunWorkbookUpdater
 import org.munika.assignment.domain.repository.ConferenceRepository
 import org.munika.assignment.domain.usecase.ListConferencesUseCase
 import org.munika.assignment.export.MarkdownSafetyExportService
+import org.munika.assignment.export.ConferenceStatusImageClipboard
 import org.munika.assignment.ui.viewmodel.MainViewModel
 
 /**
@@ -26,6 +27,7 @@ val appModule: Module = module {
     single { MymunWorkbookUpdater(get()) }
     single { ConferenceTransferService(get<AppDataPaths>().databasePath) }
     single { MarkdownSafetyExportService(get<AppDataPaths>().markdownExportDirectory) }
+    single { ConferenceStatusImageClipboard() }
     single { ListConferencesUseCase(get()) }
     single {
         MainViewModel(

@@ -497,7 +497,7 @@ class ConferenceRepositoryImplTest {
     }
 
     @Test
-    fun `delegation linked reservation auto-links active paid accepted delegates by submission date`() = runBlocking {
+    fun `delegation linked reservation auto-links active accepted delegates regardless of payment by submission date`() = runBlocking {
         val dbPath = Files.createTempDirectory("munassign-reservation-auto").resolve("data.db")
         val database = DatabaseFactory.connect(dbPath)
         val repository = ConferenceRepositoryImpl(database)
@@ -520,7 +520,7 @@ class ConferenceRepositoryImplTest {
         )
 
         val linkedNames = updated.reservations.single().delegateLinks.map { it.delegate.name.firstName }
-        assertEquals(listOf("Early", "Late"), linkedNames)
+        assertEquals(listOf("Unpaid", "Early"), linkedNames)
         assertTrue(updated.reservations.single().delegateLinks.all { it.source == ReservationLinkSource.DelegationAuto })
     }
 

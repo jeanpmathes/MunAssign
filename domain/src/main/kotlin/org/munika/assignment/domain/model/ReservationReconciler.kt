@@ -17,8 +17,10 @@ object ReservationReconciler {
     /**
      * Rebuilds reservation delegate links and updates in-memory reservation/delegate back-references.
      *
-     * Manual links are preserved only for active delegates, automatic links are regenerated from
-     * linked delegations, and returned removed IDs identify persisted rows no longer present.
+     * Manual links are preserved only for active delegates. Automatic links are regenerated from
+     * active delegates with usable application statuses in linked delegations regardless of
+     * payment, because reservations represent acceptance capacity rather than assignment readiness.
+     * Returned removed IDs identify persisted rows no longer present.
      */
     fun reconcile(
         conference: Conference,
@@ -115,7 +117,6 @@ object ReservationReconciler {
             .filter { it.delegation === delegation }
             .filter { it.id !in consumedDelegateIds }
             .filter { it.active }
-            .filter { it.paymentStatus == PaymentStatus.Paid }
             .filter { it.profile.isUsableForAssignment }
             .sortedWith(EligibleDelegateComparator)
             .toList()

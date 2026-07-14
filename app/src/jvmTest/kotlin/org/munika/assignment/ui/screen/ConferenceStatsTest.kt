@@ -31,7 +31,7 @@ import org.munika.assignment.domain.model.TypedAnswerMappings
 
 class ConferenceStatsTest {
     @Test
-    fun `acceptance capacity subtracts active paid accepted delegates and remaining reservations by bucket`() {
+    fun `acceptance capacity subtracts active accepted delegates and remaining reservations by bucket`() {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val highSchoolCommittee = committee(conference, "hs", isHighSchool = true, positionCount = 2)
         val universityCommittee = committee(conference, "uni", isHighSchool = false, positionCount = 3)
@@ -57,7 +57,7 @@ class ConferenceStatsTest {
 
         val capacity = conference.toAcceptanceCapacityUiState()
 
-        assertEquals(-1, capacity.highSchoolCount)
+        assertEquals(-2, capacity.highSchoolCount)
         assertEquals(0, capacity.universityCount)
     }
 
