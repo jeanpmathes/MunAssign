@@ -1,4 +1,7 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@file:OptIn(
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
+    androidx.compose.ui.ExperimentalComposeUiApi::class,
+)
 
 package org.munika.assignment.ui.screen
 
@@ -25,11 +28,16 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Gesture
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Groups
@@ -37,6 +45,7 @@ import androidx.compose.material.icons.filled.ManageAccounts
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.filled.Upgrade
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -54,10 +63,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TooltipBox
@@ -78,10 +89,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerButton
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import kotlin.math.abs
 import kotlinx.coroutines.launch
 import org.munika.assignment.domain.model.CommitteeMode
@@ -102,6 +118,9 @@ import org.munika.assignment.ui.screen.component.contentColor
 import org.munika.assignment.ui.viewmodel.DelegateListControlsUiState
 import org.munika.assignment.ui.viewmodel.DelegateListPreset
 import org.munika.assignment.ui.viewmodel.DelegateStatusTone
+import org.munika.assignment.ui.viewmodel.ConferenceListAvailability
+import org.munika.assignment.ui.viewmodel.ConferenceListItem
+import org.munika.assignment.ui.viewmodel.ConferenceListStorageKind
 import org.munika.assignment.ui.viewmodel.MainUiState
 import org.munika.assignment.ui.viewmodel.PendingWorkbookUpdate
 import org.munika.assignment.ui.viewmodel.ReservationSummaryUiState
@@ -124,6 +143,13 @@ fun MainScreen(
     workbookDropFeedback: WorkbookDropFeedback? = null,
     onSelectConference: (String) -> Unit,
     onCreateConference: (String) -> Boolean,
+    onCreateSynchronizedConference: (String) -> Unit,
+    onMoveConferenceToSynchronized: (String, String) -> Unit,
+    onConnectSynchronizedConference: () -> Unit,
+    onLocateSynchronizedConference: (String) -> Unit,
+    onReloadSynchronizedConference: (String) -> Unit,
+    onUnlinkSynchronizedConference: (String) -> Unit,
+    onDeleteSynchronizedConferenceFile: (String) -> Unit,
     onRenameConference: (String, String) -> Boolean,
     onDeleteConference: (String) -> Unit,
     onReorderConferences: (List<String>) -> Boolean,
@@ -197,6 +223,11 @@ fun MainScreen(
     onExportConference: (String, String) -> Unit,
     onImportConferenceAsNew: () -> Unit,
     onReplaceConference: (String, String) -> Unit,
+    onConfirmPendingConferenceReplace: () -> Unit,
+    onCancelPendingConferenceReplace: () -> Unit,
+    onConfirmSynchronizedImport: () -> Unit,
+    onConnectPendingSynchronizedImport: () -> Unit,
+    onCancelSynchronizedImport: () -> Unit,
     onOpenMarkdownExportFolder: () -> Unit,
     onCopyStatusImage: (Conference) -> Result<Unit>,
     onClearConferenceActionError: () -> Unit,
@@ -204,7 +235,7 @@ fun MainScreen(
     onClearReservationActionError: () -> Unit = {},
 ) {
     var createDialogOpen by remember { mutableStateOf(false) }
-    var renameTarget by remember { mutableStateOf<Conference?>(null) }
+    var renameTarget by remember { mutableStateOf<ConferenceListItem?>(null) }
     var managementOpen by remember { mutableStateOf(false) }
     val selectedConference = state.selectedConference
     val snackbarHostState = remember { SnackbarHostState() }
@@ -257,14 +288,19 @@ fun MainScreen(
                 )
                 Box(modifier = Modifier.fillMaxSize().padding(24.dp)) {
                     when {
-                        state.loading && state.conferences.isEmpty() -> LoadingState()
-                        state.conferences.isEmpty() -> NoConferenceState(
+                        state.loading && state.conferenceEntries.isEmpty() -> LoadingState()
+                        state.conferenceEntries.isEmpty() -> NoConferenceState(
                             onCreate = {
                                 onClearConferenceActionError()
                                 createDialogOpen = true
                             },
                         )
-                        selectedConference == null -> LoadingState()
+                        selectedConference == null -> UnavailableConferenceState(
+                            entry = state.conferenceEntries.firstOrNull { it.id == state.selectedConferenceId },
+                            onReload = { state.selectedConferenceId?.let(onReloadSynchronizedConference) },
+                            onLocate = { state.selectedConferenceId?.let(onLocateSynchronizedConference) },
+                            onUnlink = { state.selectedConferenceId?.let(onUnlinkSynchronizedConference) },
+                        )
                         selectedConference.committees.isEmpty() -> EmptyConferenceWorkspace()
                         else -> ConferenceWorkspace(
                             conference = selectedConference,
@@ -357,7 +393,7 @@ fun MainScreen(
                 onClearConferenceActionError()
             },
             onConfirm = { name ->
-                if (onRenameConference(conference.id.value, name)) {
+                if (onRenameConference(conference.id, name)) {
                     renameTarget = null
                 }
             },
@@ -372,6 +408,13 @@ fun MainScreen(
                 onClearConferenceActionError()
             },
             onCreateConference = onCreateConference,
+            onCreateSynchronizedConference = onCreateSynchronizedConference,
+            onMoveConferenceToSynchronized = onMoveConferenceToSynchronized,
+            onConnectSynchronizedConference = onConnectSynchronizedConference,
+            onLocateSynchronizedConference = onLocateSynchronizedConference,
+            onReloadSynchronizedConference = onReloadSynchronizedConference,
+            onUnlinkSynchronizedConference = onUnlinkSynchronizedConference,
+            onDeleteSynchronizedConferenceFile = onDeleteSynchronizedConferenceFile,
             onRenameConference = onRenameConference,
             onDeleteConference = onDeleteConference,
             onReorderConferences = onReorderConferences,
@@ -388,6 +431,26 @@ fun MainScreen(
             pending = pending,
             onDismiss = onCancelPendingWorkbookUpdate,
             onConfirm = onConfirmPendingWorkbookUpdate,
+        )
+    }
+
+    state.pendingConferenceReplace?.let { pending ->
+        ReplaceConferenceDialog(
+            conferenceName = pending.conferenceName,
+            synchronizedTarget = pending.synchronizedTarget,
+            synchronizedSource = pending.synchronizedSource,
+            sourceName = pending.sourcePath.fileName.toString(),
+            onDismiss = onCancelPendingConferenceReplace,
+            onConfirm = onConfirmPendingConferenceReplace,
+        )
+    }
+
+    state.pendingSynchronizedImportPath?.let { path ->
+        SynchronizedImportDialog(
+            sourceName = path.fileName.toString(),
+            onDismiss = onCancelSynchronizedImport,
+            onConnect = onConnectPendingSynchronizedImport,
+            onImport = onConfirmSynchronizedImport,
         )
     }
 
@@ -498,7 +561,7 @@ private fun TopBar(
     state: MainUiState,
     onSelectConference: (String) -> Unit,
     onOpenCreate: () -> Unit,
-    onOpenRename: (Conference) -> Unit,
+    onOpenRename: (ConferenceListItem) -> Unit,
     onOpenManagement: () -> Unit,
     onOpenDelegateList: () -> Unit,
     onOpenNoticeManager: () -> Unit,
@@ -550,7 +613,7 @@ private fun TopBarActionRow(
     compact: Boolean,
     onSelectConference: (String) -> Unit,
     onOpenCreate: () -> Unit,
-    onOpenRename: (Conference) -> Unit,
+    onOpenRename: (ConferenceListItem) -> Unit,
     onOpenManagement: () -> Unit,
     onOpenDelegateList: () -> Unit,
     onOpenNoticeManager: () -> Unit,
@@ -567,7 +630,7 @@ private fun TopBarActionRow(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ConferenceDropdown(
-                conferences = state.conferences,
+                conferences = state.conferenceEntries,
                 selectedConferenceId = state.selectedConferenceId,
                 enabled = !state.loading,
                 onSelectConference = onSelectConference,
@@ -684,15 +747,15 @@ private fun TopBarStatus(state: MainUiState) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ConferenceDropdown(
-    conferences: List<Conference>,
+    conferences: List<ConferenceListItem>,
     selectedConferenceId: String?,
     enabled: Boolean,
     onSelectConference: (String) -> Unit,
     onOpenCreate: () -> Unit,
-    onOpenRename: (Conference) -> Unit,
+    onOpenRename: (ConferenceListItem) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val selectedName = conferences.firstOrNull { it.id.value == selectedConferenceId }?.name ?: "Select conference"
+    val selectedName = conferences.firstOrNull { it.id == selectedConferenceId }?.name ?: "Select conference"
     ExposedDropdownMenuBox(
         expanded = expanded,
         onExpandedChange = { if (enabled) expanded = !expanded },
@@ -721,7 +784,21 @@ private fun ConferenceDropdown(
                     },
                     onClick = {
                         expanded = false
-                        onSelectConference(conference.id.value)
+                        onSelectConference(conference.id)
+                    },
+                    leadingIcon = if (conference.storageKind == ConferenceListStorageKind.Synchronized) {
+                        {
+                            Icon(
+                                if (conference.availability == ConferenceListAvailability.Available) {
+                                    Icons.Filled.Cloud
+                                } else {
+                                    Icons.Filled.CloudOff
+                                },
+                                contentDescription = null,
+                            )
+                        }
+                    } else {
+                        null
                     },
                     trailingIcon = {
                         TooltipIconButton(
@@ -731,6 +808,7 @@ private fun ConferenceDropdown(
                                 expanded = false
                                 onOpenRename(conference)
                             },
+                            enabled = conference.availability == ConferenceListAvailability.Available,
                             modifier = Modifier.size(32.dp),
                         )
                     },
@@ -1273,11 +1351,69 @@ private fun ConferenceNameDialog(
     )
 }
 
+internal enum class ConferenceManagementAction {
+    Reload,
+    Export,
+    Replace,
+    TrustedFilenames,
+    Rename,
+    MoveToSynchronized,
+    Locate,
+    Remove,
+}
+
+internal data class ConferenceManagementMenuAction(
+    val action: ConferenceManagementAction,
+    val enabled: Boolean,
+)
+
+internal enum class ConferenceAddTab(val label: String) {
+    CreateLocal("Create new local"),
+    ImportLocal("Import as new"),
+    CreateSynchronized("Create new synchronized"),
+    ConnectSynchronized("Connect synchronized"),
+}
+
+internal fun ConferenceListItem.inlineManagementActions(): List<ConferenceManagementAction> =
+    if (
+        storageKind == ConferenceListStorageKind.Synchronized &&
+        availability == ConferenceListAvailability.Available
+    ) {
+        listOf(ConferenceManagementAction.Reload)
+    } else {
+        emptyList()
+    }
+
+internal fun ConferenceListItem.overflowManagementActions(): List<ConferenceManagementMenuAction> {
+    val available = availability == ConferenceListAvailability.Available
+    return buildList {
+        add(ConferenceManagementMenuAction(ConferenceManagementAction.Export, available))
+        add(ConferenceManagementMenuAction(ConferenceManagementAction.Replace, available))
+        add(ConferenceManagementMenuAction(ConferenceManagementAction.TrustedFilenames, available))
+        add(ConferenceManagementMenuAction(ConferenceManagementAction.Rename, available))
+        add(
+            if (storageKind == ConferenceListStorageKind.Local) {
+                ConferenceManagementMenuAction(ConferenceManagementAction.MoveToSynchronized, available)
+            } else {
+                ConferenceManagementMenuAction(ConferenceManagementAction.Locate, enabled = true)
+            },
+        )
+        add(ConferenceManagementMenuAction(ConferenceManagementAction.Remove, enabled = true))
+    }
+}
+
 @Composable
 private fun ConferenceManagementDialog(
     state: MainUiState,
     onDismiss: () -> Unit,
     onCreateConference: (String) -> Boolean,
+    onCreateSynchronizedConference: (String) -> Unit,
+    onMoveConferenceToSynchronized: (String, String) -> Unit,
+    onConnectSynchronizedConference: () -> Unit,
+    onLocateSynchronizedConference: (String) -> Unit,
+    onReloadSynchronizedConference: (String) -> Unit,
+    onUnlinkSynchronizedConference: (String) -> Unit,
+    onDeleteSynchronizedConferenceFile: (String) -> Unit,
     onRenameConference: (String, String) -> Boolean,
     onDeleteConference: (String) -> Unit,
     onReorderConferences: (List<String>) -> Boolean,
@@ -1287,15 +1423,14 @@ private fun ConferenceManagementDialog(
     onDeleteMymunUpdateFilenameSignature: (conferenceId: String, signatureId: String) -> Unit,
     onClearConferenceActionError: () -> Unit,
 ) {
-    val orderedConferences = remember { state.conferences.toMutableStateList() }
-    var createDialogOpen by remember { mutableStateOf(false) }
-    var renameTarget by remember { mutableStateOf<Conference?>(null) }
-    var deleteTarget by remember { mutableStateOf<Conference?>(null) }
-    var replaceTarget by remember { mutableStateOf<Conference?>(null) }
+    val orderedConferences = remember { state.conferenceEntries.toMutableStateList() }
+    var addDialogOpen by remember { mutableStateOf(false) }
+    var renameTarget by remember { mutableStateOf<ConferenceListItem?>(null) }
+    var deleteTarget by remember { mutableStateOf<ConferenceListItem?>(null) }
     var filenameSignatureTargetId by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(state.conferences) {
-        orderedConferences.replaceAll(state.conferences)
+    LaunchedEffect(state.conferenceEntries) {
+        orderedConferences.replaceAll(state.conferenceEntries)
     }
 
     AlertDialog(
@@ -1305,7 +1440,7 @@ private fun ConferenceManagementDialog(
             Column(modifier = Modifier.width(560.dp).fillMaxHeight(0.72f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 state.conferenceActionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    itemsIndexed(orderedConferences, key = { _, conference -> conference.id.value }) { index, conference ->
+                    itemsIndexed(orderedConferences, key = { _, conference -> conference.id }) { index, conference ->
                         ReorderableConferenceRow(
                             conference = conference,
                             index = index,
@@ -1321,48 +1456,39 @@ private fun ConferenceManagementDialog(
                             },
                             onExport = {
                                 onClearConferenceActionError()
-                                onExportConference(conference.id.value, conference.name)
+                                onExportConference(conference.id, conference.name)
                             },
                             onReplace = {
                                 onClearConferenceActionError()
-                                replaceTarget = conference
+                                onReplaceConference(conference.id, conference.name)
                             },
+                            onMoveToSynchronized = {
+                                onMoveConferenceToSynchronized(conference.id, conference.name)
+                            },
+                            onLocate = { onLocateSynchronizedConference(conference.id) },
+                            onReload = { onReloadSynchronizedConference(conference.id) },
                             onManageFilenameSignatures = {
                                 onClearConferenceActionError()
-                                filenameSignatureTargetId = conference.id.value
+                                filenameSignatureTargetId = conference.id
                             },
                             onMoved = {
-                                onReorderConferences(orderedConferences.map { it.id.value })
+                                onReorderConferences(orderedConferences.map { it.id })
                             },
                         )
                     }
                 }
-                WithTooltip("Create a new conference.") {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
-                            onClick = {
-                                onClearConferenceActionError()
-                                createDialogOpen = true
-                            },
-                            enabled = !state.loading,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Create conference")
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                onClearConferenceActionError()
-                                onImportConferenceAsNew()
-                            },
-                            enabled = !state.loading,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Icon(Icons.Filled.UploadFile, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Import as new")
-                        }
+                WithTooltip("Create, import, or connect a conference.") {
+                    OutlinedButton(
+                        onClick = {
+                            onClearConferenceActionError()
+                            addDialogOpen = true
+                        },
+                        enabled = !state.loading,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Add conference")
                     }
                 }
             }
@@ -1374,21 +1500,29 @@ private fun ConferenceManagementDialog(
         },
     )
 
-    if (createDialogOpen) {
-        ConferenceNameDialog(
-            title = "Create conference",
-            confirmLabel = "Create",
-            initialName = "",
+    if (addDialogOpen) {
+        AddConferenceDialog(
             error = state.conferenceActionError,
             onDismiss = {
-                createDialogOpen = false
+                addDialogOpen = false
                 onClearConferenceActionError()
             },
-            onConfirm = { name ->
-                if (onCreateConference(name)) {
-                    createDialogOpen = false
-                }
+            onCreateLocal = { name ->
+                if (onCreateConference(name)) addDialogOpen = false
             },
+            onImportLocal = {
+                addDialogOpen = false
+                onImportConferenceAsNew()
+            },
+            onCreateSynchronized = { name ->
+                addDialogOpen = false
+                onCreateSynchronizedConference(name)
+            },
+            onConnectSynchronized = {
+                addDialogOpen = false
+                onConnectSynchronizedConference()
+            },
+            onClearError = onClearConferenceActionError,
         )
     }
 
@@ -1403,7 +1537,7 @@ private fun ConferenceManagementDialog(
                 onClearConferenceActionError()
             },
             onConfirm = { name ->
-                if (onRenameConference(conference.id.value, name)) {
+                if (onRenameConference(conference.id, name)) {
                     renameTarget = null
                 }
             },
@@ -1411,25 +1545,29 @@ private fun ConferenceManagementDialog(
     }
 
     deleteTarget?.let { conference ->
-        DeleteConferenceDialog(
-            conference = conference,
-            onDismiss = { deleteTarget = null },
-            onConfirm = {
-                onDeleteConference(conference.id.value)
-                deleteTarget = null
-            },
-        )
-    }
-
-    replaceTarget?.let { conference ->
-        ReplaceConferenceDialog(
-            conference = conference,
-            onDismiss = { replaceTarget = null },
-            onConfirm = {
-                onReplaceConference(conference.id.value, conference.name)
-                replaceTarget = null
-            },
-        )
+        if (conference.storageKind == ConferenceListStorageKind.Synchronized) {
+            RemoveSynchronizedConferenceDialog(
+                conferenceName = conference.name,
+                onDismiss = { deleteTarget = null },
+                onUnlink = {
+                    onUnlinkSynchronizedConference(conference.id)
+                    deleteTarget = null
+                },
+                onDeleteFile = {
+                    onDeleteSynchronizedConferenceFile(conference.id)
+                    deleteTarget = null
+                },
+            )
+        } else {
+            DeleteConferenceDialog(
+                conferenceName = conference.name,
+                onDismiss = { deleteTarget = null },
+                onConfirm = {
+                    onDeleteConference(conference.id)
+                    deleteTarget = null
+                },
+            )
+        }
     }
 
     filenameSignatureTargetId?.let { conferenceId ->
@@ -1447,6 +1585,111 @@ private fun ConferenceManagementDialog(
             )
         }
     }
+}
+
+@Composable
+private fun AddConferenceDialog(
+    error: String?,
+    onDismiss: () -> Unit,
+    onCreateLocal: (String) -> Unit,
+    onImportLocal: () -> Unit,
+    onCreateSynchronized: (String) -> Unit,
+    onConnectSynchronized: () -> Unit,
+    onClearError: () -> Unit,
+) {
+    var selectedTab by remember { mutableStateOf(ConferenceAddTab.CreateLocal) }
+    var localName by remember { mutableStateOf("") }
+    var synchronizedName by remember { mutableStateOf("") }
+    val name = if (selectedTab == ConferenceAddTab.CreateLocal) localName else synchronizedName
+    val actionEnabled = when (selectedTab) {
+        ConferenceAddTab.CreateLocal,
+        ConferenceAddTab.CreateSynchronized,
+        -> name.isNotBlank()
+        ConferenceAddTab.ImportLocal,
+        ConferenceAddTab.ConnectSynchronized,
+        -> true
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add conference") },
+        text = {
+            Column(modifier = Modifier.width(560.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                PrimaryTabRow(selectedTabIndex = selectedTab.ordinal) {
+                    ConferenceAddTab.entries.forEach { tab ->
+                        Tab(
+                            selected = selectedTab == tab,
+                            onClick = {
+                                if (selectedTab != tab) onClearError()
+                                selectedTab = tab
+                            },
+                            text = {
+                                Text(
+                                    tab.label,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 2,
+                                )
+                            },
+                        )
+                    }
+                }
+                when (selectedTab) {
+                    ConferenceAddTab.CreateLocal -> {
+                        Text("Create a new local conference in this MunAssign installation.")
+                        OutlinedTextField(
+                            value = localName,
+                            onValueChange = { localName = it },
+                            label = { Text("Conference name") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    ConferenceAddTab.ImportLocal -> Text(
+                        "Choose a .munassign transfer to import as a detached local conference.",
+                    )
+                    ConferenceAddTab.CreateSynchronized -> {
+                        Text("Create a new synchronized conference, then choose its shared file location.")
+                        OutlinedTextField(
+                            value = synchronizedName,
+                            onValueChange = { synchronizedName = it },
+                            label = { Text("Conference name") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    ConferenceAddTab.ConnectSynchronized -> Text(
+                        "Choose an existing synchronized conference file and keep it linked at that location.",
+                    )
+                }
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = actionEnabled,
+                onClick = {
+                    when (selectedTab) {
+                        ConferenceAddTab.CreateLocal -> onCreateLocal(localName)
+                        ConferenceAddTab.ImportLocal -> onImportLocal()
+                        ConferenceAddTab.CreateSynchronized -> onCreateSynchronized(synchronizedName)
+                        ConferenceAddTab.ConnectSynchronized -> onConnectSynchronized()
+                    }
+                },
+            ) {
+                Text(
+                    when (selectedTab) {
+                        ConferenceAddTab.CreateLocal -> "Create"
+                        ConferenceAddTab.ImportLocal -> "Choose file"
+                        ConferenceAddTab.CreateSynchronized -> "Choose location"
+                        ConferenceAddTab.ConnectSynchronized -> "Choose file"
+                    },
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 @Composable
@@ -1534,20 +1777,35 @@ private fun TrustedFilenameSignaturesDialog(
 
 @Composable
 private fun ReorderableConferenceRow(
-    conference: Conference,
+    conference: ConferenceListItem,
     index: Int,
-    conferences: SnapshotStateList<Conference>,
+    conferences: SnapshotStateList<ConferenceListItem>,
     reorderEnabled: Boolean,
     onRename: () -> Unit,
     onDelete: () -> Unit,
     onExport: () -> Unit,
     onReplace: () -> Unit,
+    onMoveToSynchronized: () -> Unit,
+    onLocate: () -> Unit,
+    onReload: () -> Unit,
     onManageFilenameSignatures: () -> Unit,
     onMoved: () -> Unit,
 ) {
     var accumulatedDrag by remember { mutableFloatStateOf(0f) }
+    var menuOpen by remember(conference.id) { mutableStateOf(false) }
     Row(
         modifier = Modifier.fillMaxWidth()
+            .pointerInput(conference.id) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        if (event.type == PointerEventType.Release && event.button == PointerButton.Secondary) {
+                            event.changes.forEach { it.consume() }
+                            menuOpen = true
+                        }
+                    }
+                }
+            }
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
             .padding(8.dp),
@@ -1581,80 +1839,193 @@ private fun ReorderableConferenceRow(
         )
         Column(modifier = Modifier.weight(1f)) {
             Text(conference.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+            if (conference.storageKind == ConferenceListStorageKind.Synchronized) {
+                Text(
+                    when (conference.availability) {
+                        ConferenceListAvailability.Available -> "Synchronized"
+                        ConferenceListAvailability.Missing -> "Synchronized file missing"
+                        ConferenceListAvailability.Invalid -> "Synchronized file invalid"
+                        ConferenceListAvailability.NewerVersion -> "Requires newer MunAssign"
+                        ConferenceListAvailability.Inaccessible -> "Synchronized file inaccessible"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (conference.availability == ConferenceListAvailability.Available) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                conference.lastLoadedAtEpochMillis?.let { loadedAt ->
+                    Text(
+                        "Last loaded ${formatLastLoaded(loadedAt)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+            }
         }
-        TooltipIconButton(
-            tooltip = "Export ${conference.name}",
-            icon = Icons.Filled.FileDownload,
-            onClick = onExport,
-            enabled = reorderEnabled,
-        )
-        TooltipIconButton(
-            tooltip = "Replace ${conference.name} from .munassign",
-            icon = Icons.Filled.UploadFile,
-            onClick = onReplace,
-            enabled = reorderEnabled,
-        )
-        TooltipIconButton(
-            tooltip = "Manage trusted update filenames for ${conference.name}",
-            icon = Icons.Filled.Bookmark,
-            onClick = onManageFilenameSignatures,
-            enabled = reorderEnabled,
-        )
-        TooltipIconButton(
-            tooltip = "Rename ${conference.name}",
-            icon = Icons.Filled.Edit,
-            onClick = onRename,
-            enabled = reorderEnabled,
-        )
-        TooltipIconButton(
-            tooltip = "Delete ${conference.name}",
-            icon = Icons.Filled.Delete,
-            onClick = onDelete,
-            enabled = reorderEnabled,
-            tint = MaterialTheme.colorScheme.error,
-        )
+        if (ConferenceManagementAction.Reload in conference.inlineManagementActions()) {
+            TooltipIconButton(
+                tooltip = "Reload ${conference.name}",
+                icon = Icons.Filled.Refresh,
+                onClick = onReload,
+                enabled = reorderEnabled,
+            )
+        }
+        Box {
+            TooltipIconButton(
+                tooltip = "More actions for ${conference.name}",
+                icon = Icons.Filled.ArrowDropDown,
+                onClick = { menuOpen = true },
+                enabled = reorderEnabled,
+            )
+            ConferenceManagementMenu(
+                conference = conference,
+                expanded = menuOpen,
+                actionsEnabled = reorderEnabled,
+                onDismiss = { menuOpen = false },
+                onExport = onExport,
+                onReplace = onReplace,
+                onManageFilenameSignatures = onManageFilenameSignatures,
+                onRename = onRename,
+                onMoveToSynchronized = onMoveToSynchronized,
+                onLocate = onLocate,
+                onRemove = onDelete,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ConferenceManagementMenu(
+    conference: ConferenceListItem,
+    expanded: Boolean,
+    actionsEnabled: Boolean,
+    onDismiss: () -> Unit,
+    onExport: () -> Unit,
+    onReplace: () -> Unit,
+    onManageFilenameSignatures: () -> Unit,
+    onRename: () -> Unit,
+    onMoveToSynchronized: () -> Unit,
+    onLocate: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        conference.overflowManagementActions().forEach { menuAction ->
+            if (menuAction.action == ConferenceManagementAction.Remove) {
+                HorizontalDivider()
+            }
+            val label = when (menuAction.action) {
+                ConferenceManagementAction.Export -> "Export conference"
+                ConferenceManagementAction.Replace -> "Replace from file"
+                ConferenceManagementAction.TrustedFilenames -> "Trusted filename signatures"
+                ConferenceManagementAction.Rename -> "Rename conference"
+                ConferenceManagementAction.MoveToSynchronized -> "Move to synchronized file"
+                ConferenceManagementAction.Locate -> "Locate synchronized file"
+                ConferenceManagementAction.Remove -> if (conference.storageKind == ConferenceListStorageKind.Local) {
+                    "Delete conference"
+                } else {
+                    "Remove synchronized conference"
+                }
+                ConferenceManagementAction.Reload -> error("Reload is an inline conference action.")
+            }
+            val icon = when (menuAction.action) {
+                ConferenceManagementAction.Export -> Icons.Filled.FileUpload
+                ConferenceManagementAction.Replace -> Icons.Filled.Upgrade
+                ConferenceManagementAction.TrustedFilenames -> Icons.Filled.Gesture
+                ConferenceManagementAction.Rename -> Icons.Filled.Edit
+                ConferenceManagementAction.MoveToSynchronized -> Icons.Filled.Cloud
+                ConferenceManagementAction.Locate -> Icons.Filled.FolderOpen
+                ConferenceManagementAction.Remove -> Icons.Filled.Delete
+                ConferenceManagementAction.Reload -> Icons.Filled.Refresh
+            }
+            val action = when (menuAction.action) {
+                ConferenceManagementAction.Export -> onExport
+                ConferenceManagementAction.Replace -> onReplace
+                ConferenceManagementAction.TrustedFilenames -> onManageFilenameSignatures
+                ConferenceManagementAction.Rename -> onRename
+                ConferenceManagementAction.MoveToSynchronized -> onMoveToSynchronized
+                ConferenceManagementAction.Locate -> onLocate
+                ConferenceManagementAction.Remove -> onRemove
+                ConferenceManagementAction.Reload -> error("Reload is an inline conference action.")
+            }
+            val destructive = menuAction.action == ConferenceManagementAction.Remove
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        label,
+                        color = if (destructive) MaterialTheme.colorScheme.error else Color.Unspecified,
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        tint = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                enabled = actionsEnabled && menuAction.enabled,
+                onClick = {
+                    onDismiss()
+                    action()
+                },
+            )
+        }
     }
 }
 
 @Composable
 private fun ReplaceConferenceDialog(
-    conference: Conference,
+    conferenceName: String,
+    synchronizedTarget: Boolean,
+    synchronizedSource: Boolean,
+    sourceName: String,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Replace ${conference.name}?") },
+        title = { Text("Replace $conferenceName?") },
         text = {
-            Text(
-                "This imports a .munassign file over this conference. The current conference data will be replaced.",
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("$sourceName will replace all current conference contents.")
+                if (synchronizedTarget) {
+                    Text("This is a synchronized conference, so the replacement affects every collaborator.")
+                }
+                if (synchronizedSource) {
+                    Text("The source is synchronized. MunAssign will use a detached snapshot and leave that source unchanged.")
+                }
+            }
         },
         confirmButton = {
-            Button(
-                onClick = onConfirm,
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-            ) {
-                Text("Replace")
+            Button(onClick = onDismiss) {
+                Text("Cancel")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
+            ArmedConfirmationAction(
+                revealLabel = "Replace conference",
+                confirmLabel = "Replace",
+                armTooltip = "Arm conference replacement",
+                destructive = true,
+                onConfirm = onConfirm,
+            )
         },
     )
 }
 
 @Composable
 private fun DeleteConferenceDialog(
-    conference: Conference,
+    conferenceName: String,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Delete ${conference.name}?") },
+        title = { Text("Delete $conferenceName?") },
         text = {
             Text(
                 "This removes the conference and all of its committees, positions, slots, delegates, preferences, answers, comments, delegations, and update history.",
@@ -1675,6 +2046,122 @@ private fun DeleteConferenceDialog(
             )
         },
     )
+}
+
+private val lastLoadedFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+
+private fun formatLastLoaded(epochMillis: Long): String =
+    lastLoadedFormatter.format(Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()))
+
+@Composable
+private fun RemoveSynchronizedConferenceDialog(
+    conferenceName: String,
+    onDismiss: () -> Unit,
+    onUnlink: () -> Unit,
+    onDeleteFile: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Remove $conferenceName?") },
+        text = {
+            Text(
+                "Unlink removes only this installation's reference. Deleting the shared file makes it unavailable to every collaborator.",
+            )
+        },
+        confirmButton = {
+            Button(onClick = onUnlink) {
+                Text("Unlink from this device")
+            }
+        },
+        dismissButton = {
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ArmedConfirmationAction(
+                    revealLabel = "Delete shared file",
+                    confirmLabel = "Delete file",
+                    armTooltip = "Arm shared file deletion",
+                    destructive = true,
+                    onConfirm = onDeleteFile,
+                )
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        },
+    )
+}
+
+@Composable
+private fun SynchronizedImportDialog(
+    sourceName: String,
+    onDismiss: () -> Unit,
+    onConnect: () -> Unit,
+    onImport: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Synchronized conference selected") },
+        text = {
+            Text(
+                "$sourceName is intended to remain linked at its current location. Connect it to collaborate, or arm importing a detached local copy.",
+            )
+        },
+        confirmButton = {
+            Button(onClick = {
+                onDismiss()
+                onConnect()
+            }) {
+                Text("Connect instead")
+            }
+        },
+        dismissButton = {
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ArmedConfirmationAction(
+                    revealLabel = "Import detached copy",
+                    confirmLabel = "Import copy",
+                    armTooltip = "Arm detached import",
+                    onConfirm = onImport,
+                )
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        },
+    )
+}
+
+@Composable
+private fun UnavailableConferenceState(
+    entry: ConferenceListItem?,
+    onReload: () -> Unit,
+    onLocate: () -> Unit,
+    onUnlink: () -> Unit,
+) {
+    if (entry == null) {
+        LoadingState()
+        return
+    }
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(Icons.Filled.CloudOff, contentDescription = null, modifier = Modifier.size(48.dp))
+        Spacer(Modifier.height(12.dp))
+        Text(entry.name, style = MaterialTheme.typography.headlineSmall)
+        Text(
+            when (entry.availability) {
+                ConferenceListAvailability.Missing -> "The synchronized file is missing from its saved location."
+                ConferenceListAvailability.Invalid -> "The file at the saved location is not the expected synchronized conference."
+                ConferenceListAvailability.NewerVersion -> "This synchronized conference requires a newer MunAssign version."
+                ConferenceListAvailability.Inaccessible -> "The synchronized file cannot currently be accessed."
+                ConferenceListAvailability.Available -> "The synchronized conference could not be loaded."
+            },
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        entry.path?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        Spacer(Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = onReload) { Text("Reload") }
+            Button(onClick = onLocate) { Text("Locate") }
+            TextButton(onClick = onUnlink) { Text("Unlink") }
+        }
+    }
 }
 
 @Composable
@@ -1726,12 +2213,12 @@ private fun ArmedConfirmationAction(
     }
 }
 
-private fun SnapshotStateList<Conference>.replaceAll(conferences: List<Conference>) {
+private fun SnapshotStateList<ConferenceListItem>.replaceAll(conferences: List<ConferenceListItem>) {
     clear()
     addAll(conferences)
 }
 
-private fun SnapshotStateList<Conference>.move(from: Int, to: Int) {
+private fun SnapshotStateList<ConferenceListItem>.move(from: Int, to: Int) {
     if (from == to) return
     val item = removeAt(from)
     add(to, item)

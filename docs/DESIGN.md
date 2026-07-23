@@ -1,6 +1,6 @@
 # MunAssign Design
 
-MunAssign is a desktop assignment tool for Model United Nations organizers. It keeps one local SQLite database, groups all working data by conference, and treats MyMUN Excel files as recurring **updates** rather than import files. The word **import** is reserved for `.munassign` conference transfer.
+MunAssign is a desktop assignment tool for Model United Nations organizers. It groups all working data by conference and stores each conference either in the local application database or in an explicitly linked synchronized SQLite file. MyMUN Excel files are recurring **updates** rather than import files. The word **import** is reserved for `.munassign` conference transfer.
 
 ## Product Rules
 
@@ -8,6 +8,7 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It k
 - MyMUN Excel updates replace MyMUN-managed data for the selected conference and preserve organizer-managed state where the referenced delegate or position still exists.
 - Successful MyMUN updates establish conference-specific trusted filename signatures. Later filenames that do not match any trusted signature require explicit confirmation before the workbook is read.
 - `.munassign` import/export transfers one complete conference as a self-contained SQLite snapshot.
+- A synchronized conference remains authoritative in one user-selected `*.sync.munassign` file. MunAssign only manages the filesystem path; OneDrive, Google Drive, network storage, or another provider may synchronize that folder independently.
 - MyMUN-confirmed assignments come from the `Countries.Delegates` column.
 - App-created assignments are pending until a later MyMUN update confirms them.
 - Email is stored and used as a discriminator during updates, but it is not a unique delegate key.
@@ -64,9 +65,10 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It k
 - The delegate list panel shows active paid delegates by default, with search, assignment/payment/active/committee filters, presets, and sorting by submitted date, difficulty, name, assignment status, and warning/notice count. Difficulty is a sort key only. The difficulty sort is intentionally ascending (easiest-to-place delegates first), so organizers clear easy delegates and are left with only the hard ones.
 - The delegation overview is a non-modal workspace panel similar to the delegate overview. It shows delegation membership, accepted active paid counts, linked reservation capacity, and current consumption. Each delegation can be marked high-school and can open a directly prefilled reservation editor using its full expected count; absent or non-positive counts prefill as zero. New delegations show review markers on their cards and on the top-bar delegation action until the panel is explicitly closed.
 - The reservation manager is a compact modal for creating, editing, deleting, and linking reservations to delegations.
+- The conference manager keeps rows compact: Reload is the only optional inline conference action, while a dropdown arrow and right-click open the same overflow menu for export, replacement, trusted filename signatures, rename, storage, and removal actions. One Add conference button opens tabs for Create new local, Import as new, Create new synchronized, and Connect synchronized.
 - Slot count is committee-level; every position in a committee has the same number of slots. Changing the count requires confirmation.
 - An icon-only action at the end of the top bar's left action group copies a privacy-safe 1080x1080 status image to the clipboard. The conference selector remains the leftmost anchor, followed by conference management, the textual exports folder, and status-image copy. The image shows high-school and university commitments split into assigned, confirmed, accepted, reserved, and unlabelled free capacity, followed by allocations for up to twelve committees without delegate names or contact data. Committee titles are color-coded by mode without additional mode icons. The top bar uses intrinsic left, center, and right groups; at compact widths, statistics move intact to a second row instead of squeezing or clipping.
-- Unexpected update filenames and conference deletion use a two-stage armed confirmation. Cancel is the prominent action; the risky action first reveals an off switch and a disabled final button, and the final action becomes available only after the organizer arms it.
+- Unexpected update filenames, every conference replacement, conference deletion, forced import of a synchronized source, and deletion of a shared file use a two-stage armed confirmation. Cancel is the prominent action; the risky action first reveals an off switch and a disabled final button, and the final action becomes available only after the organizer arms it.
 
 ## Update And Transfer
 
@@ -89,11 +91,24 @@ are never trusted. Organizers can delete individual trusted signatures from the 
 
 `.munassign` export writes one complete conference to a SQLite snapshot. Import remaps conference-owned IDs, can create a new conference with a duplicate visible name, or replace a selected conference while preserving the local conference name and display order. Older transfer files are migrated from a temporary copy before import; transfer files from newer schema versions are rejected.
 
+Every schema-12-or-newer SQLite file contains a stable file UUID and a content marker: `ApplicationDatabase`, `ConferenceTransfer`, or `SynchronizedConference`. File handling validates this metadata rather than relying on the filename. Markerless legacy files remain valid normal imports, but cannot be connected as synchronized conferences. Exports always create detached `ConferenceTransfer` files, including exports whose source is synchronized. Importing a synchronized source recommends Connect and requires the armed detached-import override; the source file is never changed.
+
+## Synchronized Conferences
+
+The conference catalog beside the local application state is authoritative for mixed local/synchronized ordering and source routing. It caches the conference name, conference ID, synchronized file UUID, path, availability, order, and last-loaded time. Catalog writes are atomic. Paths inside a portable installation are stored relative to that installation; other paths are normalized absolute paths. Existing local conferences seed the catalog from `conferences.display_order`, which remains maintained for compatibility.
+
+Create synchronized creates one new conference at a new user-selected path. Move first creates and validates the synchronized file, records a recoverable catalog operation, then removes the local original. Connect requires a marked, supported, single-conference synchronized file with a unique file UUID and conference ID. Locate only accepts another path to the same embedded file UUID and conference identity. Unlink removes the machine-local catalog entry; Delete shared file is a separate armed action and retains the link if deletion fails.
+
+All reads, mutations, MyMUN updates, replacements, transfers, and safety exports are routed to the authoritative database by the storage coordinator. Missing, invalid, inaccessible, or newer-version synchronized links stay visible with their cached name and recovery actions. Reload, reselecting the conference, and restoring window focus reload from the linked file. Available synchronized conferences participate in open/close markdown safety exports; unavailable links are reported without preventing exports for available conferences.
+
+MunAssign deliberately provides no cloud API, live file watcher, offline cache, application-level lock, or conflict merge. SQLite transactions and the existing busy timeout remain the only application-side concurrency mechanism. Simultaneous edits through a synchronization provider can still conflict or lose work; provider-created conflict copies are explicit files that can be handled through Locate when identity matches or armed detached Import otherwise. Before an older synchronized file is migrated in place, MunAssign saves a timestamped backup under local application data. These backups are not automatically pruned in the first version.
+
 Markdown safety exports are one-way recovery snapshots, not transfer files. The desktop app writes timestamped markdown files for every conference when it opens and closes, using one file per conference under the active MunAssign data directory's `markdown-exports` folder. These files summarize assignments, position interest, delegates, and high-level stats for human inspection after a failure; MunAssign does not import them.
 
 ## Implementation Notes
 
 - The application database normally lives at `~/.munassign/data.db`. A packaged Windows build launched from a different drive than the user home directory uses an app-local `data/data.db` beside the portable app folder and does not copy existing home data automatically.
+- The machine-local conference catalog and synchronized-file migration backups live beside the active application state. They describe this installation's links and must not be stored inside a synchronized conference file.
 - `:app:packagePortableZip` creates the no-installer Windows distribution zip with `MunAssign.exe`, `app/`, and `runtime/` at the archive root, and `:app:assemble` depends on it so normal Gradle-backed IDE builds create the zip. The packaged runtime includes the `java.sql` module required by SQLite/JDBC startup. MSI, DMG, and deb installers are intentionally out of scope until there is a concrete installer requirement.
 - Foreign keys should cascade for conference-owned data.
 - Assignment difficulty is computed from current state when needed; it is not stored on `Delegate`.

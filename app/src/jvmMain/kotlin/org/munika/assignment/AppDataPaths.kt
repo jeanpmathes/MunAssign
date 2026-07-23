@@ -6,10 +6,14 @@ import java.nio.file.Path
  * Resolved filesystem locations for MunAssign's local database, exports, and app-local state.
  */
 data class AppDataPaths(
+    val dataRoot: Path,
     val databasePath: Path,
     val markdownExportDirectory: Path,
     val windowStatePath: Path,
     val lastSelectedConferencePath: Path,
+    val conferenceCatalogPath: Path,
+    val synchronizedMigrationBackupDirectory: Path,
+    val portablePathBase: Path?,
 )
 
 /**
@@ -30,10 +34,16 @@ object AppDataPathResolver {
             home.resolve(".munassign")
         }
         return AppDataPaths(
+            dataRoot = dataRoot,
             databasePath = dataRoot.resolve("data.db"),
             markdownExportDirectory = dataRoot.resolve("markdown-exports"),
             windowStatePath = dataRoot.resolve("window-state.properties"),
             lastSelectedConferencePath = dataRoot.resolve("last-selected-conference.properties"),
+            conferenceCatalogPath = dataRoot.resolve("conference-catalog.properties"),
+            synchronizedMigrationBackupDirectory = dataRoot.resolve("synchronized-migration-backups"),
+            portablePathBase = packagedAppHome?.takeIf {
+                osName.isWindows() && home.isOnDifferentDriveThan(it)
+            },
         )
     }
 

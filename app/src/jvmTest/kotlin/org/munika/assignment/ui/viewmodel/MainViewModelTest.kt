@@ -845,7 +845,14 @@ class MainViewModelTest {
         val viewModel = viewModelWith(repository, conferenceTransfer = transfer, lastSelectedConferenceStore = store)
         waitUntil { viewModel.state.value.selectedConference === replaced }
 
-        viewModel.replaceConference("conference", Path.of("replacement.munassign"))
+        viewModel.prepareReplaceConference("conference", Path.of("replacement.munassign"))
+
+        val pending = viewModel.state.value.pendingConferenceReplace
+        assertEquals("conference", pending?.conferenceId)
+        assertEquals(Path.of("replacement.munassign"), pending?.sourcePath)
+        assertNull(transfer.replacedConferenceId)
+
+        viewModel.confirmPendingConferenceReplace()
 
         waitUntil { viewModel.state.value.transferNotice != null }
         assertEquals("conference", transfer.replacedConferenceId)
@@ -1108,6 +1115,144 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `startup safety export reports unavailable synchronized conferences without blocking local exports`() {
+        val local = Conference(ConferenceId("local"), "Local", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val unavailable = ConferenceListItem(
+            id = "shared",
+            name = "Shared",
+            displayOrder = 1,
+            storageKind = ConferenceListStorageKind.Synchronized,
+            availability = ConferenceListAvailability.Missing,
+            path = "missing.sync.munassign",
+        )
+        val markdownExport = FakeMarkdownSafetyExportRunner()
+        val viewModel = viewModelWith(
+            repository = FakeConferenceRepository(initialConference = local),
+            workspace = FakeConferenceWorkspaceRunner(
+                entries = listOf(
+                    ConferenceListItem(
+                        id = local.id.value,
+                        name = local.name,
+                        displayOrder = 0,
+                        storageKind = ConferenceListStorageKind.Local,
+                        availability = ConferenceListAvailability.Available,
+                    ),
+                    unavailable,
+                ),
+            ),
+            markdownSafetyExport = markdownExport,
+        )
+
+        waitUntil { viewModel.state.value.transferNotice != null }
+
+        assertEquals(listOf("local"), markdownExport.calls.first().conferenceIds)
+        assertEquals(
+            "Skipped 1 unavailable synchronized conference.",
+            viewModel.state.value.transferNotice?.message,
+        )
+        assertFalse(viewModel.state.value.startupLoading)
+        viewModel.close()
+    }
+
+    @Test
+    fun `synchronized import is inspected before offering connect or detached import`() {
+        val shared = Conference(ConferenceId("shared"), "Shared", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val repository = FakeConferenceRepository(initialConference = shared)
+        val workspace = FakeConferenceWorkspaceRunner(
+            entries = listOf(shared.synchronizedListItem()),
+            fileInspection = ConferenceFileInspection(ConferenceFileKind.SynchronizedConference),
+            connectedConference = shared,
+        )
+        val transfer = FakeConferenceTransferRunner()
+        val viewModel = viewModelWith(repository, conferenceTransfer = transfer, workspace = workspace)
+        waitUntil { viewModel.state.value.selectedConference === shared }
+        val sourcePath = Path.of("shared.sync.munassign")
+
+        viewModel.importConferenceAsNew(sourcePath)
+
+        assertEquals(sourcePath, viewModel.state.value.pendingSynchronizedImportPath)
+        assertNull(transfer.importSourcePath)
+        viewModel.connectPendingSynchronizedImport()
+        waitUntil { workspace.connectedPath == sourcePath }
+        assertNull(viewModel.state.value.pendingSynchronizedImportPath)
+        viewModel.close()
+    }
+
+    @Test
+    fun `manual reload can select and refresh any synchronized catalog entry`() {
+        val local = Conference(ConferenceId("local"), "Local", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val shared = Conference(ConferenceId("shared"), "Shared", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val repository = FakeConferenceRepository(initialConference = local, conferences = listOf(local, shared))
+        val workspace = FakeConferenceWorkspaceRunner(
+            entries = listOf(
+                ConferenceListItem(
+                    id = local.id.value,
+                    name = local.name,
+                    displayOrder = 0,
+                    storageKind = ConferenceListStorageKind.Local,
+                    availability = ConferenceListAvailability.Available,
+                ),
+                shared.synchronizedListItem(displayOrder = 1),
+            ),
+            reloadedConference = shared,
+        )
+        val viewModel = viewModelWith(repository, workspace = workspace)
+        waitUntil { viewModel.state.value.selectedConference === local }
+
+        viewModel.reloadSynchronizedConference(shared.id.value)
+
+        waitUntil { viewModel.state.value.selectedConference === shared }
+        assertEquals(shared.id.value, workspace.reloadedConferenceId)
+        assertEquals(shared.id.value, viewModel.state.value.selectedConferenceId)
+        viewModel.close()
+    }
+
+    @Test
+    fun `delayed synchronized reload does not replace a newer conference selection`() {
+        val local = Conference(ConferenceId("local"), "Local", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val shared = Conference(ConferenceId("shared"), "Shared", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val other = Conference(ConferenceId("other"), "Other", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val reloadStarted = CompletableDeferred<Unit>()
+        val reloadResult = CompletableDeferred<Conference?>()
+        val repository = FakeConferenceRepository(initialConference = local, conferences = listOf(local, shared, other))
+        val entries = listOf(
+            ConferenceListItem(
+                id = local.id.value,
+                name = local.name,
+                displayOrder = 0,
+                storageKind = ConferenceListStorageKind.Local,
+                availability = ConferenceListAvailability.Available,
+            ),
+            shared.synchronizedListItem(displayOrder = 1),
+            ConferenceListItem(
+                id = other.id.value,
+                name = other.name,
+                displayOrder = 2,
+                storageKind = ConferenceListStorageKind.Local,
+                availability = ConferenceListAvailability.Available,
+            ),
+        )
+        val workspace = FakeConferenceWorkspaceRunner(
+            entries = entries,
+            reloadStarted = reloadStarted,
+            reloadResult = reloadResult,
+        )
+        val viewModel = viewModelWith(repository, workspace = workspace)
+        waitUntil { viewModel.state.value.selectedConference === local }
+
+        viewModel.reloadSynchronizedConference(shared.id.value)
+        runBlocking { reloadStarted.await() }
+        viewModel.selectConference(other.id.value)
+        waitUntil { viewModel.state.value.selectedConference === other }
+        reloadResult.complete(shared)
+
+        waitUntil { workspace.reloadCompleted }
+        assertEquals(other.id.value, viewModel.state.value.selectedConferenceId)
+        assertSame(other, viewModel.state.value.selectedConference)
+        viewModel.close()
+    }
+
+    @Test
     fun `deleting selected conference persists fallback selection`() {
         val conferenceA = Conference(ConferenceId("conference-a"), "Conference A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val conferenceB = Conference(ConferenceId("conference-b"), "Conference B", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
@@ -1153,6 +1298,7 @@ class MainViewModelTest {
         conferenceTransfer: ConferenceTransferRunner = FakeConferenceTransferRunner(),
         markdownSafetyExport: MarkdownSafetyExportRunner = FakeMarkdownSafetyExportRunner(),
         lastSelectedConferenceStore: LastSelectedConferenceStore = tempLastSelectedConferenceStore(),
+        workspace: ConferenceWorkspaceRunner? = null,
         workbookUpdate: suspend (String, Path, MymunUpdateFilenameCandidate?) -> UpdateResult = { _, _, _ ->
             UpdateResult(true, emptyList())
         },
@@ -1164,7 +1310,8 @@ class MainViewModelTest {
         conferenceTransfer,
         markdownSafetyExport,
         lastSelectedConferenceStore,
-        CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        workspace,
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
     )
 
     private fun tempLastSelectedConferenceStore(): LastSelectedConferenceStore =
@@ -1177,6 +1324,66 @@ class MainViewModelTest {
         }
         check(predicate()) { "Timed out waiting for ViewModel state." }
     }
+}
+
+private fun Conference.synchronizedListItem(displayOrder: Int = 0): ConferenceListItem = ConferenceListItem(
+    id = id.value,
+    name = name,
+    displayOrder = displayOrder,
+    storageKind = ConferenceListStorageKind.Synchronized,
+    availability = ConferenceListAvailability.Available,
+    path = "$name.sync.munassign",
+)
+
+private class FakeConferenceWorkspaceRunner(
+    private val entries: List<ConferenceListItem>,
+    private val fileInspection: ConferenceFileInspection = ConferenceFileInspection(ConferenceFileKind.ConferenceTransfer),
+    private val connectedConference: Conference? = null,
+    private val reloadedConference: Conference? = null,
+    private val reloadStarted: CompletableDeferred<Unit>? = null,
+    private val reloadResult: CompletableDeferred<Conference?>? = null,
+) : ConferenceWorkspaceRunner {
+    var connectedPath: Path? = null
+        private set
+    var reloadedConferenceId: String? = null
+        private set
+    var reloadCompleted: Boolean = false
+        private set
+
+    override suspend fun listEntries(): List<ConferenceListItem> = entries
+
+    override suspend fun createSynchronizedConference(name: String, destinationPath: Path): Conference =
+        error("Not used by this test.")
+
+    override suspend fun moveConferenceToSynchronized(conferenceId: String, destinationPath: Path): Conference =
+        error("Not used by this test.")
+
+    override suspend fun connectSynchronizedConference(path: Path): Conference {
+        connectedPath = path
+        return requireNotNull(connectedConference)
+    }
+
+    override suspend fun locateSynchronizedConference(conferenceId: String, path: Path): Conference =
+        error("Not used by this test.")
+
+    override suspend fun unlinkSynchronizedConference(conferenceId: String) = error("Not used by this test.")
+
+    override suspend fun deleteSynchronizedConferenceFile(conferenceId: String) = error("Not used by this test.")
+
+    override suspend fun reloadConference(conferenceId: String): Conference? {
+        reloadedConferenceId = conferenceId
+        reloadStarted?.complete(Unit)
+        val result = reloadResult?.await() ?: reloadedConference
+        reloadCompleted = true
+        return result
+    }
+
+    override fun inspectFile(path: Path): ConferenceFileInspection = fileInspection
+
+    override suspend fun importSynchronizedAsNew(path: Path): Conference = error("Not used by this test.")
+
+    override suspend fun replaceFromSynchronized(conferenceId: String, path: Path): Conference =
+        error("Not used by this test.")
 }
 
 private class FakeConferenceTransferRunner(

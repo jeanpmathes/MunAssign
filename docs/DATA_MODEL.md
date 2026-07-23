@@ -15,6 +15,8 @@ This document records persistence and update rules that are not obvious from the
 - `Reservation` stores organizer-managed high-school and university capacity holds, with an optional linked delegation.
 - `ReservationDelegateLink` stores current reservation consumption by one delegate, either manual or delegation-automatic.
 - `MymunUpdateFilenameSignature` stores one organizer-trusted set of meaningful filename parts for a conference.
+- `MunAssignFileMetadata` identifies a SQLite file independently of its extension. The singleton row stores a stable file UUID and one kind: `ApplicationDatabase`, `ConferenceTransfer`, or `SynchronizedConference`.
+- `ConferenceCatalogEntry` is machine-local routing state for either a local conference or a linked synchronized file; it is not conference-owned data and is not transferred.
 
 Domain objects expose derived properties such as slot status, current assignment, display labels, typed answers, and interested delegates. Do not duplicate those derivations in documentation unless the rule affects persistence or updates.
 
@@ -30,6 +32,16 @@ Domain objects expose derived properties such as slot status, current assignment
 | `Observers` | Ignored. |
 
 The MyMUN workbook action is called an **update**. `.munassign` file transfer is called **import/export**.
+
+## File Identity And Storage Routing
+
+Schema migration 12 creates the singleton `munassign_file_metadata` table. Existing application databases are seeded as `ApplicationDatabase`; new detached exports are changed to `ConferenceTransfer`; newly created synchronized files are changed to `SynchronizedConference`. The stable file UUID survives synchronized replacement and relocation. The filename convention for synchronized files is `*.sync.munassign`, but every decision uses embedded metadata. Markerless pre-schema-12 files are accepted only as legacy normal transfers.
+
+A synchronized file contains exactly one conference and is its authoritative store. Its conference ID remains stable when a local conference is moved to synchronized storage. Replacement preserves the target conference ID, visible name, display order, creation identity, and file metadata while replacing conference-owned contents. A detached import always remaps the conference ID and writes into the local application database.
+
+The atomically written conference catalog stores ordered entries with conference ID, cached name, storage kind, availability, last-loaded time, and, for synchronized entries, file UUID plus encoded path. Paths below the portable installation base are relative; all others are normalized absolute paths. The catalog rejects duplicate conference IDs and duplicate synchronized file UUIDs. Missing or unusable synchronized entries remain in the catalog so Locate or Unlink can recover them. A pending Move record makes the cross-file transition recoverable: the verified synchronized file is cataloged before the local original is removed, and startup completes an interrupted operation.
+
+Repository and staged MyMUN snapshot operations resolve the catalog entry before opening a database. Older normal transfers are copied and migrated temporarily, leaving the source untouched. Older synchronized files are backed up locally and migrated in place because collaborators continue using that authoritative file. Files whose schema is newer than the running application are never opened for migration or mutation.
 
 ## Update Matching
 
@@ -210,6 +222,10 @@ Update metadata tables:
 - `mymun_update_issues`
 - `mymun_update_filename_signatures`
 - `mymun_update_filename_signature_parts`
+
+File metadata tables:
+
+- `munassign_file_metadata` (singleton row keyed by `singleton = 1`)
 
 ## Constraints And Indexes
 

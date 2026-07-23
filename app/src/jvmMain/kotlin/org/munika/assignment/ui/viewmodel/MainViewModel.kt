@@ -14,8 +14,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import org.munika.assignment.LastSelectedConferenceStore
-import org.munika.assignment.data.db.ConferenceTransferService
-import org.munika.assignment.data.excel.MymunWorkbookUpdater
 import org.munika.assignment.domain.model.AnswerIssueResolutionId
 import org.munika.assignment.domain.model.CommitteeId
 import org.munika.assignment.domain.model.CommitteeMode
@@ -36,7 +34,6 @@ import org.munika.assignment.domain.repository.ConferenceRepository
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
 import org.munika.assignment.domain.repository.UpdateResult
 import org.munika.assignment.export.MarkdownSafetyExportRunner
-import org.munika.assignment.export.MarkdownSafetyExportService
 import org.munika.assignment.export.MarkdownSafetyExportTrigger
 
 internal fun interface WorkbookUpdateRunner {
@@ -55,6 +52,30 @@ internal interface ConferenceTransferRunner {
     suspend fun replaceConference(targetConferenceId: String, sourcePath: Path): String
 }
 
+internal interface ConferenceWorkspaceRunner {
+    suspend fun listEntries(): List<ConferenceListItem>
+
+    suspend fun createSynchronizedConference(name: String, destinationPath: Path): Conference
+
+    suspend fun moveConferenceToSynchronized(conferenceId: String, destinationPath: Path): Conference
+
+    suspend fun connectSynchronizedConference(path: Path): Conference
+
+    suspend fun locateSynchronizedConference(conferenceId: String, path: Path): Conference
+
+    suspend fun unlinkSynchronizedConference(conferenceId: String)
+
+    suspend fun deleteSynchronizedConferenceFile(conferenceId: String)
+
+    suspend fun reloadConference(conferenceId: String): Conference?
+
+    fun inspectFile(path: Path): ConferenceFileInspection
+
+    suspend fun importSynchronizedAsNew(path: Path): Conference
+
+    suspend fun replaceFromSynchronized(conferenceId: String, path: Path): Conference
+}
+
 /**
  * Main screen state holder.
  */
@@ -64,34 +85,9 @@ class MainViewModel internal constructor(
     private val conferenceTransfer: ConferenceTransferRunner,
     private val markdownSafetyExport: MarkdownSafetyExportRunner,
     private val lastSelectedConferenceStore: LastSelectedConferenceStore,
+    private val workspace: ConferenceWorkspaceRunner? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) : AutoCloseable {
-    constructor(
-        repository: ConferenceRepository,
-        workbookUpdater: MymunWorkbookUpdater,
-        conferenceTransferService: ConferenceTransferService,
-        markdownSafetyExportService: MarkdownSafetyExportService,
-        lastSelectedConferenceStore: LastSelectedConferenceStore,
-    ) : this(
-        repository = repository,
-        workbookUpdater = WorkbookUpdateRunner { conferenceId, path, signatureToTrust ->
-            workbookUpdater.applyUpdate(conferenceId, path, signatureToTrust)
-        },
-        conferenceTransfer = object : ConferenceTransferRunner {
-            override suspend fun exportConference(conferenceId: String, destinationPath: Path) {
-                conferenceTransferService.exportConference(conferenceId, destinationPath)
-            }
-
-            override suspend fun importConferenceAsNew(sourcePath: Path): String =
-                conferenceTransferService.importConferenceAsNew(sourcePath)
-
-            override suspend fun replaceConference(targetConferenceId: String, sourcePath: Path): String =
-                conferenceTransferService.replaceConference(targetConferenceId, sourcePath)
-        },
-        markdownSafetyExport = markdownSafetyExportService,
-        lastSelectedConferenceStore = lastSelectedConferenceStore,
-    )
-
     private val _state = MutableStateFlow(MainUiState())
     val state: StateFlow<MainUiState> = _state.asStateFlow()
     private var workbookUpdateNoticeId: Long = 0
@@ -103,15 +99,17 @@ class MainViewModel internal constructor(
 
     fun refreshConferences(exportMarkdownOnComplete: Boolean = false) {
         scope.launch {
-            val conferences = repository.listConferences()
-            val knownConferenceIds = conferences.map { it.id.value }.toSet()
+            val index = loadConferenceIndex()
+            val conferences = index.conferences
+            val knownConferenceIds = index.entries.map { it.id }.toSet()
             val selectedId = _state.value.selectedConferenceId?.takeIf { it in knownConferenceIds }
                 ?: lastSelectedConferenceStore.load()?.takeIf { it in knownConferenceIds }
-                ?: conferences.firstOrNull()?.id?.value
+                ?: index.entries.firstOrNull()?.id
             lastSelectedConferenceStore.save(selectedId)
             _state.update { current ->
                 current.copy(
                     conferences = conferences,
+                    conferenceEntries = index.entries,
                     selectedConferenceId = selectedId,
                     selectedConference = null,
                     loading = !exportMarkdownOnComplete,
@@ -165,19 +163,20 @@ class MainViewModel internal constructor(
         val expectedSelectedConferenceId = selectedIdOrNull()
         launchWithConferenceActionError {
             val created = repository.createConference(name.trim())
-            val conferences = repository.listConferences()
+            val index = loadConferenceIndex()
             _state.update { current ->
                 if (current.selectedConferenceId == expectedSelectedConferenceId) {
                     lastSelectedConferenceStore.save(created.id.value)
                     current.copy(
-                        conferences = conferences,
+                        conferences = index.conferences,
+                        conferenceEntries = index.entries,
                         selectedConferenceId = created.id.value,
                         selectedConference = created,
                         workbookUpdateNotice = null,
                         conferenceActionError = null,
                     )
                 } else {
-                    current.copy(conferences = conferences)
+                    current.copy(conferences = index.conferences, conferenceEntries = index.entries)
                 }
             }
         }
@@ -185,7 +184,7 @@ class MainViewModel internal constructor(
     }
 
     fun renameConference(conferenceId: String, newName: String): Boolean {
-        val existing = _state.value.conferences.firstOrNull { it.id.value == conferenceId }
+        val existing = _state.value.conferenceEntries.firstOrNull { it.id == conferenceId }
         val validationError = validateConferenceName(newName, currentConferenceId = conferenceId, requireChangedFrom = existing?.name)
         if (validationError != null) {
             _state.update { it.copy(conferenceActionError = validationError) }
@@ -193,10 +192,11 @@ class MainViewModel internal constructor(
         }
         launchWithConferenceActionError {
             val renamed = repository.renameConference(ConferenceId(conferenceId), newName.trim())
-            val conferences = repository.listConferences()
+            val index = loadConferenceIndex()
             _state.update { current ->
                 current.copy(
-                    conferences = conferences,
+                    conferences = index.conferences,
+                    conferenceEntries = index.entries,
                     selectedConference = if (current.selectedConferenceId == conferenceId) renamed else current.selectedConference,
                     conferenceActionError = null,
                 )
@@ -209,20 +209,25 @@ class MainViewModel internal constructor(
         if (_state.value.loading) return
         launchWithConferenceActionError {
             repository.deleteConference(ConferenceId(conferenceId))
-            val conferences = repository.listConferences()
+            val index = loadConferenceIndex()
             val previousSelectedId = _state.value.selectedConferenceId
             val nextId = when {
-                previousSelectedId != conferenceId -> previousSelectedId?.takeIf { selected -> conferences.any { it.id.value == selected } }
-                else -> conferences.firstOrNull()?.id?.value
+                previousSelectedId != conferenceId -> previousSelectedId?.takeIf { selected -> index.entries.any { it.id == selected } }
+                else -> index.entries.firstOrNull()?.id
             }
             val nextConference = nextId?.let { repository.getConference(ConferenceId(it)) }
             lastSelectedConferenceStore.save(nextId)
             _state.update { current ->
                 if (current.selectedConferenceId != previousSelectedId) {
-                    current.copy(conferences = conferences, conferenceActionError = null)
+                    current.copy(
+                        conferences = index.conferences,
+                        conferenceEntries = index.entries,
+                        conferenceActionError = null,
+                    )
                 } else {
                     current.copy(
-                        conferences = conferences,
+                        conferences = index.conferences,
+                        conferenceEntries = index.entries,
                         selectedConferenceId = nextId,
                         selectedConference = nextConference,
                         conferenceActionError = null,
@@ -237,17 +242,85 @@ class MainViewModel internal constructor(
     }
 
     fun reorderConferences(conferenceIdsInOrder: List<String>): Boolean {
-        val knownIds = _state.value.conferences.map { it.id.value }
+        val knownIds = _state.value.conferenceEntries.map { it.id }
         if (conferenceIdsInOrder.toSet() != knownIds.toSet() || conferenceIdsInOrder.size != knownIds.size) {
             _state.update { it.copy(conferenceActionError = "Conference order is out of date. Reopen management and try again.") }
             return false
         }
         launchWithConferenceActionError {
             repository.reorderConferences(conferenceIdsInOrder.map(::ConferenceId))
-            val conferences = repository.listConferences()
-            _state.update { it.copy(conferences = conferences, conferenceActionError = null) }
+            val index = loadConferenceIndex()
+            _state.update {
+                it.copy(
+                    conferences = index.conferences,
+                    conferenceEntries = index.entries,
+                    conferenceActionError = null,
+                )
+            }
         }
         return true
+    }
+
+    fun createSynchronizedConference(name: String, destinationPath: Path): Boolean {
+        val validationError = validateConferenceName(name)
+        if (validationError != null) {
+            _state.update { it.copy(conferenceActionError = validationError) }
+            return false
+        }
+        launchWorkspaceAction(selectResult = true) {
+            requireNotNull(workspace) { "Synchronized conferences are unavailable." }
+                .createSynchronizedConference(name.trim(), destinationPath)
+        }
+        return true
+    }
+
+    fun moveConferenceToSynchronized(conferenceId: String, destinationPath: Path) {
+        launchWorkspaceAction(selectResult = true) {
+            requireNotNull(workspace) { "Synchronized conferences are unavailable." }
+                .moveConferenceToSynchronized(conferenceId, destinationPath)
+        }
+    }
+
+    fun connectSynchronizedConference(path: Path) {
+        launchWorkspaceAction(selectResult = true) {
+            requireNotNull(workspace) { "Synchronized conferences are unavailable." }
+                .connectSynchronizedConference(path)
+        }
+    }
+
+    fun locateSynchronizedConference(conferenceId: String, path: Path) {
+        launchWorkspaceAction(selectResult = true) {
+            requireNotNull(workspace) { "Synchronized conferences are unavailable." }
+                .locateSynchronizedConference(conferenceId, path)
+        }
+    }
+
+    fun reloadSelectedSynchronizedConference() {
+        val selectedId = selectedIdOrNull() ?: return
+        reloadSynchronizedConference(selectedId)
+    }
+
+    fun reloadSynchronizedConference(conferenceId: String) {
+        val entry = _state.value.conferenceEntries.firstOrNull { it.id == conferenceId } ?: return
+        if (entry.storageKind != ConferenceListStorageKind.Synchronized || _state.value.loading) return
+        launchWorkspaceAction(selectResult = true) {
+            requireNotNull(
+                requireNotNull(workspace) { "Synchronized conferences are unavailable." }
+                    .reloadConference(conferenceId),
+            ) { "The synchronized conference is unavailable." }
+        }
+    }
+
+    fun unlinkSynchronizedConference(conferenceId: String) {
+        launchWorkspaceRemoval(conferenceId) {
+            requireNotNull(workspace).unlinkSynchronizedConference(conferenceId)
+        }
+    }
+
+    fun deleteSynchronizedConferenceFile(conferenceId: String) {
+        launchWorkspaceRemoval(conferenceId) {
+            requireNotNull(workspace).deleteSynchronizedConferenceFile(conferenceId)
+        }
     }
 
     fun clearConferenceActionError() {
@@ -1023,10 +1096,11 @@ class MainViewModel internal constructor(
                     ConferenceId(conferenceId),
                     MymunUpdateFilenameSignatureId(signatureId),
                 )
-                val conferences = repository.listConferences()
+                val index = loadConferenceIndex()
                 _state.update { current ->
                     current.copy(
-                        conferences = conferences,
+                        conferences = index.conferences,
+                        conferenceEntries = index.entries,
                         selectedConference = if (current.selectedConferenceId == conferenceId) updated else current.selectedConference,
                         conferenceActionError = null,
                     )
@@ -1108,16 +1182,47 @@ class MainViewModel internal constructor(
     }
 
     fun importConferenceAsNew(sourcePath: Path) {
+        val inspection = workspace?.inspectFile(sourcePath)
+        if (inspection?.kind == ConferenceFileKind.SynchronizedConference) {
+            _state.update { it.copy(pendingSynchronizedImportPath = sourcePath, transferNotice = null) }
+            return
+        }
+        importConferenceAsNewNow(sourcePath, synchronizedSource = false)
+    }
+
+    fun confirmSynchronizedImportAsNew() {
+        val sourcePath = _state.value.pendingSynchronizedImportPath ?: return
+        _state.update { it.copy(pendingSynchronizedImportPath = null) }
+        importConferenceAsNewNow(sourcePath, synchronizedSource = true)
+    }
+
+    fun connectPendingSynchronizedImport() {
+        val sourcePath = _state.value.pendingSynchronizedImportPath ?: return
+        _state.update { it.copy(pendingSynchronizedImportPath = null) }
+        connectSynchronizedConference(sourcePath)
+    }
+
+    fun cancelSynchronizedImport() {
+        _state.update { it.copy(pendingSynchronizedImportPath = null) }
+    }
+
+    private fun importConferenceAsNewNow(sourcePath: Path, synchronizedSource: Boolean) {
         scope.launch {
             _state.update { it.copy(loading = true, transferNotice = null, conferenceActionError = null) }
             try {
-                val importedId = conferenceTransfer.importConferenceAsNew(sourcePath)
-                val conferences = repository.listConferences()
-                val imported = repository.getConference(ConferenceId(importedId))
+                val imported = if (synchronizedSource) {
+                    requireNotNull(workspace).importSynchronizedAsNew(sourcePath)
+                } else {
+                    val importedId = conferenceTransfer.importConferenceAsNew(sourcePath)
+                    requireNotNull(repository.getConference(ConferenceId(importedId)))
+                }
+                val importedId = imported.id.value
+                val index = loadConferenceIndex()
                 lastSelectedConferenceStore.save(importedId)
                 _state.update {
                     it.copy(
-                        conferences = conferences,
+                        conferences = index.conferences,
+                        conferenceEntries = index.entries,
                         selectedConferenceId = importedId,
                         selectedConference = imported,
                         loading = false,
@@ -1138,17 +1243,49 @@ class MainViewModel internal constructor(
         }
     }
 
-    fun replaceConference(conferenceId: String, sourcePath: Path) {
+    fun prepareReplaceConference(conferenceId: String, sourcePath: Path) {
+        val target = _state.value.conferenceEntries.firstOrNull { it.id == conferenceId } ?: return
+        val sourceInspection = workspace?.inspectFile(sourcePath)
+        _state.update {
+            it.copy(
+                pendingConferenceReplace = PendingConferenceReplace(
+                    conferenceId = conferenceId,
+                    conferenceName = target.name,
+                    sourcePath = sourcePath,
+                    synchronizedTarget = target.storageKind == ConferenceListStorageKind.Synchronized,
+                    synchronizedSource = sourceInspection?.kind == ConferenceFileKind.SynchronizedConference,
+                ),
+            )
+        }
+    }
+
+    fun cancelPendingConferenceReplace() {
+        _state.update { it.copy(pendingConferenceReplace = null) }
+    }
+
+    fun confirmPendingConferenceReplace() {
+        val pending = _state.value.pendingConferenceReplace ?: return
+        _state.update { it.copy(pendingConferenceReplace = null) }
+        replaceConferenceNow(pending)
+    }
+
+    private fun replaceConferenceNow(pending: PendingConferenceReplace) {
         scope.launch {
             _state.update { it.copy(loading = true, transferNotice = null, conferenceActionError = null) }
             try {
-                val replacedId = conferenceTransfer.replaceConference(conferenceId, sourcePath)
-                val conferences = repository.listConferences()
-                val replaced = repository.getConference(ConferenceId(replacedId))
+                val replaced = if (pending.synchronizedSource) {
+                    requireNotNull(workspace).replaceFromSynchronized(pending.conferenceId, pending.sourcePath)
+                } else {
+                    val replacedId = conferenceTransfer.replaceConference(pending.conferenceId, pending.sourcePath)
+                    requireNotNull(repository.getConference(ConferenceId(replacedId)))
+                }
+                val replacedId = replaced.id.value
+                val index = loadConferenceIndex()
                 lastSelectedConferenceStore.save(replacedId)
                 _state.update {
                     it.copy(
-                        conferences = conferences,
+                        conferences = index.conferences,
+                        conferenceEntries = index.entries,
                         selectedConferenceId = replacedId,
                         selectedConference = replaced,
                         loading = false,
@@ -1221,9 +1358,88 @@ class MainViewModel internal constructor(
         }
     }
 
+    private fun launchWorkspaceAction(selectResult: Boolean, action: suspend () -> Conference) {
+        val expectedSelectedConferenceId = selectedIdOrNull()
+        scope.launch {
+            _state.update { it.copy(loading = true, conferenceActionError = null, transferNotice = null) }
+            try {
+                val conference = action()
+                val index = loadConferenceIndex()
+                var selectedResult = false
+                _state.update { current ->
+                    selectedResult = selectResult && current.selectedConferenceId == expectedSelectedConferenceId
+                    current.copy(
+                        conferences = index.conferences,
+                        conferenceEntries = index.entries,
+                        selectedConferenceId = if (selectedResult) conference.id.value else current.selectedConferenceId,
+                        selectedConference = if (selectedResult) conference else current.selectedConference,
+                        loading = false,
+                        conferenceActionError = null,
+                    )
+                }
+                if (selectedResult) lastSelectedConferenceStore.save(conference.id.value)
+            } catch (exception: Exception) {
+                val index = runCatching { loadConferenceIndex() }.getOrNull()
+                _state.update {
+                    it.copy(
+                        conferences = index?.conferences ?: it.conferences,
+                        conferenceEntries = index?.entries ?: it.conferenceEntries,
+                        loading = false,
+                        conferenceActionError = exception.readableMessage(),
+                    )
+                }
+            }
+        }
+    }
+
+    private fun launchWorkspaceRemoval(conferenceId: String, action: suspend () -> Unit) {
+        scope.launch {
+            _state.update { it.copy(loading = true, conferenceActionError = null) }
+            try {
+                action()
+                val index = loadConferenceIndex()
+                val previousSelected = _state.value.selectedConferenceId
+                val nextId = if (previousSelected == conferenceId) index.entries.firstOrNull()?.id else previousSelected
+                val nextConference = nextId?.let { repository.getConference(ConferenceId(it)) }
+                lastSelectedConferenceStore.save(nextId)
+                _state.update {
+                    it.copy(
+                        conferences = index.conferences,
+                        conferenceEntries = index.entries,
+                        selectedConferenceId = nextId,
+                        selectedConference = nextConference,
+                        loading = false,
+                    )
+                }
+            } catch (exception: Exception) {
+                _state.update { it.copy(loading = false, conferenceActionError = exception.readableMessage()) }
+            }
+        }
+    }
+
     private suspend fun loadConferenceNow(conferenceId: String) {
         val conference = repository.getConference(ConferenceId(conferenceId))
-        updateConferenceState(conferenceId) { it.copy(selectedConference = conference) }
+        val entries = workspace?.listEntries()
+        updateConferenceState(conferenceId) {
+            it.copy(
+                selectedConference = conference,
+                conferenceEntries = entries ?: it.conferenceEntries,
+            )
+        }
+    }
+
+    private suspend fun loadConferenceIndex(): ConferenceIndex {
+        val conferences = repository.listConferences()
+        val entries = workspace?.listEntries() ?: conferences.mapIndexed { index, conference ->
+            ConferenceListItem(
+                id = conference.id.value,
+                name = conference.name,
+                displayOrder = index,
+                storageKind = ConferenceListStorageKind.Local,
+                availability = ConferenceListAvailability.Available,
+            )
+        }
+        return ConferenceIndex(conferences, entries.sortedBy { it.displayOrder })
     }
 
     private fun selectedIdOrNull(): String? = _state.value.selectedConferenceId
@@ -1233,16 +1449,35 @@ class MainViewModel internal constructor(
         showNotice: Boolean,
     ) {
         try {
+            val unavailableCount = _state.value.conferenceEntries.count { entry ->
+                entry.storageKind == ConferenceListStorageKind.Synchronized &&
+                    entry.availability != ConferenceListAvailability.Available
+            }
             val fullConferences = repository.listConferences()
                 .mapNotNull { conference -> repository.getConference(conference.id) }
             val result = markdownSafetyExport.exportAll(fullConferences, trigger)
-            if (showNotice && result.hasFailures) {
-                val count = result.failures.size
-                val message = if (count == 1) {
-                    "Textual safety export failed for 1 conference."
-                } else {
-                    "Textual safety export failed for $count conferences."
-                }
+            if (showNotice && (result.hasFailures || unavailableCount > 0)) {
+                val message = buildList {
+                    if (result.hasFailures) {
+                        val count = result.failures.size
+                        add(
+                            if (count == 1) {
+                                "Textual safety export failed for 1 conference."
+                            } else {
+                                "Textual safety export failed for $count conferences."
+                            },
+                        )
+                    }
+                    if (unavailableCount > 0) {
+                        add(
+                            if (unavailableCount == 1) {
+                                "Skipped 1 unavailable synchronized conference."
+                            } else {
+                                "Skipped $unavailableCount unavailable synchronized conferences."
+                            },
+                        )
+                    }
+                }.joinToString(" ")
                 _state.update { it.copy(transferNotice = TransferNotice(nextTransferNoticeId(), message)) }
             }
         } catch (exception: Exception) {
@@ -1280,8 +1515,8 @@ class MainViewModel internal constructor(
         if (requireChangedFrom != null && trimmed == requireChangedFrom.trim()) {
             return "Enter a different conference name."
         }
-        val duplicate = _state.value.conferences.any { conference ->
-            conference.id.value != currentConferenceId && conference.name.trim().equals(trimmed, ignoreCase = true)
+        val duplicate = _state.value.conferenceEntries.any { conference ->
+            conference.id != currentConferenceId && conference.name.trim().equals(trimmed, ignoreCase = true)
         }
         if (duplicate) {
             return "A conference with this name already exists."
@@ -1341,6 +1576,7 @@ data class MainUiState(
     val startupLoading: Boolean = true,
     val loading: Boolean = true,
     val conferences: List<Conference> = emptyList(),
+    val conferenceEntries: List<ConferenceListItem> = emptyList(),
     val selectedConferenceId: String? = null,
     val selectedConference: Conference? = null,
     val workbookUpdateNotice: WorkbookUpdateNotice? = null,
@@ -1364,6 +1600,57 @@ data class MainUiState(
     val questionConfigurationOpen: Boolean = false,
     val questionConfigurationError: String? = null,
     val pendingWorkbookUpdate: PendingWorkbookUpdate? = null,
+    val pendingSynchronizedImportPath: Path? = null,
+    val pendingConferenceReplace: PendingConferenceReplace? = null,
+)
+
+data class ConferenceListItem(
+    val id: String,
+    val name: String,
+    val displayOrder: Int,
+    val storageKind: ConferenceListStorageKind,
+    val availability: ConferenceListAvailability,
+    val path: String? = null,
+    val lastLoadedAtEpochMillis: Long? = null,
+)
+
+enum class ConferenceListStorageKind {
+    Local,
+    Synchronized,
+}
+
+enum class ConferenceListAvailability {
+    Available,
+    Missing,
+    Invalid,
+    NewerVersion,
+    Inaccessible,
+}
+
+data class PendingConferenceReplace(
+    val conferenceId: String,
+    val conferenceName: String,
+    val sourcePath: Path,
+    val synchronizedTarget: Boolean,
+    val synchronizedSource: Boolean,
+)
+
+data class ConferenceFileInspection(
+    val kind: ConferenceFileKind,
+    val message: String? = null,
+)
+
+enum class ConferenceFileKind {
+    ApplicationDatabase,
+    ConferenceTransfer,
+    SynchronizedConference,
+    LegacyTransfer,
+    Invalid,
+}
+
+private data class ConferenceIndex(
+    val conferences: List<Conference>,
+    val entries: List<ConferenceListItem>,
 )
 
 data class PendingWorkbookUpdate(

@@ -37,6 +37,7 @@ import java.awt.dnd.DropTargetEvent
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
 import java.awt.event.WindowEvent
+import java.awt.event.WindowAdapter
 import java.awt.event.WindowStateListener
 import java.io.File
 import java.io.FilenameFilter
@@ -141,8 +142,14 @@ private fun MunAssignApplication(
             window.minimumSize = MinimumMainWindowSize
             windowBoundsTracker.capture(window)
             val windowBoundsListener = WindowBoundsListener(window, windowBoundsTracker)
+            val focusReloadListener = object : WindowAdapter() {
+                override fun windowGainedFocus(event: WindowEvent?) {
+                    viewModel.reloadSelectedSynchronizedConference()
+                }
+            }
             window.addComponentListener(windowBoundsListener)
             window.addWindowStateListener(windowBoundsListener)
+            window.addWindowFocusListener(focusReloadListener)
 
             val dropTargets = window.workbookDropTargetComponents()
             val previousDropTargets = dropTargets.associateWith { it.dropTarget }
@@ -156,6 +163,7 @@ private fun MunAssignApplication(
                 windowBoundsTracker.capture(window)
                 window.removeComponentListener(windowBoundsListener)
                 window.removeWindowStateListener(windowBoundsListener)
+                window.removeWindowFocusListener(focusReloadListener)
                 if (mainWindow === window) {
                     mainWindow = null
                 }
@@ -169,6 +177,26 @@ private fun MunAssignApplication(
         App(
             viewModel = viewModel,
             workbookDropFeedback = workbookDropFeedback,
+            onCreateSynchronizedConference = { conferenceName ->
+                saveSynchronizedConferenceFile(window, conferenceName)?.let { selected ->
+                    viewModel.createSynchronizedConference(conferenceName, selected.toPath())
+                }
+            },
+            onMoveConferenceToSynchronized = { conferenceId, conferenceName ->
+                saveSynchronizedConferenceFile(window, conferenceName)?.let { selected ->
+                    viewModel.moveConferenceToSynchronized(conferenceId, selected.toPath())
+                }
+            },
+            onConnectSynchronizedConference = {
+                openMunAssignFile(window, "Connect synchronized conference")?.let { selected ->
+                    viewModel.connectSynchronizedConference(selected.toPath())
+                }
+            },
+            onLocateSynchronizedConference = { conferenceId ->
+                openMunAssignFile(window, "Locate synchronized conference")?.let { selected ->
+                    viewModel.locateSynchronizedConference(conferenceId, selected.toPath())
+                }
+            },
             onOpenWorkbook = {
                 val dialog = FileDialog(window, "Select update file", FileDialog.LOAD)
                 dialog.filenameFilter = FilenameFilter { _, name -> name.hasWorkbookUpdateExtension() }
@@ -202,7 +230,7 @@ private fun MunAssignApplication(
             },
             onReplaceConference = { conferenceId, conferenceName ->
                 openMunAssignFile(window, "Replace $conferenceName")?.let { selected ->
-                    viewModel.replaceConference(conferenceId, selected.toPath())
+                    viewModel.prepareReplaceConference(conferenceId, selected.toPath())
                 }
             },
             onOpenMarkdownExportFolder = {
@@ -468,6 +496,30 @@ private fun openMunAssignFile(parent: Frame, title: String): File? {
     dialog.filenameFilter = FilenameFilter { _, name -> name.endsWith(".munassign", ignoreCase = true) }
     dialog.isVisible = true
     return if (dialog.file != null) File(dialog.directory, dialog.file) else null
+}
+
+private fun saveSynchronizedConferenceFile(parent: Frame, conferenceName: String): File? {
+    val dialog = FileDialog(parent, "Choose synchronized conference location", FileDialog.SAVE)
+    dialog.file = "${conferenceName.fileSafeName()}.sync.munassign"
+    dialog.isVisible = true
+    val selected = dialog.file?.let { fileName ->
+        val normalized = if (fileName.endsWith(".sync.munassign", ignoreCase = true)) {
+            fileName
+        } else {
+            "$fileName.sync.munassign"
+        }
+        File(dialog.directory, normalized)
+    } ?: return null
+    if (selected.exists()) {
+        JOptionPane.showMessageDialog(
+            parent,
+            "A file already exists at ${selected.absolutePath}. Choose a new location.",
+            "Synchronized file already exists",
+            JOptionPane.WARNING_MESSAGE,
+        )
+        return null
+    }
+    return selected
 }
 
 private fun FileDialog.selectedFileWithMunAssignExtension(): File? {

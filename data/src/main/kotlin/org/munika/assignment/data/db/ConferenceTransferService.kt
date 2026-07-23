@@ -22,7 +22,15 @@ class ConferenceTransferService(
     private val databasePath: Path = DatabaseFactory.defaultDatabasePath(),
 ) {
     suspend fun exportConference(conferenceId: String, destinationPath: Path): Unit = withContext(Dispatchers.IO) {
-        require(databasePath.toAbsolutePath().normalize() != destinationPath.toAbsolutePath().normalize()) {
+        exportConference(databasePath, conferenceId, destinationPath)
+    }
+
+    suspend fun exportConference(
+        sourceDatabasePath: Path,
+        conferenceId: String,
+        destinationPath: Path,
+    ): Unit = withContext(Dispatchers.IO) {
+        require(sourceDatabasePath.toAbsolutePath().normalize() != destinationPath.toAbsolutePath().normalize()) {
             "Cannot export over the active MunAssign database."
         }
         Files.createDirectories(destinationPath.toAbsolutePath().parent)
@@ -30,7 +38,8 @@ class ConferenceTransferService(
         Files.deleteIfExists(tempPath)
         try {
             TransactionManager.closeAndUnregister(DatabaseFactory.connect(tempPath))
-            sqliteConnection(databasePath).use { source ->
+            MunAssignFileMetadataStore(tempPath).setKind(MunAssignFileKind.ConferenceTransfer)
+            sqliteConnection(sourceDatabasePath).use { source ->
                 sqliteConnection(tempPath).use { target ->
                     target.transaction {
                         exportConferenceRows(source, target, conferenceId)
@@ -45,25 +54,47 @@ class ConferenceTransferService(
     }
 
     suspend fun importConferenceAsNew(sourcePath: Path): String = withContext(Dispatchers.IO) {
-        importConference(sourcePath, replaceTargetConferenceId = null)
+        importConference(databasePath, sourcePath, replaceTargetConferenceId = null, allowSynchronizedSource = false)
+    }
+
+    suspend fun importConferenceAsNew(
+        targetDatabasePath: Path,
+        sourcePath: Path,
+        allowSynchronizedSource: Boolean,
+    ): String = withContext(Dispatchers.IO) {
+        importConference(targetDatabasePath, sourcePath, replaceTargetConferenceId = null, allowSynchronizedSource)
     }
 
     suspend fun replaceConference(targetConferenceId: String, sourcePath: Path): String = withContext(Dispatchers.IO) {
-        importConference(sourcePath, replaceTargetConferenceId = targetConferenceId)
+        importConference(databasePath, sourcePath, targetConferenceId, allowSynchronizedSource = false)
     }
 
-    private fun importConference(sourcePath: Path, replaceTargetConferenceId: String?): String {
-        require(databasePath.toAbsolutePath().normalize() != sourcePath.toAbsolutePath().normalize()) {
+    suspend fun replaceConference(
+        targetDatabasePath: Path,
+        targetConferenceId: String,
+        sourcePath: Path,
+        allowSynchronizedSource: Boolean,
+    ): String = withContext(Dispatchers.IO) {
+        importConference(targetDatabasePath, sourcePath, targetConferenceId, allowSynchronizedSource)
+    }
+
+    private fun importConference(
+        targetDatabasePath: Path,
+        sourcePath: Path,
+        replaceTargetConferenceId: String?,
+        allowSynchronizedSource: Boolean,
+    ): String {
+        require(targetDatabasePath.toAbsolutePath().normalize() != sourcePath.toAbsolutePath().normalize()) {
             "Cannot import the active MunAssign database."
         }
         require(Files.isRegularFile(sourcePath)) { "Transfer file does not exist." }
         val tempPath = Files.createTempFile("munassign-import-", ".db")
         try {
             Files.copy(sourcePath, tempPath, StandardCopyOption.REPLACE_EXISTING)
-            validateTransferSchemaVersion(tempPath)
+            validateTransferSchemaVersion(tempPath, allowSynchronizedSource)
             TransactionManager.closeAndUnregister(DatabaseFactory.connect(tempPath))
             sqliteConnection(tempPath).use { source ->
-                sqliteConnection(databasePath).use { target ->
+                sqliteConnection(targetDatabasePath).use { target ->
                     return target.transaction {
                         importConferenceRows(source, target, replaceTargetConferenceId)
                     }
@@ -80,16 +111,29 @@ class ConferenceTransferService(
         }
     }
 
-    private fun validateTransferSchemaVersion(path: Path) {
-        sqliteConnection(path).use { connection ->
-            val hasMigrationTable = connection.tableExists("schema_migrations")
-            if (!hasMigrationTable) {
-                throw TransferException("The selected file is not a MunAssign transfer file.")
+    private fun validateTransferSchemaVersion(path: Path, allowSynchronizedSource: Boolean) {
+        when (val inspection = MunAssignFileInspector().inspect(path)) {
+            is MunAssignFileInspection.Invalid -> throw TransferException(inspection.message)
+            is MunAssignFileInspection.LegacyTransfer -> {
+                if (inspection.schemaVersion > DatabaseFactory.CURRENT_SCHEMA_VERSION) {
+                    throw TransferException("This transfer file was created by a newer MunAssign version.")
+                }
             }
-            val version = connection.querySingleInt("SELECT MAX(version) FROM schema_migrations")
-                ?: throw TransferException("The selected file is not a MunAssign transfer file.")
-            if (version > DatabaseFactory.CURRENT_SCHEMA_VERSION) {
-                throw TransferException("This transfer file was created by a newer MunAssign version.")
+            is MunAssignFileInspection.Valid -> {
+                if (inspection.schemaVersion > DatabaseFactory.CURRENT_SCHEMA_VERSION) {
+                    throw TransferException("This transfer file was created by a newer MunAssign version.")
+                }
+                when (inspection.metadata.kind) {
+                    MunAssignFileKind.ConferenceTransfer -> Unit
+                    MunAssignFileKind.SynchronizedConference -> if (!allowSynchronizedSource) {
+                        throw TransferException(
+                            "This is a synchronized conference. Connect it, or explicitly import a detached copy.",
+                        )
+                    }
+                    MunAssignFileKind.ApplicationDatabase -> throw TransferException(
+                        "The selected file is an application database, not a conference transfer.",
+                    )
+                }
             }
         }
     }

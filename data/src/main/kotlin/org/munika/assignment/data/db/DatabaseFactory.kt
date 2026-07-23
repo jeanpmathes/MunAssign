@@ -20,6 +20,7 @@ import org.munika.assignment.data.db.tables.AnswerIssueResolutionTable
 import org.munika.assignment.data.db.tables.AnswerRuleTypeTable
 import org.munika.assignment.data.db.tables.ConferenceTable
 import org.munika.assignment.data.db.tables.MunAssignTables
+import org.munika.assignment.data.db.tables.MunAssignFileMetadataTable
 import org.munika.assignment.data.db.tables.MymunUpdateFilenamePartTable
 import org.munika.assignment.data.db.tables.MymunUpdateFilenameSignatureTable
 import org.munika.assignment.data.db.tables.MymunUpdateIssueTable
@@ -190,6 +191,16 @@ object DatabaseFactory {
         SchemaMigration(version = 11, name = "add_mymun_update_filename_signatures") {
             SchemaUtils.create(MymunUpdateFilenameSignatureTable, MymunUpdateFilenamePartTable)
             backfillMymunUpdateFilenameSignatures()
+        },
+        SchemaMigration(version = 12, name = "add_munassign_file_metadata") {
+            SchemaUtils.create(MunAssignFileMetadataTable)
+            if (MunAssignFileMetadataTable.selectAll().none()) {
+                MunAssignFileMetadataTable.insert {
+                    it[singleton] = 1
+                    it[fileId] = UUID.randomUUID().toString()
+                    it[kind] = MunAssignFileKind.ApplicationDatabase.name
+                }
+            }
         },
     )
 

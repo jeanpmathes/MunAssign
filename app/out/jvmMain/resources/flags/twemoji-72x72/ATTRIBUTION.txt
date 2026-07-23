@@ -1,0 +1,7 @@
+Twemoji flag images
+
+Source: https://github.com/twitter/twemoji
+Downloaded from: https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/
+Graphics license: Creative Commons Attribution 4.0 International (CC BY 4.0)
+License URL: https://creativecommons.org/licenses/by/4.0/
+Author: Twitter, Inc and other contributors

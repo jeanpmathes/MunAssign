@@ -71,6 +71,7 @@ import org.munika.assignment.data.excel.MymunDelegateRow
 import org.munika.assignment.data.excel.MymunDelegationRow
 import org.munika.assignment.data.excel.MymunValidationSeverity
 import org.munika.assignment.data.excel.MymunWorkbookSnapshot
+import org.munika.assignment.data.excel.MymunSnapshotRepository
 import org.munika.assignment.data.excel.toExcelColumnName
 import org.munika.assignment.domain.model.AssignmentSource
 import org.munika.assignment.domain.model.AnswerIssueResolutionId
@@ -117,7 +118,7 @@ import org.slf4j.LoggerFactory
  */
 class ConferenceRepositoryImpl(
     private val database: Database = DatabaseFactory.connect(),
-) : ConferenceRepository {
+) : ConferenceRepository, MymunSnapshotRepository {
     constructor(databasePath: Path) : this(DatabaseFactory.connect(databasePath))
 
     private val logger = LoggerFactory.getLogger(ConferenceRepositoryImpl::class.java)
@@ -924,11 +925,11 @@ class ConferenceRepositoryImpl(
      * MyMUN-managed rows are reconciled by workbook identity while organizer-managed state remains
      * attached to stable local IDs whenever the referenced workbook object still exists.
      */
-    suspend fun applyMymunUpdateSnapshot(
+    override suspend fun applyMymunUpdateSnapshot(
         conferenceId: String,
         snapshot: MymunWorkbookSnapshot,
-        sourceFilename: String? = snapshot.workbookName,
-        signatureToTrust: MymunUpdateFilenameCandidate? = null,
+        sourceFilename: String?,
+        signatureToTrust: MymunUpdateFilenameCandidate?,
     ): UpdateResult = db {
         logger.info(
             "Starting MyMUN update for conference={} source={} delegates={} positions={} delegations={} confirmedAssignments={} parserIssues={}",
