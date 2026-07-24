@@ -21,6 +21,7 @@ import org.munika.assignment.domain.model.DelegateProfile
 import org.munika.assignment.domain.model.HighSchoolerAnswerMapping
 import org.munika.assignment.domain.model.HighSchoolerStatus
 import org.munika.assignment.domain.model.PaymentStatus
+import org.munika.assignment.domain.model.PaymentTier
 import org.munika.assignment.domain.model.PersonName
 import org.munika.assignment.domain.model.Position
 import org.munika.assignment.domain.model.PositionId
@@ -398,7 +399,68 @@ class AssignmentBoardUiModelsTest {
         assertEquals(listOf("UNSC"), positions.single { it.id == "second-reporter" }.mappingOptions.map { it.name })
     }
 
-    private fun board(slotCount: Int = 1, isHighSchoolCommittee: Boolean = false): Board {
+    @Test
+    fun `board exposes committee tier and mismatch markers for candidates and occupied slots`() {
+        val board = board(
+            committeePaymentTier = PaymentTier.Full,
+            availablePaymentTier = PaymentTier.Reduced,
+        )
+
+        val initial = board.conference.toAssignmentBoardUiState().committees.single()
+        val availableCandidate = initial.positions.single { it.name == "Germany" }
+            .assignmentCandidates.single { it.name == "Available Delegate" }
+
+        assertEquals(PaymentTier.Full, initial.paymentTier)
+        assertEquals(PaymentTierMismatchDirection.ReducedIntoFull, availableCandidate.paymentTierMismatch?.direction)
+        assertFalse(availableCandidate.paymentTierMismatch?.acknowledged == true)
+
+        board.germanySlot.assign(board.available, AssignmentSource.Application, Instant.EPOCH)
+        val occupied = board.conference.toAssignmentBoardUiState().committees.single()
+            .positions.single { it.name == "Germany" }
+            .slots.single()
+
+        assertEquals(PaymentTierMismatchDirection.ReducedIntoFull, occupied.paymentTierMismatch?.direction)
+    }
+
+    @Test
+    fun `payment tier compatibility sorts before school level fit`() {
+        val board = board(
+            isHighSchoolCommittee = true,
+            committeePaymentTier = PaymentTier.Reduced,
+            availablePaymentTier = PaymentTier.Reduced,
+            neutralPaymentTier = PaymentTier.Full,
+        )
+        markHighSchooler(board.confirmedElsewhere)
+        val fullHighSchooler = delegate(
+            conference = board.conference,
+            id = "full-high-schooler",
+            firstName = "Full",
+            lastName = "HighSchooler",
+            paymentStatus = PaymentStatus.Paid,
+            paymentTier = PaymentTier.Full,
+            active = true,
+        )
+        markHighSchooler(fullHighSchooler)
+        board.conference.delegates += fullHighSchooler
+
+        val candidates = board.conference.toAssignmentBoardUiState().committees.single()
+            .positions.single { it.name == "Germany" }
+            .assignmentCandidates
+
+        assertEquals("Available Delegate", candidates.first().name)
+        assertEquals(
+            PaymentTierMismatchDirection.FullIntoReduced,
+            candidates.single { it.name == "Full HighSchooler" }.paymentTierMismatch?.direction,
+        )
+    }
+
+    private fun board(
+        slotCount: Int = 1,
+        isHighSchoolCommittee: Boolean = false,
+        committeePaymentTier: PaymentTier = PaymentTier.Full,
+        availablePaymentTier: PaymentTier = PaymentTier.Full,
+        neutralPaymentTier: PaymentTier = PaymentTier.Full,
+    ): Board {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val committee = Committee(
             CommitteeId("committee"),
@@ -406,14 +468,15 @@ class AssignmentBoardUiModelsTest {
             "GA",
             slotsPerPosition = slotCount,
             mode = if (isHighSchoolCommittee) CommitteeMode.HighSchool else CommitteeMode.University,
+            paymentTier = committeePaymentTier,
         )
         val france = Position(PositionId("france"), committee, "France")
         val germany = Position(PositionId("germany"), committee, "Germany")
-        val available = delegate(conference, "available", "Available", "Delegate", PaymentStatus.Paid, active = true)
-        val unpaid = delegate(conference, "unpaid", "Unpaid", "Delegate", PaymentStatus.Unpaid, active = true)
-        val inactive = delegate(conference, "inactive", "Inactive", "Delegate", PaymentStatus.Paid, active = false)
-        val confirmedElsewhere = delegate(conference, "confirmed", "Confirmed", "Elsewhere", PaymentStatus.Paid, active = true)
-        val neutral = delegate(conference, "neutral", "Neutral", "Delegate", PaymentStatus.Paid, active = true)
+        val available = delegate(conference, "available", "Available", "Delegate", PaymentStatus.Paid, availablePaymentTier, active = true)
+        val unpaid = delegate(conference, "unpaid", "Unpaid", "Delegate", PaymentStatus.Unpaid, paymentTier = null, active = true)
+        val inactive = delegate(conference, "inactive", "Inactive", "Delegate", PaymentStatus.Paid, PaymentTier.Full, active = false)
+        val confirmedElsewhere = delegate(conference, "confirmed", "Confirmed", "Elsewhere", PaymentStatus.Paid, PaymentTier.Full, active = true)
+        val neutral = delegate(conference, "neutral", "Neutral", "Delegate", PaymentStatus.Paid, neutralPaymentTier, active = true)
 
         conference.committees += committee
         committee.positions += listOf(france, germany)
@@ -441,8 +504,8 @@ class AssignmentBoardUiModelsTest {
         conference.committees += listOf(ipc, target)
         reporter.setMappedCommittee(target)
         val targetPosition = Position(PositionId("target-position"), target, "France")
-        val available = delegate(conference, "available", "Available", "Delegate", PaymentStatus.Paid, active = true)
-        val neutral = delegate(conference, "neutral", "Neutral", "Delegate", PaymentStatus.Paid, active = true)
+        val available = delegate(conference, "available", "Available", "Delegate", PaymentStatus.Paid, PaymentTier.Full, active = true)
+        val neutral = delegate(conference, "neutral", "Neutral", "Delegate", PaymentStatus.Paid, PaymentTier.Full, active = true)
 
         conference.delegates += listOf(available, neutral)
         target.positions += targetPosition
@@ -458,6 +521,7 @@ class AssignmentBoardUiModelsTest {
         firstName: String,
         lastName: String,
         paymentStatus: PaymentStatus,
+        paymentTier: PaymentTier? = PaymentTier.Full,
         active: Boolean,
         applicationStatus: String? = "Accepted",
     ): Delegate =
@@ -468,6 +532,7 @@ class AssignmentBoardUiModelsTest {
             email = "$id@example.test",
             profile = DelegateProfile(null, null, null, null, null, null, null, LocalDate.of(2007, 5, 15), null, applicationStatus),
             paymentStatus = paymentStatus,
+            paymentTier = paymentTier,
             active = active,
             isHeadDelegate = false,
         )

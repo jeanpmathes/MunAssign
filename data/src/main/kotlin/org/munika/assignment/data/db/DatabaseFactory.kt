@@ -33,6 +33,7 @@ import org.munika.assignment.data.db.tables.SchemaMigrationTable
 import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
 import org.munika.assignment.domain.model.MymunUpdateFilenameCandidate
+import org.munika.assignment.domain.model.PaymentTier
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
 import org.sqlite.SQLiteConfig
 
@@ -201,6 +202,14 @@ object DatabaseFactory {
                     it[kind] = MunAssignFileKind.ApplicationDatabase.name
                 }
             }
+        },
+        SchemaMigration(version = 13, name = "add_payment_tiers") {
+            addColumnIfMissing(
+                "committees",
+                "payment_tier",
+                "VARCHAR(32) NOT NULL DEFAULT '${PaymentTier.Full.name}'",
+            )
+            addColumnIfMissing("delegates", "payment_tier", "VARCHAR(32) NULL")
         },
     )
 

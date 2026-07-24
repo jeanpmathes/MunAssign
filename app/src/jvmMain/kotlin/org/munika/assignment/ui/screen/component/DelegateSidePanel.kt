@@ -81,6 +81,7 @@ import org.munika.assignment.ui.viewmodel.DelegateResolvedIssueUiState
 import org.munika.assignment.ui.viewmodel.DelegateStatusChipUiState
 import org.munika.assignment.ui.viewmodel.DelegateStatusTone
 import org.munika.assignment.ui.viewmodel.ReservationSummaryUiState
+import org.munika.assignment.domain.model.PaymentTier
 
 private const val ManualReservationSourceLabel = "Manual"
 
@@ -102,6 +103,7 @@ fun DelegateSidePanel(
     onOpenNotices: (delegateId: String) -> Unit,
     onResolveIssue: (delegateId: String, questionId: String?, issueKey: String, justification: String?) -> Unit,
     onUnresolveIssue: (resolutionId: String) -> Unit,
+    onSetPaymentTier: (delegateId: String, paymentTier: PaymentTier) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var deactivateDialogOpen by remember(detail.id) { mutableStateOf(false) }
@@ -125,6 +127,8 @@ fun DelegateSidePanel(
         Column(modifier = Modifier.fillMaxHeight()) {
             Header(
                 detail = detail,
+                loading = loading,
+                onSetPaymentTier = { tier -> onSetPaymentTier(detail.id, tier) },
                 onClose = onClose,
             )
             HorizontalDivider()
@@ -269,7 +273,12 @@ fun DelegateSidePanel(
 }
 
 @Composable
-private fun Header(detail: DelegateDetailUiState, onClose: () -> Unit) {
+private fun Header(
+    detail: DelegateDetailUiState,
+    loading: Boolean,
+    onSetPaymentTier: (PaymentTier) -> Unit,
+    onClose: () -> Unit,
+) {
     Column(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -307,6 +316,14 @@ private fun Header(detail: DelegateDetailUiState, onClose: () -> Unit) {
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             StatusChip(detail.paymentStatus)
+            detail.paymentTierStatus?.let { status ->
+                PaymentTierSelector(
+                    status = status,
+                    currentTier = detail.paymentTier,
+                    enabled = !loading,
+                    onSetPaymentTier = onSetPaymentTier,
+                )
+            }
             detail.applicationStatus?.let { StatusChip(it) }
             detail.inactiveMarker?.let { StatusChip(it) }
             if (detail.highSchooler) {
@@ -326,6 +343,34 @@ private fun Header(detail: DelegateDetailUiState, onClose: () -> Unit) {
                         tone = DelegateStatusTone.Neutral,
                         tooltip = "This delegate is marked as a head delegate online.",
                     ),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaymentTierSelector(
+    status: DelegateStatusChipUiState,
+    currentTier: PaymentTier?,
+    enabled: Boolean,
+    onSetPaymentTier: (PaymentTier) -> Unit,
+) {
+    var expanded by remember(currentTier) { mutableStateOf(false) }
+    Box {
+        BoardTooltip(status.tooltip) {
+            TextButton(onClick = { expanded = true }, enabled = enabled) {
+                Text(status.label, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            PaymentTier.entries.forEach { tier ->
+                DropdownMenuItem(
+                    text = { Text(if (tier == PaymentTier.Full) "Full tier" else "Reduced tier") },
+                    onClick = {
+                        expanded = false
+                        if (tier != currentTier) onSetPaymentTier(tier)
+                    },
                 )
             }
         }

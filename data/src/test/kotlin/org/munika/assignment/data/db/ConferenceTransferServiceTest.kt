@@ -20,6 +20,7 @@ import org.munika.assignment.data.excel.MymunWorkbookUpdater
 import org.munika.assignment.domain.model.AnswerIssueSeverity
 import org.munika.assignment.domain.model.ConferenceId
 import org.munika.assignment.domain.model.MymunUpdateFilenameCandidate
+import org.munika.assignment.domain.model.PaymentTier
 
 class ConferenceTransferServiceTest {
     @Test
@@ -49,6 +50,8 @@ class ConferenceTransferServiceTest {
         assertNotEquals(sourceLoaded.id, imported.id)
         assertEquals(sourceLoaded.committees.size, imported.committees.size)
         assertEquals(sourceLoaded.delegates.size, imported.delegates.size)
+        assertEquals(PaymentTier.Reduced, imported.committees.first().paymentTier)
+        assertEquals(PaymentTier.Full, imported.delegates.first().paymentTier)
         assertEquals(sourceLoaded.questions.size, imported.questions.size)
         assertEquals(sourceLoaded.reservations.size, imported.reservations.size)
         assertEquals(sourceLoaded.delegates.sumOf { it.comments.size }, imported.delegates.sumOf { it.comments.size })
@@ -232,6 +235,8 @@ class ConferenceTransferServiceTest {
         assertTrue(update.success, update.issues.joinToString("; ") { it.message })
         val loaded = requireNotNull(repository.getConference(conference.id))
         val delegate = loaded.delegates.first()
+        repository.setCommitteePaymentTier(conference.id, loaded.committees.first().id, PaymentTier.Reduced)
+        repository.setDelegatePaymentTier(conference.id, delegate.id, PaymentTier.Full)
         repository.addDelegateComment(conference.id, delegate.id, "Transfer note")
         repository.createReservation(conference.id, "Transfer hold", highSchoolCount = 1, universityCount = 1, delegationId = null)
         val question = requireNotNull(loaded.questions.firstOrNull())

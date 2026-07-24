@@ -3,6 +3,7 @@ package org.munika.assignment.data.db.tables
 import org.jetbrains.exposed.v1.core.ReferenceOption
 import org.jetbrains.exposed.v1.core.Table
 import org.munika.assignment.domain.model.CommitteeMode
+import org.munika.assignment.domain.model.PaymentTier
 
 object CommitteeTable : Table("committees") {
     val id = varchar("id", 36)
@@ -13,6 +14,7 @@ object CommitteeTable : Table("committees") {
     val slotsPerPosition = integer("slots_per_position")
     val isHighSchoolCommittee = bool("is_high_school_committee").default(false)
     val mode = varchar("mode", 32).default(CommitteeMode.University.name)
+    val paymentTier = varchar("payment_tier", 32).default(PaymentTier.Full.name)
 
     override val primaryKey = PrimaryKey(id)
 

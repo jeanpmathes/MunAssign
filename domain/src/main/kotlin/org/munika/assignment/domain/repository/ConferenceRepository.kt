@@ -9,6 +9,7 @@ import org.munika.assignment.domain.model.DelegateCommentId
 import org.munika.assignment.domain.model.DelegateId
 import org.munika.assignment.domain.model.DelegationId
 import org.munika.assignment.domain.model.MymunUpdateFilenameSignatureId
+import org.munika.assignment.domain.model.PaymentTier
 import org.munika.assignment.domain.model.PositionId
 import org.munika.assignment.domain.model.QuestionConfiguration
 import org.munika.assignment.domain.model.QuestionId
@@ -72,6 +73,20 @@ interface ConferenceRepository {
         conferenceId: ConferenceId,
         committeeId: CommitteeId,
         mode: CommitteeMode,
+    ): Conference
+
+    /** Sets one committee's organizer-managed Full or Reduced assignment tier. */
+    suspend fun setCommitteePaymentTier(
+        conferenceId: ConferenceId,
+        committeeId: CommitteeId,
+        paymentTier: PaymentTier,
+    ): Conference
+
+    /** Classifies one MyMUN-paid delegate as Full or Reduced for assignment guidance. */
+    suspend fun setDelegatePaymentTier(
+        conferenceId: ConferenceId,
+        delegateId: DelegateId,
+        paymentTier: PaymentTier,
     ): Conference
 
     /**

@@ -4,8 +4,8 @@ package org.munika.assignment.domain.model
  * Committee imported from MyMUN and displayed as one board column.
  *
  * [mymunName] remains the update-matching key. [alias] is organizer-managed display text only.
- * [slotsPerPosition] applies uniformly to every position in the committee. [mode] is
- * organizer-managed assignment guidance and is preserved across MyMUN updates.
+ * [slotsPerPosition] applies uniformly to every position in the committee. [mode] and
+ * [paymentTier] are organizer-managed assignment guidance preserved across MyMUN updates.
  */
 class Committee(
     override val id: CommitteeId,
@@ -14,6 +14,7 @@ class Committee(
     val alias: String? = null,
     val slotsPerPosition: Int,
     val mode: CommitteeMode = CommitteeMode.University,
+    val paymentTier: PaymentTier = PaymentTier.Full,
     val positions: MutableList<Position> = mutableListOf(),
 ) : DomainObject<CommitteeId> {
     init {

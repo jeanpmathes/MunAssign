@@ -24,6 +24,7 @@ import org.munika.assignment.domain.model.HighSchoolerAnswerMapping
 import org.munika.assignment.domain.model.HighSchoolerStatus
 import org.munika.assignment.domain.model.NoticeWhenNonBlank
 import org.munika.assignment.domain.model.PaymentStatus
+import org.munika.assignment.domain.model.PaymentTier
 import org.munika.assignment.domain.model.PersonName
 import org.munika.assignment.domain.model.Position
 import org.munika.assignment.domain.model.PositionId
@@ -158,6 +159,29 @@ class DelegateListUiModelsTest {
         assertEquals("pending-position", rows.getValue("Pending Delegate").quickNavigation?.positionId)
     }
 
+    @Test
+    fun `delegate list displays and filters full reduced and paid unassigned tiers`() {
+        val board = board()
+        val rows = board.conference.toDelegateListUiState(
+            DelegateListControlsUiState(sort = DelegateListSort.Name),
+            Now,
+        ).rows.associateBy { it.name }
+
+        assertEquals("Full", rows.getValue("Easy Delegate").paymentTierLabel)
+        assertEquals("Reduced", rows.getValue("Contested Delegate").paymentTierLabel)
+        assertEquals("Unassigned tier", rows.getValue("Pending Delegate").paymentTierLabel)
+
+        val reduced = board.conference.toDelegateListUiState(
+            DelegateListControlsUiState(
+                includedPaymentTiers = setOf(DelegateListPaymentTier.Reduced),
+                sort = DelegateListSort.Name,
+            ),
+            Now,
+        )
+
+        assertEquals(listOf("Contested Delegate"), reduced.rows.map { it.name })
+    }
+
     private fun board(): Board {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val general = Committee(CommitteeId("general"), conference, "GA", slotsPerPosition = 1)
@@ -174,13 +198,13 @@ class DelegateListUiModelsTest {
             position.slots += Slot(SlotId("${position.id.value}-slot"), position, 1, Instant.EPOCH)
         }
 
-        val easy = delegate(conference, "easy", "Easy", "Delegate", PaymentStatus.Paid, true, submittedDaysAgo = 9)
-        val contested = delegate(conference, "contested", "Contested", "Delegate", PaymentStatus.Paid, true, submittedDaysAgo = 8)
-        val assigned = delegate(conference, "assigned", "Assigned", "Delegate", PaymentStatus.Paid, true, submittedDaysAgo = 7)
-        val pending = delegate(conference, "pending", "Pending", "Delegate", PaymentStatus.Paid, true, submittedDaysAgo = 6)
-        val unpaid = delegate(conference, "unpaid", "Unpaid", "Delegate", PaymentStatus.Unpaid, true, submittedDaysAgo = 10)
-        val inactive = delegate(conference, "inactive", "Inactive", "Delegate", PaymentStatus.Paid, false, submittedDaysAgo = 11)
-        val filler = delegate(conference, "filler", "Filler", "Delegate", PaymentStatus.Paid, true, submittedDaysAgo = 12)
+        val easy = delegate(conference, "easy", "Easy", "Delegate", PaymentStatus.Paid, PaymentTier.Full, true, submittedDaysAgo = 9)
+        val contested = delegate(conference, "contested", "Contested", "Delegate", PaymentStatus.Paid, PaymentTier.Reduced, true, submittedDaysAgo = 8)
+        val assigned = delegate(conference, "assigned", "Assigned", "Delegate", PaymentStatus.Paid, PaymentTier.Full, true, submittedDaysAgo = 7)
+        val pending = delegate(conference, "pending", "Pending", "Delegate", PaymentStatus.Paid, null, true, submittedDaysAgo = 6)
+        val unpaid = delegate(conference, "unpaid", "Unpaid", "Delegate", PaymentStatus.Unpaid, null, true, submittedDaysAgo = 10)
+        val inactive = delegate(conference, "inactive", "Inactive", "Delegate", PaymentStatus.Paid, PaymentTier.Full, false, submittedDaysAgo = 11)
+        val filler = delegate(conference, "filler", "Filler", "Delegate", PaymentStatus.Paid, PaymentTier.Full, true, submittedDaysAgo = 12)
         val delegation = Delegation(DelegationId("delegation"), conference, "Delegation A", "Finland", null, null)
         conference.delegations += delegation
         delegation.addDelegate(easy)
@@ -235,6 +259,7 @@ class DelegateListUiModelsTest {
         firstName: String,
         lastName: String,
         paymentStatus: PaymentStatus,
+        paymentTier: PaymentTier?,
         active: Boolean,
         submittedDaysAgo: Long,
     ): Delegate =
@@ -245,6 +270,7 @@ class DelegateListUiModelsTest {
             email = "$id@example.test",
             profile = DelegateProfile(null, null, null, null, null, null, null, null, null, null),
             paymentStatus = paymentStatus,
+            paymentTier = paymentTier,
             active = active,
             isHeadDelegate = false,
             submittedAt = Now.minus(submittedDaysAgo, ChronoUnit.DAYS),

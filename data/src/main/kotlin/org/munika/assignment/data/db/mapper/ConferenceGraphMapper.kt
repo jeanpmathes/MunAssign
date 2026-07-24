@@ -36,6 +36,7 @@ import org.munika.assignment.domain.model.MunExperienceLevel
 import org.munika.assignment.domain.model.NoticeWhenAffirmative
 import org.munika.assignment.domain.model.NoticeWhenNonBlank
 import org.munika.assignment.domain.model.PaymentStatus
+import org.munika.assignment.domain.model.PaymentTier
 import org.munika.assignment.domain.model.PersonName
 import org.munika.assignment.domain.model.Position
 import org.munika.assignment.domain.model.PositionId
@@ -92,6 +93,7 @@ object ConferenceGraphMapper {
                 alias = row.alias,
                 slotsPerPosition = row.slotsPerPosition,
                 mode = CommitteeMode.valueOf(row.mode),
+                paymentTier = PaymentTier.valueOf(row.paymentTier),
             )
             conference.committees += committee
             row.id to committee
@@ -323,6 +325,7 @@ object ConferenceGraphMapper {
                 applicationStatus = applicationStatus,
             ),
             paymentStatus = PaymentStatus.valueOf(paymentStatus),
+            paymentTier = paymentTier?.let(PaymentTier::valueOf),
             active = active,
             isHeadDelegate = isHeadDelegate,
             delegation = delegation,

@@ -170,6 +170,107 @@ class DelegateTest {
         assertEquals("Confirmed manually.", delegate.resolvedProfileIssues(nextYear).single().resolution.justification)
     }
 
+    @Test
+    fun `payment tier issues require a tier only for assignment eligible paid delegates`() {
+        val eligiblePaid = paymentTierDelegate("eligible-paid", PaymentStatus.Paid, active = true, applicationStatus = "Accepted")
+        val unpaid = paymentTierDelegate("unpaid", PaymentStatus.Unpaid, active = true, applicationStatus = "Accepted")
+        val inactive = paymentTierDelegate("inactive", PaymentStatus.Paid, active = false, applicationStatus = "Accepted")
+        val submitted = paymentTierDelegate("submitted", PaymentStatus.Paid, active = true, applicationStatus = "Submitted")
+
+        assertEquals(
+            listOf(
+                AnswerIssue(
+                    message = "Paid delegate has no payment tier.",
+                    severity = AnswerIssueSeverity.Warning,
+                    key = "Warning:payment_tier_missing",
+                ),
+            ),
+            eligiblePaid.paymentTierIssues(),
+        )
+        assertTrue(unpaid.paymentTierIssues().isEmpty())
+        assertTrue(inactive.paymentTierIssues().isEmpty())
+        assertTrue(submitted.paymentTierIssues().isEmpty())
+    }
+
+    @Test
+    fun `payment tier issues compare every current assignment with its committee tier`() {
+        val reducedInFull = assignedPaymentTierDelegate(
+            delegateTier = PaymentTier.Reduced,
+            committeeTier = PaymentTier.Full,
+            assignmentSource = AssignmentSource.Application,
+        )
+        val fullInReduced = assignedPaymentTierDelegate(
+            delegateTier = PaymentTier.Full,
+            committeeTier = PaymentTier.Reduced,
+            assignmentSource = AssignmentSource.Mymun,
+        )
+
+        assertEquals(AnswerIssueSeverity.Warning, reducedInFull.paymentTierIssues().single().severity)
+        assertEquals(
+            "Warning:payment_tier_reduced_in_full:committee-Full",
+            reducedInFull.paymentTierIssues().single().key,
+        )
+        assertEquals(AnswerIssueSeverity.Notice, fullInReduced.paymentTierIssues().single().severity)
+        assertEquals(
+            "Notice:payment_tier_full_in_reduced:committee-Reduced",
+            fullInReduced.paymentTierIssues().single().key,
+        )
+    }
+
+    private fun assignedPaymentTierDelegate(
+        delegateTier: PaymentTier,
+        committeeTier: PaymentTier,
+        assignmentSource: AssignmentSource,
+    ): Delegate {
+        val delegate = paymentTierDelegate(
+            suffix = delegateTier.name,
+            paymentStatus = PaymentStatus.Paid,
+            active = true,
+            applicationStatus = "Accepted",
+            paymentTier = delegateTier,
+        )
+        val committee = Committee(
+            id = CommitteeId("committee-${committeeTier.name}"),
+            conference = delegate.conference,
+            mymunName = "Committee ${committeeTier.name}",
+            slotsPerPosition = 1,
+            paymentTier = committeeTier,
+        )
+        delegate.conference.committees += committee
+        val position = Position(PositionId("position-${committeeTier.name}"), committee, "Position")
+        committee.positions += position
+        val slot = Slot(SlotId("slot-${committeeTier.name}"), position, 1, Instant.EPOCH)
+        position.slots += slot
+        slot.assign(delegate, assignmentSource, Instant.EPOCH)
+        return delegate
+    }
+
+    private fun paymentTierDelegate(
+        suffix: String,
+        paymentStatus: PaymentStatus,
+        active: Boolean,
+        applicationStatus: String?,
+        paymentTier: PaymentTier? = null,
+    ): Delegate {
+        val conference = Conference(
+            ConferenceId("conference-$suffix"),
+            "KAMUN",
+            createdAt = Instant.EPOCH,
+            updatedAt = Instant.EPOCH,
+        )
+        return Delegate(
+            id = DelegateId("delegate-$suffix"),
+            conference = conference,
+            name = PersonName("Ada", "Lovelace"),
+            email = "ada@example.test",
+            profile = DelegateProfile(null, null, null, null, null, null, null, null, null, applicationStatus),
+            paymentStatus = paymentStatus,
+            paymentTier = paymentTier,
+            active = active,
+            isHeadDelegate = false,
+        ).also { conference.delegates += it }
+    }
+
     private fun delegateWithAgeAndHighSchoolStatus(age: Int?, status: HighSchoolerStatus?): Delegate {
         val conference = Conference(ConferenceId("conference-$age-$status"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val delegate = Delegate(

@@ -18,6 +18,7 @@ data class DelegateRow(
     val delegationNameFromMymun: String?,
     val applicationStatus: String?,
     val paymentStatus: String,
+    val paymentTier: String? = null,
     val active: Boolean,
     val isHeadDelegate: Boolean,
     val createdAtFromMymunEpochMillis: Long?,

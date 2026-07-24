@@ -26,6 +26,7 @@ import org.munika.assignment.domain.model.Delegation
 import org.munika.assignment.domain.model.DelegationId
 import org.munika.assignment.domain.model.MymunUpdateFilenameCandidate
 import org.munika.assignment.domain.model.MymunUpdateFilenameSignatureId
+import org.munika.assignment.domain.model.PaymentTier
 import org.munika.assignment.domain.model.PositionId
 import org.munika.assignment.domain.model.QuestionConfiguration
 import org.munika.assignment.domain.model.QuestionId
@@ -474,6 +475,26 @@ class MainViewModelTest {
         assertNull(viewModel.state.value.selectedConference)
         assertNull(store.load())
         assertFalse(viewModel.state.value.loading)
+        viewModel.close()
+    }
+
+    @Test
+    fun `set payment tiers refreshes the selected conference`() {
+        val original = Conference(ConferenceId("conference"), "Original", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val updated = Conference(ConferenceId("conference"), "Updated", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val repository = FakeConferenceRepository(initialConference = original, paymentTierConference = updated)
+        val viewModel = viewModelWith(repository)
+        waitUntil { viewModel.state.value.selectedConference === original }
+
+        viewModel.setCommitteePaymentTier("committee", PaymentTier.Reduced)
+        waitUntil { viewModel.state.value.selectedConference === updated }
+        viewModel.setDelegatePaymentTier("delegate", PaymentTier.Full)
+        waitUntil { repository.delegatePaymentTier == PaymentTier.Full }
+
+        assertEquals(PaymentTier.Reduced, repository.committeePaymentTier)
+        assertEquals("committee", repository.paymentTierCommitteeId)
+        assertEquals("delegate", repository.paymentTierDelegateId)
+        assertNull(viewModel.state.value.boardActionError)
         viewModel.close()
     }
 
@@ -1471,6 +1492,7 @@ private class FakeConferenceRepository(
     private val createReservationThrows: Exception? = null,
     private val removeDelegateReservationError: String? = null,
     private val committeeModeConference: Conference? = initialConference,
+    private val paymentTierConference: Conference? = initialConference,
     private val committeeModeResultDeferred: CompletableDeferred<Result<Conference>>? = null,
     private val committeeModeStarted: CompletableDeferred<Unit>? = null,
     private val positionMappedConference: Conference? = initialConference,
@@ -1506,6 +1528,14 @@ private class FakeConferenceRepository(
     var committeeModeCommitteeId: String? = null
         private set
     var committeeModeMode: CommitteeMode? = null
+        private set
+    var committeePaymentTier: PaymentTier? = null
+        private set
+    var delegatePaymentTier: PaymentTier? = null
+        private set
+    var paymentTierCommitteeId: String? = null
+        private set
+    var paymentTierDelegateId: String? = null
         private set
     var positionMappedConferenceId: String? = null
         private set
@@ -1573,6 +1603,26 @@ private class FakeConferenceRepository(
         committeeModeStarted?.complete(Unit)
         committeeModeResultDeferred?.let { return it.await().getOrThrow() }
         return requireNotNull(committeeModeConference)
+    }
+
+    override suspend fun setCommitteePaymentTier(
+        conferenceId: ConferenceId,
+        committeeId: CommitteeId,
+        paymentTier: PaymentTier,
+    ): Conference {
+        paymentTierCommitteeId = committeeId.value
+        committeePaymentTier = paymentTier
+        return requireNotNull(paymentTierConference)
+    }
+
+    override suspend fun setDelegatePaymentTier(
+        conferenceId: ConferenceId,
+        delegateId: DelegateId,
+        paymentTier: PaymentTier,
+    ): Conference {
+        paymentTierDelegateId = delegateId.value
+        delegatePaymentTier = paymentTier
+        return requireNotNull(paymentTierConference)
     }
 
     override suspend fun setPositionMappedCommittee(

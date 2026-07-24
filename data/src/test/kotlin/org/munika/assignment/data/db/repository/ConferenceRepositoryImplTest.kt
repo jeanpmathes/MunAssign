@@ -55,6 +55,7 @@ import org.munika.assignment.domain.model.MunExperienceAnswerMapping
 import org.munika.assignment.domain.model.MunExperienceLevel
 import org.munika.assignment.domain.model.NoticeWhenNonBlank
 import org.munika.assignment.domain.model.PaymentStatus
+import org.munika.assignment.domain.model.PaymentTier
 import org.munika.assignment.domain.model.QuestionConfiguration
 import org.munika.assignment.domain.model.QuestionId
 import org.munika.assignment.domain.model.ReservationLinkSource
@@ -221,6 +222,71 @@ class ConferenceRepositoryImplTest {
             reloaded.committees.single { it.mymunName == "UNSC" }.id,
             reloaded.committees.single { it.mymunName == "IPC" }.positions.single().mappedCommittee?.id,
         )
+    }
+
+    @Test
+    fun `committee and delegate payment tiers default and persist`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-payment-tiers").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments()).success)
+        val loaded = requireNotNull(repository.getConference(conference.id))
+        val committee = loaded.committees.single()
+        val delegate = loaded.delegates.single()
+
+        assertEquals(PaymentTier.Full, committee.paymentTier)
+        assertNull(delegate.paymentTier)
+
+        repository.setCommitteePaymentTier(conference.id, committee.id, PaymentTier.Reduced)
+        val updated = repository.setDelegatePaymentTier(conference.id, delegate.id, PaymentTier.Full)
+
+        assertEquals(PaymentTier.Reduced, updated.committees.single().paymentTier)
+        assertEquals(PaymentTier.Full, updated.delegates.single().paymentTier)
+        val reloaded = requireNotNull(repository.getConference(conference.id))
+        assertEquals(PaymentTier.Reduced, reloaded.committees.single().paymentTier)
+        assertEquals(PaymentTier.Full, reloaded.delegates.single().paymentTier)
+    }
+
+    @Test
+    fun `payment tier migration defaults existing committees and leaves delegates unclassified`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-payment-tier-migration").resolve("data.db")
+        val repository = ConferenceRepositoryImpl(DatabaseFactory.connect(dbPath))
+        val conference = repository.createConference("TestConf")
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments()).success)
+
+        DriverManager.getConnection("jdbc:sqlite:${dbPath.toAbsolutePath()}").use { connection ->
+            connection.createStatement().use { statement ->
+                statement.executeUpdate("ALTER TABLE committees DROP COLUMN payment_tier")
+                statement.executeUpdate("ALTER TABLE delegates DROP COLUMN payment_tier")
+                statement.executeUpdate("DELETE FROM schema_migrations WHERE version = 13")
+            }
+        }
+
+        val migrated = requireNotNull(ConferenceRepositoryImpl(DatabaseFactory.connect(dbPath)).getConference(conference.id))
+        assertEquals(PaymentTier.Full, migrated.committees.single().paymentTier)
+        assertNull(migrated.delegates.single().paymentTier)
+    }
+
+    @Test
+    fun `MyMUN update preserves a paid delegate tier and clears it when unpaid`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-payment-tier-update").resolve("data.db")
+        val repository = ConferenceRepositoryImpl(DatabaseFactory.connect(dbPath))
+        val conference = repository.createConference("TestConf")
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithDelegates(listOf(delegate()))).success)
+        val paidDelegate = requireNotNull(repository.getConference(conference.id)).delegates.single()
+        repository.setDelegatePaymentTier(conference.id, paidDelegate.id, PaymentTier.Reduced)
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithDelegates(listOf(delegate()))).success)
+        assertEquals(PaymentTier.Reduced, requireNotNull(repository.getConference(conference.id)).delegates.single().paymentTier)
+
+        assertTrue(
+            repository.applyMymunUpdateSnapshot(
+                conference.id.value,
+                snapshotWithDelegates(listOf(delegate(feePaid = false))),
+            ).success,
+        )
+        assertNull(requireNotNull(repository.getConference(conference.id)).delegates.single().paymentTier)
     }
 
     @Test
@@ -1817,6 +1883,37 @@ class ConferenceRepositoryImplTest {
         assertEquals(
             "Reviewed and acceptable.",
             afterUpdate.delegates.single().answers.single().resolvedIssues.single().resolution.justification,
+        )
+    }
+
+    @Test
+    fun `payment tier mismatches can be acknowledged but missing tiers cannot be dismissed`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-payment-tier-resolution").resolve("data.db")
+        val repository = ConferenceRepositoryImpl(DatabaseFactory.connect(dbPath))
+        val conference = repository.createConference("TestConf")
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments()).success)
+        val loaded = requireNotNull(repository.getConference(conference.id))
+        val delegate = loaded.delegates.single()
+        val missingIssue = delegate.paymentTierIssues().single()
+
+        assertFailsWith<IllegalArgumentException> {
+            repository.resolveAnswerIssue(conference.id, delegate.id, null, missingIssue.key, null)
+        }
+
+        val classified = repository.setDelegatePaymentTier(conference.id, delegate.id, PaymentTier.Reduced)
+        val mismatch = classified.delegates.single().paymentTierIssues().single()
+        val resolved = repository.resolveAnswerIssue(
+            conference.id,
+            delegate.id,
+            null,
+            mismatch.key,
+            "Approved exception.",
+        )
+
+        assertTrue(resolved.delegates.single().openPaymentTierIssues().isEmpty())
+        assertEquals(
+            "Approved exception.",
+            resolved.delegates.single().resolvedPaymentTierIssues().single().resolution.justification,
         )
     }
 

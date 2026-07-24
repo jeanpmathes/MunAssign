@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Percent
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -52,6 +53,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.munika.assignment.domain.model.CommitteeMode
+import org.munika.assignment.domain.model.PaymentTier
 import org.munika.assignment.ui.viewmodel.CommitteeBoardUiState
 import org.munika.assignment.ui.viewmodel.SlotBoardStatus
 
@@ -62,6 +64,7 @@ fun CommitteeColumn(
     listState: LazyListState,
     onSetSlotsPerPosition: (String, Int) -> Unit,
     onSetCommitteeMode: (String, CommitteeMode) -> Unit,
+    onSetCommitteePaymentTier: (String, PaymentTier) -> Unit,
     onSetPositionMappedCommittee: (String, String?) -> Unit,
     onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
     onClearPendingSlot: (slotId: String) -> Unit,
@@ -82,6 +85,7 @@ fun CommitteeColumn(
                 committee = committee,
                 loading = loading,
                 onSetMode = { mode -> onSetCommitteeMode(committee.id, mode) },
+                onSetPaymentTier = { tier -> onSetCommitteePaymentTier(committee.id, tier) },
                 onIncrease = { onSetSlotsPerPosition(committee.id, committee.slotsPerPosition + 1) },
                 onOpenReservationManager = onOpenReservationManager,
                 onDecrease = {
@@ -135,6 +139,7 @@ private fun CommitteeHeader(
     committee: CommitteeBoardUiState,
     loading: Boolean,
     onSetMode: (CommitteeMode) -> Unit,
+    onSetPaymentTier: (PaymentTier) -> Unit,
     onIncrease: () -> Unit,
     onDecrease: () -> Unit,
     onOpenReservationManager: () -> Unit,
@@ -182,6 +187,16 @@ private fun CommitteeHeader(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+            if (committee.paymentTier == PaymentTier.Reduced) {
+                BoardTooltip("Reduced-tier committee") {
+                    Icon(
+                        Icons.Filled.Percent,
+                        contentDescription = "Reduced-tier committee",
+                        tint = Color(0xFFB26A00),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
             BoardTooltip("Open committee settings") {
                 IconButton(
@@ -261,6 +276,7 @@ private fun CommitteeHeader(
                     onSetMode(mode)
                 }
             },
+            onSetPaymentTier = onSetPaymentTier,
             onIncrease = onIncrease,
             onDecrease = onDecrease,
         )
@@ -286,6 +302,7 @@ private fun CommitteeSettingsDialog(
     loading: Boolean,
     onDismiss: () -> Unit,
     onSetMode: (CommitteeMode) -> Unit,
+    onSetPaymentTier: (PaymentTier) -> Unit,
     onIncrease: () -> Unit,
     onDecrease: () -> Unit,
 ) {
@@ -298,6 +315,11 @@ private fun CommitteeSettingsDialog(
                     mode = committee.mode,
                     enabled = !loading,
                     onSetMode = onSetMode,
+                )
+                CommitteePaymentTierDropdown(
+                    paymentTier = committee.paymentTier,
+                    enabled = !loading,
+                    onSetPaymentTier = onSetPaymentTier,
                 )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -320,6 +342,45 @@ private fun CommitteeSettingsDialog(
             }
         },
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CommitteePaymentTierDropdown(
+    paymentTier: PaymentTier,
+    enabled: Boolean,
+    onSetPaymentTier: (PaymentTier) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { if (enabled) expanded = !expanded },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        OutlinedTextField(
+            value = paymentTier.label,
+            onValueChange = {},
+            readOnly = true,
+            enabled = enabled,
+            label = { Text("Payment tier") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            singleLine = true,
+            modifier = Modifier
+                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = enabled)
+                .fillMaxWidth(),
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            PaymentTier.entries.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option.label) },
+                    onClick = {
+                        expanded = false
+                        if (option != paymentTier) onSetPaymentTier(option)
+                    },
+                )
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -414,6 +475,12 @@ private val CommitteeMode.label: String
         CommitteeMode.HighSchool -> "High school"
         CommitteeMode.University -> "University"
         CommitteeMode.Mapped -> "Mapped"
+    }
+
+private val PaymentTier.label: String
+    get() = when (this) {
+        PaymentTier.Full -> "Full"
+        PaymentTier.Reduced -> "Reduced"
     }
 
 @Composable

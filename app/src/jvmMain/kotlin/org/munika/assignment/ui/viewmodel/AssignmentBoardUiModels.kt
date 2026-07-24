@@ -7,7 +7,7 @@ import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.Delegate
 import org.munika.assignment.domain.model.DelegateId
-import org.munika.assignment.domain.model.PaymentStatus
+import org.munika.assignment.domain.model.PaymentTier
 import org.munika.assignment.domain.model.Position
 import org.munika.assignment.domain.model.Reservation
 import org.munika.assignment.domain.model.Slot
@@ -22,6 +22,7 @@ data class CommitteeBoardUiState(
     val name: String,
     val slotsPerPosition: Int,
     val mode: CommitteeMode,
+    val paymentTier: PaymentTier,
     val isHighSchoolCommittee: Boolean,
     val openSlotCount: Int,
     val pendingSlotCount: Int,
@@ -79,6 +80,7 @@ data class SlotBoardUiState(
     val delegateIsHighSchooler: Boolean,
     val matchesDelegatePreference: Boolean,
     val positionName: String,
+    val paymentTierMismatch: PaymentTierMismatchUiState?,
 )
 
 data class InterestedDelegateUiState(
@@ -103,9 +105,20 @@ data class AssignmentDelegateCandidateUiState(
     val isHighSchooler: Boolean,
     val warningCount: Int,
     val noticeCount: Int,
+    val paymentTierMismatch: PaymentTierMismatchUiState?,
 ) {
     val canAssign: Boolean = confirmedAssignmentLabel == null
     val isPendingElsewhere: Boolean = pendingAssignmentLabel != null
+}
+
+data class PaymentTierMismatchUiState(
+    val direction: PaymentTierMismatchDirection,
+    val acknowledged: Boolean,
+)
+
+enum class PaymentTierMismatchDirection {
+    ReducedIntoFull,
+    FullIntoReduced,
 }
 
 enum class SlotBoardStatus {
@@ -141,6 +154,7 @@ fun Conference.toAssignmentBoardUiState(): AssignmentBoardUiState {
                 name = committee.displayName,
                 slotsPerPosition = committee.slotsPerPosition,
                 mode = committee.mode,
+                paymentTier = committee.paymentTier,
                 isHighSchoolCommittee = committee.isHighSchoolCommittee,
                 openSlotCount = committee.openSlotCount,
                 pendingSlotCount = committee.pendingSlotCount,
@@ -223,10 +237,14 @@ private fun Position.toBoardUiState(
                     isHighSchooler = delegate.isHighSchooler,
                     warningCount = issueCounts?.warningCount ?: 0,
                     noticeCount = issueCounts?.noticeCount ?: 0,
+                    paymentTierMismatch = delegate.paymentTierMismatchFor(committee),
                 )
             }
             .sortedWith(
                 compareBy<AssignmentDelegateCandidateUiState> { it.assignmentSortRank }
+                    .thenBy { candidate ->
+                        conference.delegates.single { it.id.value == candidate.id }.paymentTierFitSortRank(committee)
+                    }
                     .thenBy { it.highSchoolFitSortRank(effectiveCommitteeMode) }
                     .thenBy { it.preferenceRank ?: Int.MAX_VALUE }
                     .thenBy { it.name },
@@ -267,12 +285,11 @@ private fun Slot.toBoardUiState(): SlotBoardUiState =
         delegateIsHighSchooler = delegate?.isHighSchooler == true,
         matchesDelegatePreference = matchesDelegatePreference,
         positionName = position.name,
+        paymentTierMismatch = delegate?.paymentTierMismatchFor(position.committee),
     )
 
 private fun Delegate.visibleOnAssignmentBoard(): Boolean =
-    active &&
-        paymentStatus == PaymentStatus.Paid &&
-        profile.isUsableForAssignment
+    isAssignmentEligible
 
 private fun Delegate.confirmedAssignmentLabel(currentSlot: Slot?): String? {
     if (currentSlot?.isAssigned != true) return null
@@ -288,11 +305,36 @@ private fun Delegate.pendingAssignmentLabel(currentSlot: Slot?): String? {
 
 private fun Delegate.warningCount(): Int =
     answers.sumOf { answer -> answer.openIssues.count { it.severity == AnswerIssueSeverity.Warning } } +
-        openProfileIssues().count { it.severity == AnswerIssueSeverity.Warning }
+        openProfileIssues().count { it.severity == AnswerIssueSeverity.Warning } +
+        openPaymentTierIssues().count { it.severity == AnswerIssueSeverity.Warning }
 
 private fun Delegate.noticeCount(): Int =
     answers.sumOf { answer -> answer.openIssues.count { it.severity == AnswerIssueSeverity.Notice } } +
-        openProfileIssues().count { it.severity == AnswerIssueSeverity.Notice }
+        openProfileIssues().count { it.severity == AnswerIssueSeverity.Notice } +
+        openPaymentTierIssues().count { it.severity == AnswerIssueSeverity.Notice }
+
+private fun Delegate.paymentTierMismatchFor(committee: Committee): PaymentTierMismatchUiState? {
+    val delegateTier = paymentTier ?: return null
+    val direction = when {
+        delegateTier == PaymentTier.Reduced && committee.paymentTier == PaymentTier.Full ->
+            PaymentTierMismatchDirection.ReducedIntoFull
+        delegateTier == PaymentTier.Full && committee.paymentTier == PaymentTier.Reduced ->
+            PaymentTierMismatchDirection.FullIntoReduced
+        else -> return null
+    }
+    val issue = requireNotNull(paymentTierIssueFor(committee))
+    return PaymentTierMismatchUiState(
+        direction = direction,
+        acknowledged = resolutionFor(questionId = null, issue = issue) != null,
+    )
+}
+
+private fun Delegate.paymentTierFitSortRank(committee: Committee): Int =
+    when {
+        paymentTier == committee.paymentTier -> 0
+        paymentTier == PaymentTier.Full && committee.paymentTier == PaymentTier.Reduced -> 1
+        else -> 2
+    }
 
 private val AssignmentDelegateCandidateUiState.assignmentSortRank: Int
     get() = when {

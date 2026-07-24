@@ -8,6 +8,7 @@ import org.munika.assignment.domain.model.AssignmentStatus
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.Delegate
 import org.munika.assignment.domain.model.PaymentStatus
+import org.munika.assignment.domain.model.PaymentTier
 import org.munika.assignment.domain.model.Position
 
 data class DelegateListControlsUiState(
@@ -17,6 +18,7 @@ data class DelegateListControlsUiState(
     val issuesOnly: Boolean = false,
     val includedAssignmentStatuses: Set<DelegateListAssignmentStatus> = DelegateListAssignmentStatus.entries.toSet(),
     val includedSchoolLevels: Set<DelegateListSchoolLevel> = DelegateListSchoolLevel.entries.toSet(),
+    val includedPaymentTiers: Set<DelegateListPaymentTier> = DelegateListPaymentTier.entries.toSet(),
     val committeeId: String? = null,
     val sort: DelegateListSort = DelegateListSort.ApplicationSubmitted,
 )
@@ -48,6 +50,12 @@ enum class DelegateListSchoolLevel {
     University,
 }
 
+enum class DelegateListPaymentTier {
+    Full,
+    Reduced,
+    Unassigned,
+}
+
 data class DelegateListUiState(
     val rows: List<DelegateListRowUiState>,
     val committees: List<DelegateListCommitteeFilterUiState>,
@@ -66,6 +74,7 @@ data class DelegateListRowUiState(
     val assignmentStatusLabel: String,
     val paymentActiveLabel: String,
     val paymentActiveTone: DelegateStatusTone,
+    val paymentTierLabel: String?,
     val warningCount: Int,
     val noticeCount: Int,
     val applicationAgeLabel: String,
@@ -127,6 +136,9 @@ private fun Delegate.matchesControls(controls: DelegateListControlsUiState, toda
     if (!controls.includeDeactivated && !active) return false
     if (toDelegateListAssignmentStatus() !in controls.includedAssignmentStatuses) return false
     if (toDelegateListSchoolLevel() !in controls.includedSchoolLevels) return false
+    if (controls.includedPaymentTiers != DelegateListPaymentTier.entries.toSet()) {
+        if (paymentStatus != PaymentStatus.Paid || toDelegateListPaymentTier() !in controls.includedPaymentTiers) return false
+    }
     if (controls.searchQuery.isNotBlank() && !displayName.contains(controls.searchQuery.trim(), ignoreCase = true)) return false
     val committeeId = controls.committeeId
     if (committeeId != null && preferences.none { it.position.committee.id.value == committeeId }) return false
@@ -149,6 +161,12 @@ private fun Delegate.toDelegateListRowUiState(now: Instant, today: java.time.Loc
         },
         paymentActiveLabel = paymentActiveLabel(),
         paymentActiveTone = paymentActiveTone(),
+        paymentTierLabel = when {
+            paymentStatus != PaymentStatus.Paid -> null
+            paymentTier == PaymentTier.Full -> "Full"
+            paymentTier == PaymentTier.Reduced -> "Reduced"
+            else -> "Unassigned tier"
+        },
         warningCount = warningCount(today),
         noticeCount = noticeCount(today),
         applicationAgeLabel = applicationAgeLabel(now),
@@ -174,6 +192,13 @@ private fun Delegate.toDelegateListAssignmentStatus(): DelegateListAssignmentSta
 private fun Delegate.toDelegateListSchoolLevel(): DelegateListSchoolLevel =
     if (isHighSchooler) DelegateListSchoolLevel.HighSchool else DelegateListSchoolLevel.University
 
+private fun Delegate.toDelegateListPaymentTier(): DelegateListPaymentTier =
+    when (paymentTier) {
+        PaymentTier.Full -> DelegateListPaymentTier.Full
+        PaymentTier.Reduced -> DelegateListPaymentTier.Reduced
+        null -> DelegateListPaymentTier.Unassigned
+    }
+
 private fun Delegate.paymentActiveLabel(): String =
     when {
         !active && paymentStatus == PaymentStatus.Unpaid -> "Inactive unpaid"
@@ -191,11 +216,13 @@ private fun Delegate.paymentActiveTone(): DelegateStatusTone =
 
 private fun Delegate.warningCount(today: java.time.LocalDate): Int =
     answers.sumOf { answer -> answer.openIssues.count { it.severity == AnswerIssueSeverity.Warning } } +
-        openProfileIssues(today).count { it.severity == AnswerIssueSeverity.Warning }
+        openProfileIssues(today).count { it.severity == AnswerIssueSeverity.Warning } +
+        openPaymentTierIssues().count { it.severity == AnswerIssueSeverity.Warning }
 
 private fun Delegate.noticeCount(today: java.time.LocalDate): Int =
     answers.sumOf { answer -> answer.openIssues.count { it.severity == AnswerIssueSeverity.Notice } } +
-        openProfileIssues(today).count { it.severity == AnswerIssueSeverity.Notice }
+        openProfileIssues(today).count { it.severity == AnswerIssueSeverity.Notice } +
+        openPaymentTierIssues().count { it.severity == AnswerIssueSeverity.Notice }
 
 private fun Delegate.issueCount(today: java.time.LocalDate): Int = warningCount(today) + noticeCount(today)
 

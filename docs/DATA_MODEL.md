@@ -5,10 +5,10 @@ This document records persistence and update rules that are not obvious from the
 ## Ownership Boundaries
 
 - `Conference` owns all assignment data and stores organizer-managed display order.
-- `Committee` owns positions, the uniform `slotsPerPosition` value, and the organizer-managed committee mode.
+- `Committee` owns positions, the uniform `slotsPerPosition` value, the organizer-managed committee mode, and a non-null organizer-managed payment tier.
 - `Position` represents one assignable country or role from `Countries.Member Name` and may store a mapped target committee when its owning committee is in mapped mode.
 - `Slot` stores the current delegate reference and assignment source.
-- `Delegate` stores MyMUN profile data plus organizer-managed active/inactive state.
+- `Delegate` stores MyMUN profile data plus organizer-managed active/inactive state and an optional organizer-managed payment tier.
 - `Question` stores dynamic MyMUN question text plus local handling configuration.
 - `Preference` resolves a delegate's ranked MyMUN preference to a position.
 - `Delegation` stores delegation context from MyMUN plus organizer-managed school level and review state.
@@ -66,6 +66,8 @@ Slot status is derived from slot data:
 - Delegate plus `Mymun` source means `Assigned`.
 
 One delegate can occupy at most one slot in a conference. A position can have multiple slots because slot count is configured per committee.
+
+Payment tiers are persisted enum labels with exactly two values: `Full` and `Reduced`. Committees default to `Full`; delegate tiers are nullable. Only active, paid, profile-eligible delegates require a tier for assignment work. A `Reduced` delegate in a `Full` committee derives a warning, while a `Full` delegate in a `Reduced` committee derives a notice. The mismatch issue key includes the committee ID so acknowledgement is scoped to the exact delegate and committee. Missing-tier warnings cannot be resolved because classification is the resolution.
 
 Committee mode determines the high-school/university bucket used by its positions:
 
@@ -158,6 +160,8 @@ MyMUN updates preserve where the referenced objects still exist:
 - pending app assignments not contradicted by confirmed MyMUN assignments;
 - committee aliases;
 - committee mode and position correspondences;
+- committee payment tiers;
+- delegate payment tiers while the incoming payment status remains paid;
 - delegation high-school status and review state;
 - question handling configuration.
 - organizer-managed reservations;
@@ -165,6 +169,7 @@ MyMUN updates preserve where the referenced objects still exist:
 - trusted MyMUN update filename signatures;
 
 MyMUN updates remove delegates, preferences, assignments, and answers that no longer exist in the workbook source.
+When an incoming delegate becomes unpaid, the repository clears the organizer-managed delegate tier. If that delegate later becomes paid again, the tier remains unassigned until an organizer classifies it.
 Automatic reservation links are rebuilt after updates. If a reservation's linked delegation no longer exists, the reservation is preserved but its delegation link is cleared.
 
 ## Reservations
@@ -245,4 +250,6 @@ File metadata tables:
 - Filename signature parts are unique by normalized value and display order within one signature.
 - `conferences.display_order` stores the organizer-managed order used by the top-bar selector and management screen.
 - `committees.mode` stores `HighSchool`, `University`, or `Mapped`; the legacy high-school boolean is derived from the mode for compatibility.
+- `committees.payment_tier` stores non-null `Full` or `Reduced`; migration 13 initializes existing rows to `Full`.
+- `delegates.payment_tier` stores nullable `Full` or `Reduced`; migration 13 leaves existing delegates unclassified.
 - `positions.mapped_committee_id` stores the optional mapped target committee. The repository clears this value when the owning committee leaves mapped mode, when the target disappears, or when the target becomes mapped.

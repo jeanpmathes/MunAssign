@@ -24,6 +24,7 @@ object DelegateTable : Table("delegates") {
     val delegationNameFromMymun = varchar("delegation_name_from_mymun", 255).nullable()
     val applicationStatus = varchar("application_status", 255).nullable()
     val paymentStatus = varchar("payment_status", 32)
+    val paymentTier = varchar("payment_tier", 32).nullable()
     val active = bool("active")
     val isHeadDelegate = bool("is_head_delegate")
     val createdAtFromMymunEpochMillis = long("created_at_from_mymun_epoch_millis").nullable()

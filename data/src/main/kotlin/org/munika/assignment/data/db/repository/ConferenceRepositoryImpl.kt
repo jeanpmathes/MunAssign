@@ -79,6 +79,7 @@ import org.munika.assignment.domain.model.CommitteeId
 import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.ConferenceId
+import org.munika.assignment.domain.model.Delegate
 import org.munika.assignment.domain.model.DelegateCommentId
 import org.munika.assignment.domain.model.DelegateId
 import org.munika.assignment.domain.model.DelegationId
@@ -93,6 +94,7 @@ import org.munika.assignment.domain.model.MymunUpdateFilenameSignatureId
 import org.munika.assignment.domain.model.NoticeWhenAffirmative
 import org.munika.assignment.domain.model.NoticeWhenNonBlank
 import org.munika.assignment.domain.model.PaymentStatus
+import org.munika.assignment.domain.model.PaymentTier
 import org.munika.assignment.domain.model.PositionId
 import org.munika.assignment.domain.model.QuestionConfiguration
 import org.munika.assignment.domain.model.QuestionId
@@ -342,6 +344,49 @@ class ConferenceRepositoryImpl(
         }
         ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
             it[updatedAtEpochMillis] = Instant.now().toEpochMilli()
+        }
+        loadConferenceGraph(conferenceId)
+    }
+
+    override suspend fun setCommitteePaymentTier(
+        conferenceId: ConferenceId,
+        committeeId: CommitteeId,
+        paymentTier: PaymentTier,
+    ): Conference = db {
+        val conferenceId = conferenceId.value
+        val committeeId = committeeId.value
+        requireCommitteeInConference(conferenceId, committeeId)
+        CommitteeTable.update({
+            (CommitteeTable.id eq committeeId) and (CommitteeTable.conferenceId eq conferenceId)
+        }) {
+            it[CommitteeTable.paymentTier] = paymentTier.name
+        }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[ConferenceTable.updatedAtEpochMillis] = Instant.now().toEpochMilli()
+        }
+        loadConferenceGraph(conferenceId)
+    }
+
+    override suspend fun setDelegatePaymentTier(
+        conferenceId: ConferenceId,
+        delegateId: DelegateId,
+        paymentTier: PaymentTier,
+    ): Conference = db {
+        val conferenceId = conferenceId.value
+        val delegateId = delegateId.value
+        val delegate = requireNotNull(
+            DelegateTable.selectAll().where {
+                (DelegateTable.id eq delegateId) and (DelegateTable.conferenceId eq conferenceId)
+            }.singleOrNull(),
+        ) { "Delegate $delegateId does not belong to conference $conferenceId." }
+        require(delegate[DelegateTable.paymentStatus] == PaymentStatus.Paid.name) {
+            "Only paid delegates can have a payment tier."
+        }
+        DelegateTable.update({ DelegateTable.id eq delegateId }) {
+            it[DelegateTable.paymentTier] = paymentTier.name
+        }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[ConferenceTable.updatedAtEpochMillis] = Instant.now().toEpochMilli()
         }
         loadConferenceGraph(conferenceId)
     }
@@ -845,7 +890,9 @@ class ConferenceRepositoryImpl(
             "Delegate $delegateId does not belong to conference $conferenceId."
         }
         val currentIssue = if (questionId == null) {
-            delegate.profileIssues().firstOrNull { it.key == issueKey }
+            (delegate.profileIssues() + delegate.paymentTierIssues().filterNot {
+                it.key == Delegate.PaymentTierMissingIssueKey
+            }).firstOrNull { it.key == issueKey }
         } else {
             delegate.answers
                 .firstOrNull { it.question.id.value == questionId }
@@ -1183,6 +1230,7 @@ class ConferenceRepositoryImpl(
                     it[CommitteeTable.slotsPerPosition] = slotsPerPosition
                     it[CommitteeTable.isHighSchoolCommittee] = initialMode == CommitteeMode.HighSchool
                     it[CommitteeTable.mode] = initialMode.name
+                    it[CommitteeTable.paymentTier] = PaymentTier.Full.name
                 }
                 delta.committeesCreated++
             } else {
@@ -1762,6 +1810,7 @@ class ConferenceRepositoryImpl(
             row[DelegateTable.delegationNameFromMymun] != incoming.delegationName ||
             row[DelegateTable.applicationStatus] != incoming.applicationStatus ||
             row[DelegateTable.paymentStatus] != (if (incoming.feePaid) PaymentStatus.Paid.name else PaymentStatus.Unpaid.name) ||
+            (!incoming.feePaid && row[DelegateTable.paymentTier] != null) ||
             row[DelegateTable.isHeadDelegate] != incoming.isHeadDelegate ||
             row[DelegateTable.createdAtFromMymunEpochMillis] != incoming.createdAt?.toEpochMilliUtc() ||
             row[DelegateTable.submittedAtEpochMillis] != incoming.submittedAt?.toEpochMilliUtc()
@@ -1793,6 +1842,7 @@ class ConferenceRepositoryImpl(
             it[DelegateTable.delegationNameFromMymun] = delegate.delegationName
             it[DelegateTable.applicationStatus] = delegate.applicationStatus
             it[DelegateTable.paymentStatus] = if (delegate.feePaid) PaymentStatus.Paid.name else PaymentStatus.Unpaid.name
+            it[DelegateTable.paymentTier] = null
             it[DelegateTable.active] = true
             it[DelegateTable.isHeadDelegate] = delegate.isHeadDelegate
             it[DelegateTable.createdAtFromMymunEpochMillis] = delegate.createdAt?.toEpochMilliUtc()
@@ -1820,6 +1870,9 @@ class ConferenceRepositoryImpl(
             it[DelegateTable.delegationNameFromMymun] = delegate.delegationName
             it[DelegateTable.applicationStatus] = delegate.applicationStatus
             it[DelegateTable.paymentStatus] = if (delegate.feePaid) PaymentStatus.Paid.name else PaymentStatus.Unpaid.name
+            if (!delegate.feePaid) {
+                it[DelegateTable.paymentTier] = null
+            }
             it[DelegateTable.isHeadDelegate] = delegate.isHeadDelegate
             it[DelegateTable.createdAtFromMymunEpochMillis] = delegate.createdAt?.toEpochMilliUtc()
             it[DelegateTable.submittedAtEpochMillis] = delegate.submittedAt?.toEpochMilliUtc()
@@ -2108,6 +2161,7 @@ class ConferenceRepositoryImpl(
                     slotsPerPosition = row[CommitteeTable.slotsPerPosition],
                     isHighSchoolCommittee = row[CommitteeTable.isHighSchoolCommittee],
                     mode = row[CommitteeTable.mode],
+                    paymentTier = row[CommitteeTable.paymentTier],
                 )
             },
             positions = PositionTable.selectAll().where { PositionTable.conferenceId eq conferenceId }.map { row ->
@@ -2163,6 +2217,7 @@ class ConferenceRepositoryImpl(
                     delegationNameFromMymun = row[DelegateTable.delegationNameFromMymun],
                     applicationStatus = row[DelegateTable.applicationStatus],
                     paymentStatus = row[DelegateTable.paymentStatus],
+                    paymentTier = row[DelegateTable.paymentTier],
                     active = row[DelegateTable.active],
                     isHeadDelegate = row[DelegateTable.isHeadDelegate],
                     createdAtFromMymunEpochMillis = row[DelegateTable.createdAtFromMymunEpochMillis],

@@ -1,4 +1,6 @@
 # TODO
 
-- Payment tiers: committees can be marked as full price or reduced price, for each paid delegate the application asks for the price they paid (maybe as warning) putting delegate into higher tier is warning, lower tier is notice
-- Improve icons
+- Improve icons.
+- Improve texts in delegation view.
+- "No, I don't" is recognized as needs visa support.
+- Separator between resolved and unresolved issues.

@@ -64,6 +64,7 @@ import org.munika.assignment.ui.viewmodel.DelegateListControlsUiState
 import org.munika.assignment.ui.viewmodel.DelegateListPreset
 import org.munika.assignment.ui.viewmodel.DelegateListRowUiState
 import org.munika.assignment.ui.viewmodel.DelegateListSchoolLevel
+import org.munika.assignment.ui.viewmodel.DelegateListPaymentTier
 import org.munika.assignment.ui.viewmodel.DelegateListSort
 import org.munika.assignment.ui.viewmodel.DelegateListUiState
 import org.munika.assignment.ui.viewmodel.DelegateStatusTone
@@ -275,6 +276,18 @@ private fun FilterMenu(
                 )
             }
             HorizontalDivider()
+            Text("Payment tier", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+            DelegateListPaymentTier.entries.forEach { tier ->
+                CheckboxMenuItem(
+                    label = tier.label,
+                    checked = tier in controls.includedPaymentTiers,
+                    onCheckedChange = { checked ->
+                        val tiers = if (checked) controls.includedPaymentTiers + tier else controls.includedPaymentTiers - tier
+                        onControlsChange(controls.copy(includedPaymentTiers = tiers))
+                    },
+                )
+            }
+            HorizontalDivider()
             DropdownMenuItem(
                 text = { Text("Any committee") },
                 onClick = { onControlsChange(controls.copy(committeeId = null)) },
@@ -315,6 +328,7 @@ private fun TableHeader() {
         HeaderCell("Name", Modifier.weight(1.35f))
         HeaderCell("Status", Modifier.weight(0.8f))
         HeaderCell("Pay/Active", Modifier.weight(0.8f))
+        HeaderCell("Tier", Modifier.weight(0.72f))
         HeaderCell("Issues", Modifier.weight(0.84f))
         HeaderCell("Applied", Modifier.weight(0.78f))
         HeaderCell("Delegation", Modifier.weight(1.05f))
@@ -357,6 +371,20 @@ private fun DelegateRow(
         }
         StatusPill(row.assignmentStatusLabel, row.assignmentStatus.tone, Modifier.weight(0.8f))
         StatusPill(row.paymentActiveLabel, row.paymentActiveTone, Modifier.weight(0.8f))
+        val tierLabel = row.paymentTierLabel
+        if (tierLabel == null) {
+            Text("-", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.72f))
+        } else {
+            StatusPill(
+                tierLabel,
+                when (tierLabel) {
+                    "Full" -> DelegateStatusTone.Blue
+                    "Reduced" -> DelegateStatusTone.Notice
+                    else -> DelegateStatusTone.Yellow
+                },
+                Modifier.weight(0.72f),
+            )
+        }
         IssueCell(row.warningCount, row.noticeCount, Modifier.weight(0.84f))
         Text(row.applicationAgeLabel, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(0.78f))
         Text(row.delegationName ?: "-", maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1.05f))
@@ -443,6 +471,13 @@ private val DelegateListSchoolLevel.label: String
     get() = when (this) {
         DelegateListSchoolLevel.HighSchool -> "High-school delegates"
         DelegateListSchoolLevel.University -> "University level"
+    }
+
+private val DelegateListPaymentTier.label: String
+    get() = when (this) {
+        DelegateListPaymentTier.Full -> "Full"
+        DelegateListPaymentTier.Reduced -> "Reduced"
+        DelegateListPaymentTier.Unassigned -> "Paid, unassigned tier"
     }
 
 private val DelegateListAssignmentStatus.tone: DelegateStatusTone

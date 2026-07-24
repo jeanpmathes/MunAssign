@@ -25,6 +25,7 @@ import org.munika.assignment.domain.model.DelegationId
 import org.munika.assignment.domain.model.MymunUpdateFilenameAssessment
 import org.munika.assignment.domain.model.MymunUpdateFilenameCandidate
 import org.munika.assignment.domain.model.MymunUpdateFilenameSignatureId
+import org.munika.assignment.domain.model.PaymentTier
 import org.munika.assignment.domain.model.PositionId
 import org.munika.assignment.domain.model.QuestionConfiguration
 import org.munika.assignment.domain.model.QuestionId
@@ -579,6 +580,54 @@ class MainViewModel internal constructor(
                         loading = false,
                         boardActionError = "Committee mode update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
                     )
+                }
+            }
+        }
+    }
+
+    fun setCommitteePaymentTier(committeeId: String, paymentTier: PaymentTier) {
+        val selectedId = selectedIdOrNull() ?: return
+        scope.launch {
+            try {
+                val conference = repository.setCommitteePaymentTier(
+                    ConferenceId(selectedId),
+                    CommitteeId(committeeId),
+                    paymentTier,
+                )
+                updateConferenceState(selectedId) {
+                    it.copy(selectedConference = conference, boardActionError = null)
+                }
+            } catch (exception: IllegalArgumentException) {
+                updateConferenceState(selectedId) {
+                    it.copy(boardActionError = exception.message ?: "Committee payment tier could not be changed.")
+                }
+            } catch (exception: Exception) {
+                updateConferenceState(selectedId) {
+                    it.copy(boardActionError = "Committee payment tier update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}")
+                }
+            }
+        }
+    }
+
+    fun setDelegatePaymentTier(delegateId: String, paymentTier: PaymentTier) {
+        val selectedId = selectedIdOrNull() ?: return
+        scope.launch {
+            try {
+                val conference = repository.setDelegatePaymentTier(
+                    ConferenceId(selectedId),
+                    DelegateId(delegateId),
+                    paymentTier,
+                )
+                updateConferenceState(selectedId) {
+                    it.copy(selectedConference = conference, boardActionError = null)
+                }
+            } catch (exception: IllegalArgumentException) {
+                updateConferenceState(selectedId) {
+                    it.copy(boardActionError = exception.message ?: "Delegate payment tier could not be changed.")
+                }
+            } catch (exception: Exception) {
+                updateConferenceState(selectedId) {
+                    it.copy(boardActionError = "Delegate payment tier update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}")
                 }
             }
         }

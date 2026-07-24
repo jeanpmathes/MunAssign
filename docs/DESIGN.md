@@ -13,6 +13,8 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It g
 - App-created assignments are pending until a later MyMUN update confirms them.
 - Email is stored and used as a discriminator during updates, but it is not a unique delegate key.
 - Unpaid and inactive delegates are hidden from assignment views and the default delegate list. The top bar counts unpaid delegates among accepted applications only, since unpaid-but-not-accepted delegates aren't actionable yet; the markdown safety export separately counts unpaid delegates across all applications and labels that bullet accordingly so the two counts are never confused side-by-side.
+- Payment tiers are fixed organizer labels, `Full` and `Reduced`; they do not store prices, currencies, or payment-provider data. Every committee has a tier and defaults to `Full`. Active paid assignment-eligible delegates require organizer classification, while unpaid or inactive delegates do not raise a missing-tier warning.
+- Assigning a `Reduced` delegate to a `Full` committee raises a non-blocking warning. Assigning a `Full` delegate to a `Reduced` committee raises a non-blocking notice. These checks apply equally to pending and MyMUN-confirmed assignments and can be acknowledged per delegate and committee; a missing-tier warning remains open until classified.
 - Reservations are organizer-managed accept-capacity holds. They can reserve high-school and/or university places, optionally link to one MyMUN delegation, and are not tied to specific committees, positions, or slots.
 - A delegate can consume at most one reservation. Manual delegate links are explicit organizer choices. Automatic delegation links are persisted rows rebuilt from active accepted, assigned, or checked-in delegates in submission-date order regardless of payment, skipping delegates that already consume a reservation.
 - Deactivated delegates never consume reservations. Extra delegates in a linked delegation simply stop consuming reservation capacity once the reservation count is full; there is no over-use state.
@@ -48,7 +50,7 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It g
 4. Blocking validation errors abort the update and leave the database unchanged.
 5. Organizers may create reservations and review MyMUN delegations before or during assignment work.
 6. The board shows committees as columns, positions as cards, and slots as rows.
-7. Organizers can switch a committee between high-school, university, and mapped mode. Mapped committee positions use a per-position dropdown to select the corresponding non-mapped committee.
+7. Organizers can switch a committee between high-school, university, and mapped mode, and classify it as `Full` or `Reduced`. Mapped committee positions use a per-position dropdown to select the corresponding non-mapped committee.
 8. Slot controls can create or clear pending assignments, but cannot locally confirm a final assignment.
 9. Later MyMUN updates reconcile confirmed assignments from `Countries.Delegates` and rebuild automatic reservation usage.
 
@@ -61,6 +63,8 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It g
 - Mapped positions show a correspondence dropdown listing eligible high-school and university committees. Mapped committees cannot be selected as correspondence targets. Multiple positions in one mapped committee may share the same correspondence target.
 - Each position shows slot rows, interested delegate count, and interested delegates inline when the position has no assignment.
 - Confirmed-assigned delegates are greyed out where they appear as interested delegates elsewhere.
+- Reduced committees show a percent marker. Candidate and occupied-slot rows show a red downward arrow for `Reduced` into `Full`, or a yellow upward arrow for `Full` into `Reduced`; acknowledged mismatches keep a muted marker. Candidate ordering considers availability, then tier fit (exact, notice, warning), then school fit, preference, and name.
+- The issue manager offers inline `Full` and `Reduced` actions for missing classifications. Delegate detail exposes the same tier editor. The delegate list shows and filters `Full`, `Reduced`, and paid-unassigned tiers.
 - Clicking a delegate opens a side panel with profile data, assignment state, reservation usage, preferences, configured question answers, comment history, and deactivate/reactivate controls. Manual reservation links can be assigned, changed, or removed there; automatic delegation links can be changed by assigning a manual reservation.
 - The delegate list panel shows active paid delegates by default, with search, assignment/payment/active/committee filters, presets, and sorting by submitted date, difficulty, name, assignment status, and warning/notice count. Difficulty is a sort key only. The difficulty sort is intentionally ascending (easiest-to-place delegates first), so organizers clear easy delegates and are left with only the hard ones.
 - The delegation overview is a non-modal workspace panel similar to the delegate overview. It shows delegation membership, accepted active paid counts, linked reservation capacity, and current consumption. Each delegation can be marked high-school and can open a directly prefilled reservation editor using its full expected count; absent or non-positive counts prefill as zero. New delegations show review markers on their cards and on the top-bar delegation action until the panel is explicitly closed.
@@ -91,6 +95,8 @@ are never trusted. Organizers can delete individual trusted signatures from the 
 
 `.munassign` export writes one complete conference to a SQLite snapshot. Import remaps conference-owned IDs, can create a new conference with a duplicate visible name, or replace a selected conference while preserving the local conference name and display order. Older transfer files are migrated from a temporary copy before import; transfer files from newer schema versions are rejected.
 
+Payment status remains MyMUN-managed. A paid-to-paid update preserves the organizer's delegate tier, an update to unpaid clears it, and a later return to paid requires classification again. Committee tiers are organizer-managed and preserved across updates; newly discovered committees default to `Full`.
+
 Every schema-12-or-newer SQLite file contains a stable file UUID and a content marker: `ApplicationDatabase`, `ConferenceTransfer`, or `SynchronizedConference`. File handling validates this metadata rather than relying on the filename. Markerless legacy files remain valid normal imports, but cannot be connected as synchronized conferences. Exports always create detached `ConferenceTransfer` files, including exports whose source is synchronized. Importing a synchronized source recommends Connect and requires the armed detached-import override; the source file is never changed.
 
 ## Synchronized Conferences
@@ -103,7 +109,7 @@ All reads, mutations, MyMUN updates, replacements, transfers, and safety exports
 
 MunAssign deliberately provides no cloud API, live file watcher, offline cache, application-level lock, or conflict merge. SQLite transactions and the existing busy timeout remain the only application-side concurrency mechanism. Simultaneous edits through a synchronization provider can still conflict or lose work; provider-created conflict copies are explicit files that can be handled through Locate when identity matches or armed detached Import otherwise. Before an older synchronized file is migrated in place, MunAssign saves a timestamped backup under local application data. These backups are not automatically pruned in the first version.
 
-Markdown safety exports are one-way recovery snapshots, not transfer files. The desktop app writes timestamped markdown files for every conference when it opens and closes, using one file per conference under the active MunAssign data directory's `markdown-exports` folder. These files summarize assignments, position interest, delegates, and high-level stats for human inspection after a failure; MunAssign does not import them.
+Markdown safety exports are one-way recovery snapshots, not transfer files. The desktop app writes timestamped markdown files for every conference when it opens and closes, using one file per conference under the active MunAssign data directory's `markdown-exports` folder. These files summarize assignments, position interest, delegate and committee payment tiers, and high-level stats for human inspection after a failure; MunAssign does not import them.
 
 ## Implementation Notes
 

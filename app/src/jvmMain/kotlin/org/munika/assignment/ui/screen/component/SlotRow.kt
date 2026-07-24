@@ -109,6 +109,10 @@ fun SlotRow(
             }
             Spacer(Modifier.width(6.dp))
         }
+        slot.paymentTierMismatch?.let { mismatch ->
+            PaymentTierMismatchIcon(mismatch)
+            Spacer(Modifier.width(6.dp))
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             when (slot.status) {
                 SlotBoardStatus.Empty -> {

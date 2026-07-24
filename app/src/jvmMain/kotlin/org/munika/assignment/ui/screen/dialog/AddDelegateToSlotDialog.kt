@@ -34,6 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.munika.assignment.ui.screen.component.contentColor
 import org.munika.assignment.ui.screen.component.containerColor
+import org.munika.assignment.ui.screen.component.PaymentTierMismatchIcon
 import org.munika.assignment.ui.viewmodel.AssignmentDelegateCandidateUiState
 import org.munika.assignment.ui.viewmodel.SlotBoardUiState
 
@@ -152,6 +153,9 @@ private fun DelegateCandidateRow(
                         tint = Color(0xFF8E24AA),
                         modifier = Modifier.size(16.dp),
                     )
+                }
+                candidate.paymentTierMismatch?.let { mismatch ->
+                    PaymentTierMismatchIcon(mismatch)
                 }
                 candidate.preferenceRank?.let { rank ->
                     Text("Preference #$rank", style = MaterialTheme.typography.labelMedium)

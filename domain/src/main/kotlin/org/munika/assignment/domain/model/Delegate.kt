@@ -9,8 +9,8 @@ import java.time.temporal.ChronoUnit
 /**
  * Assignable participant from the MyMUN Delegates sheet.
  *
- * Profile and payment fields are MyMUN-managed during updates. Comments, active state, and pending
- * assignments are organizer-managed state preserved when possible.
+ * Profile and [paymentStatus] are MyMUN-managed during updates. [paymentTier], comments, active
+ * state, and pending assignments are organizer-managed state preserved when possible.
  */
 class Delegate(
     override val id: DelegateId,
@@ -19,6 +19,7 @@ class Delegate(
     val email: String?,
     val profile: DelegateProfile,
     val paymentStatus: PaymentStatus,
+    val paymentTier: PaymentTier? = null,
     var active: Boolean = true,
     val isHeadDelegate: Boolean,
     delegation: Delegation? = null,
@@ -50,6 +51,10 @@ class Delegate(
 
     val currentPosition: Position?
         get() = currentSlot?.position
+
+    /** Whether the delegate may appear in assignment workflows. */
+    val isAssignmentEligible: Boolean
+        get() = active && paymentStatus == PaymentStatus.Paid && profile.isUsableForAssignment
 
     fun age(today: LocalDate = LocalDate.now()): Int? =
         profile.dateOfBirth?.let { Period.between(it, today).years }
@@ -119,9 +124,66 @@ class Delegate(
             resolutionFor(questionId = null, issue)?.let { resolution -> ResolvedAnswerIssue(issue, resolution) }
         }
 
-    private companion object {
-        const val ProfileLowLanguageLevelIssueKey = "Warning:profile_low_language_level"
-        const val ProfileHighSchoolerOverAgeIssueKey = "Warning:profile_high_schooler_over_age"
-        const val ProfileMinorNotHighSchoolerIssueKey = "Warning:profile_minor_not_high_schooler"
+    /** Returns current payment-tier classification and assignment compatibility issues. */
+    fun paymentTierIssues(): List<AnswerIssue> {
+        if (!isAssignmentEligible) return emptyList()
+        if (paymentTier == null) return listOf(
+            AnswerIssue(
+                message = "Paid delegate has no payment tier.",
+                severity = AnswerIssueSeverity.Warning,
+                key = PaymentTierMissingIssueKey,
+            ),
+        )
+        val committee = currentPosition?.committee ?: return emptyList()
+        return listOfNotNull(paymentTierIssueFor(committee))
+    }
+
+    /** Returns the issue that assigning this delegate to [committee] would create, if any. */
+    fun paymentTierIssueFor(committee: Committee): AnswerIssue? {
+        require(committee.conference === conference) { "Committee must belong to the delegate's conference." }
+        if (!isAssignmentEligible) return null
+        val delegateTier = paymentTier ?: return AnswerIssue(
+            message = "Paid delegate has no payment tier.",
+            severity = AnswerIssueSeverity.Warning,
+            key = PaymentTierMissingIssueKey,
+        )
+        return when {
+            delegateTier == PaymentTier.Reduced && committee.paymentTier == PaymentTier.Full ->
+                AnswerIssue(
+                    message = "Reduced-tier delegate is assigned to Full-tier committee ${committee.displayName}.",
+                    severity = AnswerIssueSeverity.Warning,
+                    key = "Warning:payment_tier_reduced_in_full:${committee.id.value}",
+                )
+            delegateTier == PaymentTier.Full && committee.paymentTier == PaymentTier.Reduced ->
+                AnswerIssue(
+                    message = "Full-tier delegate is assigned to Reduced-tier committee ${committee.displayName}.",
+                    severity = AnswerIssueSeverity.Notice,
+                    key = "Notice:payment_tier_full_in_reduced:${committee.id.value}",
+                )
+            else -> null
+        }
+    }
+
+    /** Returns unresolved payment issues, always retaining the non-dismissible missing-tier warning. */
+    fun openPaymentTierIssues(): List<AnswerIssue> =
+        paymentTierIssues().filter { issue ->
+            issue.key == PaymentTierMissingIssueKey || resolutionFor(questionId = null, issue) == null
+        }
+
+    /** Returns acknowledged assignment mismatches that are still present. */
+    fun resolvedPaymentTierIssues(): List<ResolvedAnswerIssue> =
+        paymentTierIssues()
+            .filterNot { issue -> issue.key == PaymentTierMissingIssueKey }
+            .mapNotNull { issue ->
+                resolutionFor(questionId = null, issue)?.let { resolution -> ResolvedAnswerIssue(issue, resolution) }
+            }
+
+    companion object {
+        /** Stable key for the missing-tier warning used by persistence and inline classification. */
+        const val PaymentTierMissingIssueKey = "Warning:payment_tier_missing"
+
+        private const val ProfileLowLanguageLevelIssueKey = "Warning:profile_low_language_level"
+        private const val ProfileHighSchoolerOverAgeIssueKey = "Warning:profile_high_schooler_over_age"
+        private const val ProfileMinorNotHighSchoolerIssueKey = "Warning:profile_minor_not_high_schooler"
     }
 }

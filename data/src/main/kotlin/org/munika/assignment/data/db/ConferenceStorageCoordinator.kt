@@ -20,6 +20,7 @@ import org.munika.assignment.domain.model.DelegateId
 import org.munika.assignment.domain.model.DelegationId
 import org.munika.assignment.domain.model.MymunUpdateFilenameCandidate
 import org.munika.assignment.domain.model.MymunUpdateFilenameSignatureId
+import org.munika.assignment.domain.model.PaymentTier
 import org.munika.assignment.domain.model.PositionId
 import org.munika.assignment.domain.model.QuestionConfiguration
 import org.munika.assignment.domain.model.QuestionId
@@ -269,6 +270,22 @@ class ConferenceStorageCoordinator(
         committeeId: CommitteeId,
         mode: CommitteeMode,
     ): Conference = routed(conferenceId) { setCommitteeMode(conferenceId, committeeId, mode) }
+
+    override suspend fun setCommitteePaymentTier(
+        conferenceId: ConferenceId,
+        committeeId: CommitteeId,
+        paymentTier: PaymentTier,
+    ): Conference = routed(conferenceId) {
+        setCommitteePaymentTier(conferenceId, committeeId, paymentTier)
+    }
+
+    override suspend fun setDelegatePaymentTier(
+        conferenceId: ConferenceId,
+        delegateId: DelegateId,
+        paymentTier: PaymentTier,
+    ): Conference = routed(conferenceId) {
+        setDelegatePaymentTier(conferenceId, delegateId, paymentTier)
+    }
 
     override suspend fun setPositionMappedCommittee(
         conferenceId: ConferenceId,

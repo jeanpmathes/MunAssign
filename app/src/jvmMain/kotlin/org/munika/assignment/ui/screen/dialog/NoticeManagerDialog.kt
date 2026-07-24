@@ -55,6 +55,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.munika.assignment.ui.viewmodel.IssueManagerUiState
 import org.munika.assignment.ui.viewmodel.IssueUiState
+import org.munika.assignment.domain.model.PaymentTier
+import org.munika.assignment.ui.screen.component.BoardTooltip
 
 @Composable
 fun IssueManagerPanel(
@@ -63,6 +65,7 @@ fun IssueManagerPanel(
     onResolve: (delegateId: String, questionId: String?, issueKey: String, justification: String?) -> Unit,
     onUpdateJustification: (resolutionId: String, justification: String?) -> Unit,
     onUnresolve: (resolutionId: String) -> Unit,
+    onSetDelegatePaymentTier: (delegateId: String, paymentTier: PaymentTier) -> Unit,
     onOpenDelegate: (delegateId: String) -> Unit,
     onClearFilter: () -> Unit,
     modifier: Modifier = Modifier,
@@ -101,6 +104,7 @@ fun IssueManagerPanel(
                         onEdit = { editTarget = issue },
                         onUnresolve = { issue.resolutionId?.let(onUnresolve) },
                         onOpenDelegate = { onOpenDelegate(issue.delegateId) },
+                        onSetPaymentTier = { tier -> onSetDelegatePaymentTier(issue.delegateId, tier) },
                     )
                     if (index < manager.issues.lastIndex) {
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f))
@@ -202,6 +206,7 @@ private fun IssueRow(
     onEdit: () -> Unit,
     onUnresolve: () -> Unit,
     onOpenDelegate: () -> Unit,
+    onSetPaymentTier: (PaymentTier) -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth()
@@ -265,7 +270,18 @@ private fun IssueRow(
                         Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Reopen issue", modifier = Modifier.size(17.dp))
                     }
                 }
-            } else {
+            } else if (issue.canAssignPaymentTier) {
+                BoardTooltip("Classify as full payment tier") {
+                    TextButton(onClick = { onSetPaymentTier(PaymentTier.Full) }) {
+                        Text("Full")
+                    }
+                }
+                BoardTooltip("Classify as reduced payment tier") {
+                    TextButton(onClick = { onSetPaymentTier(PaymentTier.Reduced) }) {
+                        Text("Reduced")
+                    }
+                }
+            } else if (issue.canResolve) {
                 TooltipIconButton("Resolve issue") {
                     IconButton(onClick = onResolve, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Filled.Check, contentDescription = "Resolve issue", modifier = Modifier.size(17.dp))

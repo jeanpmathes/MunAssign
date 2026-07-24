@@ -4,6 +4,8 @@ import java.time.Instant
 import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import org.munika.assignment.domain.model.AnswerIssue
 import org.munika.assignment.domain.model.AnswerIssueResolution
 import org.munika.assignment.domain.model.AnswerIssueResolutionId
@@ -127,5 +129,28 @@ class NoticeManagerUiModelsTest {
         assertEquals(null, profileRow.answerText)
         assertEquals("Delegate is marked as a high schooler but is 24 years old.", profileRow.reasonText)
         assertEquals(true, profileRow.delegateIsHighSchooler)
+    }
+
+    @Test
+    fun `missing payment tier is an inline classification warning instead of a resolvable issue`() {
+        val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val delegate = Delegate(
+            id = DelegateId("delegate"),
+            conference = conference,
+            name = PersonName("Alex", "Kim"),
+            email = "alex@example.test",
+            profile = DelegateProfile(null, null, null, null, null, null, null, null, null, "Accepted"),
+            paymentStatus = PaymentStatus.Paid,
+            paymentTier = null,
+            isHeadDelegate = false,
+        )
+        conference.delegates += delegate
+
+        val row = conference.toIssueManagerUiState().issues.single()
+
+        assertEquals("Payment tier", row.validationLabel)
+        assertEquals("Paid delegate has no payment tier.", row.reasonText)
+        assertTrue(row.canAssignPaymentTier)
+        assertFalse(row.canResolve)
     }
 }

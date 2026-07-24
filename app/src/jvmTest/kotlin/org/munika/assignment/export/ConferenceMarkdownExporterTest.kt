@@ -25,6 +25,7 @@ import org.munika.assignment.domain.model.LanguageLevelAnswerMapping
 import org.munika.assignment.domain.model.MunExperienceAnswerMapping
 import org.munika.assignment.domain.model.MunExperienceLevel
 import org.munika.assignment.domain.model.PaymentStatus
+import org.munika.assignment.domain.model.PaymentTier
 import org.munika.assignment.domain.model.PersonName
 import org.munika.assignment.domain.model.Position
 import org.munika.assignment.domain.model.PositionId
@@ -64,6 +65,7 @@ class ConferenceMarkdownExporterTest {
         assertContains(markdown, "## Committees")
         assertFalse(markdown.contains("## Assignments"))
         assertContains(markdown, "### General Assembly (University)")
+        assertContains(markdown, "- Payment tier: Reduced")
         assertContains(markdown, "| Position | Slot | Status | Delegate | Preferences |")
         assertContains(markdown, "| Germany | 1 | Confirmed | Assigned Delegate [2] |  |")
         assertContains(markdown, "| Brazil | 1 | Pending | Pending Delegate [3] |  |")
@@ -71,10 +73,12 @@ class ConferenceMarkdownExporterTest {
         assertFalse(markdown.contains("## Position Interest"))
         assertContains(
             markdown,
-            "| 1 | Interested Delegate | Empty | Paid | Active |  |  | High school | Beginner | B1/B2 | Accepted | 02.01.2026 | 1st: General Assembly (Japan) |",
+            "| 1 | Interested Delegate | Empty | Paid | Full | Active |  |  | High school | Beginner | B1/B2 | Accepted | 02.01.2026 | 1st: General Assembly (Japan) |",
         )
-        assertContains(markdown, "| 4 | Unpaid Delegate | Empty | Unpaid | Active |")
-        assertContains(markdown, "| 6 | Inactive Delegate | Empty | Paid | Inactive |")
+        assertContains(markdown, "| 2 | Assigned Delegate | Confirmed | Paid | Reduced | Active |")
+        assertContains(markdown, "| 3 | Pending Delegate | Pending | Paid | Unassigned | Active |")
+        assertContains(markdown, "| 4 | Unpaid Delegate | Empty | Unpaid | Unassigned | Active |")
+        assertContains(markdown, "| 6 | Inactive Delegate | Empty | Paid | Full | Inactive |")
         assertFalse(markdown.contains("@example.test"))
         assertFalse(markdown.contains("Hidden Street"))
         assertFalse(markdown.contains("+49"))
@@ -200,6 +204,7 @@ class ConferenceMarkdownExporterTest {
             conference = conference,
             mymunName = "General Assembly",
             slotsPerPosition = 1,
+            paymentTier = PaymentTier.Reduced,
         )
         val germany = position(committee, "germany", "Germany")
         val brazil = position(committee, "brazil", "Brazil")
@@ -207,12 +212,35 @@ class ConferenceMarkdownExporterTest {
         committee.positions += listOf(germany, brazil, japan)
         conference.committees += committee
 
-        val interested = delegate(conference, "interested", "Interested", "Delegate", days = 1, isHighSchool = true)
-        val assigned = delegate(conference, "assigned", "Assigned", "Delegate", days = 2)
+        val interested = delegate(
+            conference,
+            "interested",
+            "Interested",
+            "Delegate",
+            days = 1,
+            isHighSchool = true,
+            paymentTier = PaymentTier.Full,
+        )
+        val assigned = delegate(
+            conference,
+            "assigned",
+            "Assigned",
+            "Delegate",
+            days = 2,
+            paymentTier = PaymentTier.Reduced,
+        )
         val pending = delegate(conference, "pending", "Pending", "Delegate", days = 3)
         val unpaid = delegate(conference, "unpaid", "Unpaid", "Delegate", days = 4, paymentStatus = PaymentStatus.Unpaid)
-        val zed = delegate(conference, "zed", "Zed", "Delegate", days = 5)
-        val inactive = delegate(conference, "inactive", "Inactive", "Delegate", days = null, active = false)
+        val zed = delegate(conference, "zed", "Zed", "Delegate", days = 5, paymentTier = PaymentTier.Full)
+        val inactive = delegate(
+            conference,
+            "inactive",
+            "Inactive",
+            "Delegate",
+            days = null,
+            paymentTier = PaymentTier.Full,
+            active = false,
+        )
         conference.delegates += listOf(pending, inactive, interested, assigned, unpaid, zed)
 
         addPreference(interested, japan, 1)
@@ -237,6 +265,7 @@ class ConferenceMarkdownExporterTest {
         days: Long?,
         isHighSchool: Boolean = false,
         paymentStatus: PaymentStatus = PaymentStatus.Paid,
+        paymentTier: PaymentTier? = null,
         active: Boolean = true,
     ): Delegate {
         val delegate = Delegate(
@@ -257,6 +286,7 @@ class ConferenceMarkdownExporterTest {
                 applicationStatus = "Accepted",
             ),
             paymentStatus = paymentStatus,
+            paymentTier = paymentTier,
             active = active,
             isHeadDelegate = false,
             submittedAt = days?.let { Instant.parse("2026-01-01T00:00:00Z").plusSeconds(it * 86_400) },

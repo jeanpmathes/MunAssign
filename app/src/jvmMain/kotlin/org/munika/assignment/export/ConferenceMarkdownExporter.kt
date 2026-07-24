@@ -14,6 +14,7 @@ import org.munika.assignment.domain.model.HighSchoolerStatus
 import org.munika.assignment.domain.model.LanguageLevel
 import org.munika.assignment.domain.model.MunExperienceLevel
 import org.munika.assignment.domain.model.PaymentStatus
+import org.munika.assignment.domain.model.PaymentTier
 import org.munika.assignment.domain.model.Position
 import org.munika.assignment.domain.model.Slot
 
@@ -74,6 +75,8 @@ object ConferenceMarkdownExporter {
             appendLine()
             appendLine("### ${committee.exportHeader}")
             appendLine()
+            appendLine("- Payment tier: ${committee.paymentTier.exportLabel()}")
+            appendLine()
             appendLine("| Position | Slot | Status | Delegate | Preferences |")
             appendLine("| --- | ---: | --- | --- | --- |")
             committee.positions.forEach { position ->
@@ -98,15 +101,16 @@ object ConferenceMarkdownExporter {
         appendLine("## Delegates")
         appendLine()
         appendLine(
-            "| # | Delegate | Assignment | Payment | Active | Current assignment | Delegation | School level | Experience | Language | Application status | Submitted | Preferences |",
+            "| # | Delegate | Assignment | Payment | Tier | Active | Current assignment | Delegation | School level | Experience | Language | Application status | Submitted | Preferences |",
         )
-        appendLine("| ---: | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
+        appendLine("| ---: | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
         conference.delegates.sortedForExport().forEach { delegate ->
             appendTableRow(
                 delegateNumbers.getValue(delegate.id).toString(),
                 delegate.displayName,
                 delegate.assignmentStatus.exportLabel(),
                 delegate.paymentStatus.exportLabel(),
+                delegate.paymentTier.exportLabel(),
                 if (delegate.active) "Active" else "Inactive",
                 delegate.currentAssignmentLabel(),
                 delegate.delegation?.displayLabel.orEmpty(),
@@ -196,6 +200,13 @@ object ConferenceMarkdownExporter {
         when (this) {
             PaymentStatus.Paid -> "Paid"
             PaymentStatus.Unpaid -> "Unpaid"
+        }
+
+    private fun PaymentTier?.exportLabel(): String =
+        when (this) {
+            PaymentTier.Full -> "Full"
+            PaymentTier.Reduced -> "Reduced"
+            null -> "Unassigned"
         }
 
     private fun MunExperienceLevel?.exportLabel(): String =

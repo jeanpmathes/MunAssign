@@ -33,6 +33,8 @@ data class IssueUiState(
     val severity: String,
     val isWarning: Boolean,
     val resolved: Boolean,
+    val canResolve: Boolean,
+    val canAssignPaymentTier: Boolean,
 ) {
     val questionLabel: String
         get() = questionText ?: validationLabel
@@ -89,6 +91,8 @@ private fun Delegate.issueRows(): List<IssueUiState> =
                 isWarning = issue.severity == AnswerIssueSeverity.Warning,
                 resolved = false,
                 justificationText = null,
+                canResolve = true,
+                canAssignPaymentTier = false,
             )
         } +
         resolvedProfileIssues().map { resolved ->
@@ -96,6 +100,36 @@ private fun Delegate.issueRows(): List<IssueUiState> =
                 delegate = this,
                 questionId = null,
                 validationLabel = "Profile validation",
+                questionText = null,
+                answerText = null,
+            )
+        } +
+        openPaymentTierIssues().map { issue ->
+            val isMissingTier = issue.key == Delegate.PaymentTierMissingIssueKey
+            IssueUiState(
+                delegateId = id.value,
+                delegateName = displayName,
+                delegateIsHighSchooler = isHighSchooler,
+                questionId = null,
+                resolutionId = null,
+                validationLabel = "Payment tier",
+                questionText = null,
+                answerText = null,
+                issueKey = issue.key,
+                reasonText = issue.message,
+                severity = issue.severity.name,
+                isWarning = issue.severity == AnswerIssueSeverity.Warning,
+                resolved = false,
+                justificationText = null,
+                canResolve = !isMissingTier,
+                canAssignPaymentTier = isMissingTier,
+            )
+        } +
+        resolvedPaymentTierIssues().map { resolved ->
+            resolved.toIssueUiState(
+                delegate = this,
+                questionId = null,
+                validationLabel = "Payment tier",
                 questionText = null,
                 answerText = null,
             )
@@ -118,6 +152,8 @@ private fun QuestionAnswer.openIssueRows(): List<IssueUiState> =
             isWarning = issue.severity == AnswerIssueSeverity.Warning,
             resolved = false,
             justificationText = null,
+            canResolve = true,
+            canAssignPaymentTier = false,
         )
     }
 
@@ -154,4 +190,6 @@ private fun ResolvedAnswerIssue.toIssueUiState(
         isWarning = issue.severity == AnswerIssueSeverity.Warning,
         resolved = true,
         justificationText = resolution.justification,
+        canResolve = false,
+        canAssignPaymentTier = false,
     )

@@ -8,6 +8,7 @@ import org.munika.assignment.domain.model.Delegate
 import org.munika.assignment.domain.model.LanguageLevel
 import org.munika.assignment.domain.model.MunExperienceLevel
 import org.munika.assignment.domain.model.PaymentStatus
+import org.munika.assignment.domain.model.PaymentTier
 import org.munika.assignment.domain.model.Position
 import org.munika.assignment.domain.model.Preference
 import org.munika.assignment.domain.model.ResolvedAnswerIssue
@@ -18,6 +19,8 @@ data class DelegateDetailUiState(
     val name: String,
     val active: Boolean,
     val paymentStatus: DelegateStatusChipUiState,
+    val paymentTier: PaymentTier?,
+    val paymentTierStatus: DelegateStatusChipUiState?,
     val applicationStatus: DelegateStatusChipUiState?,
     val inactiveMarker: DelegateStatusChipUiState?,
     val highSchooler: Boolean,
@@ -221,6 +224,28 @@ fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiSta
         name = delegate.displayName,
         active = delegate.active,
         paymentStatus = delegate.paymentStatusChip(),
+        paymentTier = delegate.paymentTier,
+        paymentTierStatus = if (delegate.paymentStatus == PaymentStatus.Paid) {
+            when (delegate.paymentTier) {
+                PaymentTier.Full -> DelegateStatusChipUiState(
+                    label = "Full tier",
+                    tone = DelegateStatusTone.Blue,
+                    tooltip = "Organizer-recorded full payment tier. Click to change it.",
+                )
+                PaymentTier.Reduced -> DelegateStatusChipUiState(
+                    label = "Reduced tier",
+                    tone = DelegateStatusTone.Notice,
+                    tooltip = "Organizer-recorded reduced payment tier. Click to change it.",
+                )
+                null -> DelegateStatusChipUiState(
+                    label = "Tier unassigned",
+                    tone = DelegateStatusTone.Yellow,
+                    tooltip = "Choose the delegate's Full or Reduced payment tier.",
+                )
+            }
+        } else {
+            null
+        },
         applicationStatus = delegate.profile.applicationStatus?.takeIf { it.isNotBlank() }?.let {
             DelegateStatusChipUiState(
                 label = it,

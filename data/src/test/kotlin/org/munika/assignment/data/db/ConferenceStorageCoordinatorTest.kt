@@ -101,7 +101,7 @@ class ConferenceStorageCoordinatorTest {
         creator.createSynchronizedConference("Older", synchronizedPath)
         DriverManager.getConnection("jdbc:sqlite:${synchronizedPath.toAbsolutePath()}").use { connection ->
             connection.createStatement().use { statement ->
-                statement.executeUpdate("DELETE FROM schema_migrations WHERE version = 12")
+                statement.executeUpdate("DELETE FROM schema_migrations WHERE version = 13")
             }
         }
         val consumerRoot = root.resolve("consumer")

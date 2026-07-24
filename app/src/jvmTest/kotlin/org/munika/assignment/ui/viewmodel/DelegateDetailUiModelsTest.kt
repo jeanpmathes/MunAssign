@@ -32,6 +32,7 @@ import org.munika.assignment.domain.model.MunExperienceAnswerMapping
 import org.munika.assignment.domain.model.MunExperienceLevel
 import org.munika.assignment.domain.model.NoticeWhenNonBlank
 import org.munika.assignment.domain.model.PaymentStatus
+import org.munika.assignment.domain.model.PaymentTier
 import org.munika.assignment.domain.model.PersonName
 import org.munika.assignment.domain.model.Position
 import org.munika.assignment.domain.model.PositionId
@@ -65,6 +66,8 @@ class DelegateDetailUiModelsTest {
         assertEquals("Alex Kim", detail.name)
         assertEquals("Paid", detail.paymentStatus.label)
         assertEquals(DelegateStatusTone.Green, detail.paymentStatus.tone)
+        assertEquals(PaymentTier.Reduced, detail.paymentTier)
+        assertEquals("Reduced tier", detail.paymentTierStatus?.label)
         assertEquals("Accepted", detail.applicationStatus?.label)
         assertEquals(DelegateStatusTone.Blue, detail.applicationStatus?.tone)
         assertEquals("alex@example.test", detail.email)
@@ -235,6 +238,7 @@ class DelegateDetailUiModelsTest {
                 applicationStatus = "Accepted",
             ),
             paymentStatus = PaymentStatus.Paid,
+            paymentTier = PaymentTier.Reduced,
             active = true,
             isHeadDelegate = true,
             delegation = delegation,

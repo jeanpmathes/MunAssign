@@ -104,6 +104,7 @@ import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.Delegate
 import org.munika.assignment.domain.model.PaymentStatus
+import org.munika.assignment.domain.model.PaymentTier
 import org.munika.assignment.domain.model.QuestionConfiguration
 import org.munika.assignment.ui.screen.dialog.IssueManagerPanel
 import org.munika.assignment.ui.screen.dialog.QuestionConfigurationDialog
@@ -155,6 +156,7 @@ fun MainScreen(
     onReorderConferences: (List<String>) -> Boolean,
     onSetCommitteeSlotsPerPosition: (String, Int) -> Unit,
     onSetCommitteeMode: (String, CommitteeMode) -> Unit,
+    onSetCommitteePaymentTier: (String, PaymentTier) -> Unit,
     onSetPositionMappedCommittee: (String, String?) -> Unit,
     onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
     onClearPendingSlot: (slotId: String) -> Unit,
@@ -201,6 +203,7 @@ fun MainScreen(
     ) -> Unit = { _, _, _ -> },
     onRemoveDelegateReservation: (conferenceId: String, delegateId: String) -> Unit = { _, _ -> },
     onResolveAnswerIssue: (delegateId: String, questionId: String?, issueKey: String, justification: String?) -> Unit,
+    onSetDelegatePaymentTier: (delegateId: String, paymentTier: PaymentTier) -> Unit,
     onUpdateAnswerIssueResolutionJustification: (resolutionId: String, justification: String?) -> Unit,
     onUnresolveAnswerIssue: (resolutionId: String) -> Unit,
     onOpenQuestionConfiguration: () -> Unit,
@@ -320,6 +323,7 @@ fun MainScreen(
                             delegateListControls = state.delegateListControls,
                             onSetCommitteeSlotsPerPosition = onSetCommitteeSlotsPerPosition,
                             onSetCommitteeMode = onSetCommitteeMode,
+                            onSetCommitteePaymentTier = onSetCommitteePaymentTier,
                             onSetPositionMappedCommittee = onSetPositionMappedCommittee,
                             onAssignDelegateToSlot = onAssignDelegateToSlot,
                             onClearPendingSlot = onClearPendingSlot,
@@ -344,6 +348,7 @@ fun MainScreen(
                             onOpenNoticeManager = onOpenNoticeManager,
                             onCloseNoticeManager = onCloseNoticeManager,
                             onResolveAnswerIssue = onResolveAnswerIssue,
+                            onSetDelegatePaymentTier = onSetDelegatePaymentTier,
                             onUpdateAnswerIssueResolutionJustification = onUpdateAnswerIssueResolutionJustification,
                             onUnresolveAnswerIssue = onUnresolveAnswerIssue,
                             onClearBoardActionError = onClearBoardActionError,
@@ -1161,6 +1166,7 @@ private fun ConferenceWorkspace(
     delegateListControls: DelegateListControlsUiState,
     onSetCommitteeSlotsPerPosition: (String, Int) -> Unit,
     onSetCommitteeMode: (String, CommitteeMode) -> Unit,
+    onSetCommitteePaymentTier: (String, PaymentTier) -> Unit,
     onSetPositionMappedCommittee: (String, String?) -> Unit,
     onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
     onClearPendingSlot: (slotId: String) -> Unit,
@@ -1185,6 +1191,7 @@ private fun ConferenceWorkspace(
     onOpenNoticeManager: () -> Unit,
     onCloseNoticeManager: () -> Unit,
     onResolveAnswerIssue: (delegateId: String, questionId: String?, issueKey: String, justification: String?) -> Unit,
+    onSetDelegatePaymentTier: (delegateId: String, paymentTier: PaymentTier) -> Unit,
     onUpdateAnswerIssueResolutionJustification: (resolutionId: String, justification: String?) -> Unit,
     onUnresolveAnswerIssue: (resolutionId: String) -> Unit,
     onClearBoardActionError: () -> Unit,
@@ -1198,6 +1205,7 @@ private fun ConferenceWorkspace(
                 scrollRequest = boardScrollRequest,
                 onSetCommitteeSlotsPerPosition = onSetCommitteeSlotsPerPosition,
                 onSetCommitteeMode = onSetCommitteeMode,
+                onSetCommitteePaymentTier = onSetCommitteePaymentTier,
                 onSetPositionMappedCommittee = onSetPositionMappedCommittee,
                 onAssignDelegateToSlot = onAssignDelegateToSlot,
                 onClearPendingSlot = onClearPendingSlot,
@@ -1234,6 +1242,7 @@ private fun ConferenceWorkspace(
                     manager = issueManager,
                     onClose = onCloseNoticeManager,
                     onResolve = onResolveAnswerIssue,
+                    onSetDelegatePaymentTier = onSetDelegatePaymentTier,
                     onUpdateJustification = onUpdateAnswerIssueResolutionJustification,
                     onUnresolve = onUnresolveAnswerIssue,
                     onOpenDelegate = onOpenDelegateDetail,
@@ -1262,6 +1271,7 @@ private fun ConferenceWorkspace(
                     onOpenNotices = onOpenDelegateNoticeManager,
                     onResolveIssue = onResolveAnswerIssue,
                     onUnresolveIssue = onUnresolveAnswerIssue,
+                    onSetPaymentTier = onSetDelegatePaymentTier,
                 )
             }
         }
