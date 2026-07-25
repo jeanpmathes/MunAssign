@@ -19,3 +19,4 @@ captures
 node_modules/
 /samples
 .worktrees/
+.tmp-runtime-home/
