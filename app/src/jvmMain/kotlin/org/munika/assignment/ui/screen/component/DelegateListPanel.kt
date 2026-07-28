@@ -22,9 +22,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Search
@@ -398,7 +398,7 @@ private fun DelegateRow(
                     },
                     modifier = Modifier.size(40.dp),
                 ) {
-                    Icon(Icons.Filled.LocationOn, contentDescription = "Go to assignment")
+                    Icon(Icons.Filled.CenterFocusStrong, contentDescription = "Go to assignment")
                 }
             }
         }

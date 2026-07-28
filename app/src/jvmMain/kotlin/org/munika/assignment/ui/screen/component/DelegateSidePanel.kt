@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -1166,7 +1167,7 @@ private fun CommentRow(
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         BoardTooltip("Open this resolved issue.") {
                             IconButton(onClick = onOpenIssues, modifier = Modifier.size(32.dp)) {
-                                Icon(Icons.Filled.Link, contentDescription = "Open resolved issue", modifier = Modifier.size(16.dp))
+                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Open resolved issue", modifier = Modifier.size(16.dp))
                             }
                         }
                     }

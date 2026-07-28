@@ -27,25 +27,27 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.EventNote
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.ConfirmationNumber
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.Gesture
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Groups
-import androidx.compose.material.icons.filled.ManageAccounts
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.RestorePage
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.UploadFile
-import androidx.compose.material.icons.filled.Upgrade
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -644,7 +646,7 @@ private fun TopBarActionRow(
             )
             TooltipIconButton(
                 tooltip = "Manage conferences",
-                icon = Icons.Filled.ManageAccounts,
+                icon = Icons.AutoMirrored.Filled.EventNote,
                 onClick = onOpenManagement,
                 enabled = !state.loading,
             )
@@ -656,7 +658,7 @@ private fun TopBarActionRow(
             )
             TooltipIconButton(
                 tooltip = "Copy conference status image",
-                icon = Icons.Filled.ContentCopy,
+                icon = Icons.Filled.Image,
                 onClick = { state.selectedConference?.let(onCopyStatusImage) },
                 enabled = !state.loading && state.selectedConference != null,
             )
@@ -673,7 +675,7 @@ private fun TopBarActionRow(
                 )
                 TooltipIconButton(
                     tooltip = "Configure application questions",
-                    icon = Icons.Filled.Edit,
+                    icon = Icons.Filled.Tune,
                     onClick = onOpenQuestionConfiguration,
                     enabled = !state.loading && state.selectedConference?.questions?.isNotEmpty() == true,
                 )
@@ -693,7 +695,7 @@ private fun TopBarActionRow(
                         onClick = onOpenQuestionConfiguration,
                         enabled = !state.loading && state.selectedConference?.questions?.isNotEmpty() == true,
                     ) {
-                        Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Filled.Tune, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
                         Text("Questions")
                     }
@@ -726,7 +728,7 @@ private fun TopBarActionRow(
             )
             TooltipIconButton(
                 tooltip = "Open reservation manager",
-                icon = Icons.Filled.Bookmark,
+                icon = Icons.Filled.ConfirmationNumber,
                 onClick = onOpenReservationManager,
                 enabled = !state.loading && state.selectedConference != null,
             )
@@ -1049,7 +1051,7 @@ private fun DelegationIconButton(
         Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
             IconButton(onClick = onClick, enabled = enabled) {
                 Icon(
-                    Icons.Filled.Groups,
+                    Icons.Filled.AccountTree,
                     contentDescription = tooltip,
                     tint = if (enabled) {
                         MaterialTheme.colorScheme.onSurfaceVariant
@@ -1944,10 +1946,10 @@ private fun ConferenceManagementMenu(
             }
             val icon = when (menuAction.action) {
                 ConferenceManagementAction.Export -> Icons.Filled.FileUpload
-                ConferenceManagementAction.Replace -> Icons.Filled.Upgrade
-                ConferenceManagementAction.TrustedFilenames -> Icons.Filled.Gesture
+                ConferenceManagementAction.Replace -> Icons.Filled.RestorePage
+                ConferenceManagementAction.TrustedFilenames -> Icons.Filled.Verified
                 ConferenceManagementAction.Rename -> Icons.Filled.Edit
-                ConferenceManagementAction.MoveToSynchronized -> Icons.Filled.Cloud
+                ConferenceManagementAction.MoveToSynchronized -> Icons.Filled.CloudUpload
                 ConferenceManagementAction.Locate -> Icons.Filled.FolderOpen
                 ConferenceManagementAction.Remove -> Icons.Filled.Delete
                 ConferenceManagementAction.Reload -> Icons.Filled.Refresh

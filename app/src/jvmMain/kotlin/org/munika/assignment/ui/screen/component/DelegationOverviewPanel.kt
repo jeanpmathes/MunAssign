@@ -19,9 +19,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.ConfirmationNumber
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
@@ -114,7 +114,7 @@ private fun Header(onClose: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Icon(Icons.Filled.Groups, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        Icon(Icons.Filled.AccountTree, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         Text("Delegations", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
         BoardTooltip("Close delegation overview") {
             IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {
@@ -200,7 +200,7 @@ private fun DelegationCard(
                 }
                 BoardTooltip("Create a prefilled reservation for ${delegation.name}.") {
                     IconButton(onClick = onCreateReservation, enabled = !loading, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Filled.Add, contentDescription = "Create reservation", modifier = Modifier.size(19.dp))
+                        Icon(Icons.Filled.ConfirmationNumber, contentDescription = "Create reservation", modifier = Modifier.size(19.dp))
                     }
                 }
                 BoardTooltip("Open reservation manager for ${delegation.name}.") {

@@ -19,14 +19,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.AltRoute
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -263,7 +263,7 @@ private fun QuestionRow(
                 Spacer(modifier = Modifier.weight(1f))
                 TooltipIconButton("Edit label", Icons.AutoMirrored.Filled.Label, enabled = true, tint = actionIconTint, onClick = onOpenLabel)
                 VisibilityButton(state = state, tint = actionIconTint, onToggle = { onChange(state.copy(visibleInDelegateDetail = !state.visibleInDelegateDetail)) })
-                TooltipIconButton("Edit answer mappings", Icons.Filled.Settings, enabled = state.selectedRole != null, tint = actionIconTint, onClick = onOpenMappings)
+                TooltipIconButton("Edit answer mappings", Icons.AutoMirrored.Filled.AltRoute, enabled = state.selectedRole != null, tint = actionIconTint, onClick = onOpenMappings)
                 ReorderButton("Move up", Icons.Filled.ArrowUpward, enabled = canMoveUp, tint = actionIconTint) { onMove(-1) }
                 ReorderButton("Move down", Icons.Filled.ArrowDownward, enabled = canMoveDown, tint = actionIconTint) { onMove(1) }
             }
@@ -329,7 +329,7 @@ private fun RoleCapsule(selectedRoleId: String?, onSelect: (String?) -> Unit) {
             modifier = Modifier.padding(start = 12.dp, end = 2.dp, top = 0.dp, bottom = 0.dp),
         ) {
             Text(role?.name ?: "No profile field", style = MaterialTheme.typography.labelMedium)
-            TooltipIconButton("Set profile field", Icons.Filled.KeyboardArrowDown, enabled = true) { expanded = true }
+            TooltipIconButton("Set profile field", Icons.Filled.Badge, enabled = true) { expanded = true }
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 DropdownMenuItem(text = { Text("No profile field") }, onClick = {
                     expanded = false
