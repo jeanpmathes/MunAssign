@@ -1,6 +1,5 @@
 # TODO
 
-- Improve texts in delegation view.
 - "No, I don't" is recognized as needs visa support.
 - Handling for missing preferences
 - Separator between resolved and unresolved issues.

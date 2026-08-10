@@ -30,7 +30,7 @@ import org.munika.assignment.domain.model.TypedAnswerMappings
 
 class DelegationOverviewUiModelsTest {
     @Test
-    fun `overview shows linked reservations active paid accepted count and delegate reservations`() {
+    fun `overview shows associated reservations and separates ready members from status groups`() {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val delegation = Delegation(
             DelegationId("delegation"),
@@ -45,9 +45,21 @@ class DelegationOverviewUiModelsTest {
         val otherDelegation = Delegation(DelegationId("other"), conference, "Beta Delegation", "Norway", 2, 1)
         val manual = delegate(conference, "manual", "Manual", "Delegate", delegation, "Accepted", PaymentStatus.Paid, true, true)
         val automatic = delegate(conference, "automatic", "Automatic", "Delegate", delegation, "Assigned", PaymentStatus.Paid, true, false)
+        val checkedIn = delegate(conference, "checked-in", "Checked In", "Delegate", delegation, "Checked In", PaymentStatus.Paid, true, false)
         val unpaid = delegate(conference, "unpaid", "Unpaid", "Delegate", delegation, "Accepted", PaymentStatus.Unpaid, true, false)
         val inactive = delegate(conference, "inactive", "Inactive", "Delegate", delegation, "Accepted", PaymentStatus.Paid, false, false)
         val submitted = delegate(conference, "submitted", "Submitted", "Delegate", delegation, "Submitted", PaymentStatus.Paid, true, false)
+        val submittedUnpaidInactive = delegate(
+            conference,
+            "submitted-unpaid-inactive",
+            "Submitted Unpaid",
+            "Inactive",
+            delegation,
+            "Submitted",
+            PaymentStatus.Unpaid,
+            false,
+            false,
+        )
         val reservation = Reservation(
             id = ReservationId("reservation"),
             conference = conference,
@@ -69,7 +81,15 @@ class DelegationOverviewUiModelsTest {
             updatedAt = Instant.EPOCH,
         )
         conference.delegations += listOf(otherDelegation, delegation)
-        conference.delegates += listOf(manual, automatic, unpaid, inactive, submitted)
+        conference.delegates += listOf(
+            manual,
+            automatic,
+            checkedIn,
+            unpaid,
+            inactive,
+            submitted,
+            submittedUnpaidInactive,
+        )
         conference.reservations += listOf(otherReservation, reservation)
         link(reservation, manual, ReservationLinkSource.Manual)
         link(reservation, automatic, ReservationLinkSource.DelegationAuto)
@@ -80,19 +100,25 @@ class DelegationOverviewUiModelsTest {
         assertEquals("Alpha Delegation", row.name)
         assertEquals("Finland", row.country)
         assertEquals(4, row.expectedDelegateCount)
-        assertEquals(3, row.currentDelegateCountFromMymun)
+        assertEquals(3, row.memberCount)
         assertEquals(true, row.isHighSchoolDelegation)
         assertEquals(true, row.needsReview)
-        assertEquals(2, row.activePaidAcceptedDelegateCount)
-        assertEquals(listOf("Alpha Hold"), row.linkedReservations.map { it.name })
-        assertEquals(1, row.linkedReservations.single().usedHighSchoolCount)
-        assertEquals(1, row.linkedReservations.single().totalHighSchoolCount)
-        assertEquals(1, row.linkedReservations.single().usedUniversityCount)
-        assertEquals(2, row.linkedReservations.single().totalUniversityCount)
-        assertEquals(listOf("Automatic Delegate", "Inactive Delegate", "Manual Delegate", "Unpaid Delegate"), row.acceptedDelegates.map { it.name })
-        assertEquals(listOf("Submitted Delegate"), row.submittedDelegates.map { it.name })
-        assertEquals("Alpha Hold", row.acceptedDelegates.single { it.id == "manual" }.reservationName)
-        assertEquals("Alpha Hold", row.acceptedDelegates.single { it.id == "automatic" }.reservationName)
+        assertEquals(3, row.readyMemberCount)
+        assertEquals(listOf("Alpha Hold"), row.associatedReservations.map { it.name })
+        assertEquals(1, row.associatedReservations.single().usedHighSchoolCount)
+        assertEquals(1, row.associatedReservations.single().totalHighSchoolCount)
+        assertEquals(1, row.associatedReservations.single().usedUniversityCount)
+        assertEquals(2, row.associatedReservations.single().totalUniversityCount)
+        assertEquals(
+            listOf("Automatic Delegate", "Checked In Delegate", "Inactive Delegate", "Manual Delegate", "Unpaid Delegate"),
+            row.acceptedMembers.map { it.name },
+        )
+        assertEquals(
+            listOf("Submitted Delegate", "Submitted Unpaid Inactive"),
+            row.submittedMembers.map { it.name },
+        )
+        assertEquals("Alpha Hold", row.acceptedMembers.single { it.id == "manual" }.reservationName)
+        assertEquals("Alpha Hold", row.acceptedMembers.single { it.id == "automatic" }.reservationName)
     }
 
     @Test

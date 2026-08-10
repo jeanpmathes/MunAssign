@@ -147,14 +147,16 @@ private fun DelegationCard(
             Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            delegation.name,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
+                        BoardTooltip(delegation.name, modifier = Modifier.weight(1f)) {
+                            Text(
+                                delegation.name,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
                         if (delegation.needsReview) {
                             BoardTooltip("New delegation not yet reviewed") {
                                 Icon(
@@ -210,22 +212,33 @@ private fun DelegationCard(
                 }
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                InfoChip("Expected ${delegation.expectedDelegateCount?.toString() ?: "-"}")
-                InfoChip("Online ${delegation.currentDelegateCountFromMymun?.toString() ?: "-"}")
-                InfoChip("Usable ${delegation.activePaidAcceptedDelegateCount}")
+                InfoChip(
+                    text = "Expected ${delegation.expectedDelegateCount?.toString() ?: "-"}",
+                    tooltip = "Expected number of members reported by the latest update.",
+                )
+                InfoChip(
+                    text = "Members ${delegation.memberCount?.toString() ?: "-"}",
+                    tooltip = "Current number of members reported by the latest update.",
+                )
+                InfoChip(
+                    text = "Ready ${delegation.readyMemberCount}",
+                    tooltip = "Members who are active, paid, and accepted, assigned, or checked in.",
+                )
             }
-            ReservationSection(delegation.linkedReservations, onOpenReservationManager)
+            ReservationSection(delegation.associatedReservations, onOpenReservationManager)
             DelegateSection(
-                title = "Accepted / assigned",
-                emptyLabel = "No accepted delegates linked online",
-                delegates = delegation.acceptedDelegates,
+                title = "Accepted members",
+                titleTooltip = "Members with an accepted, assigned, or checked-in application status. Payment and active status do not affect this list.",
+                emptyLabel = "No accepted members known",
+                delegates = delegation.acceptedMembers,
                 showAssignment = true,
                 onOpenDelegateDetail = onOpenDelegateDetail,
             )
             DelegateSection(
-                title = "Submitted",
-                emptyLabel = "No submitted delegates linked online",
-                delegates = delegation.submittedDelegates,
+                title = "Submitted members",
+                titleTooltip = "Members whose application status is submitted. They are not ready for assignment yet.",
+                emptyLabel = "No submitted members known",
+                delegates = delegation.submittedMembers,
                 showAssignment = false,
                 onOpenDelegateDetail = onOpenDelegateDetail,
             )
@@ -239,7 +252,9 @@ private fun ReservationSection(
     onOpenReservationManager: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("Linked reservations", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        BoardTooltip("Reservations associated with this delegation and their current usage.") {
+            Text("Associated reservations", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        }
         if (reservations.isEmpty()) {
             Text("None", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
@@ -270,13 +285,16 @@ private fun ReservationSection(
 @Composable
 private fun DelegateSection(
     title: String,
+    titleTooltip: String,
     emptyLabel: String,
     delegates: List<DelegationDelegateUiState>,
     showAssignment: Boolean,
     onOpenDelegateDetail: (String) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(title, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        BoardTooltip(titleTooltip) {
+            Text(title, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        }
         if (delegates.isEmpty()) {
             Text(emptyLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
@@ -317,19 +335,21 @@ private fun DelegateSection(
 }
 
 @Composable
-private fun InfoChip(text: String) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        shape = RoundedCornerShape(999.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)),
-    ) {
-        Text(
-            text,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-        )
+private fun InfoChip(text: String, tooltip: String) {
+    BoardTooltip(tooltip) {
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            shape = RoundedCornerShape(999.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)),
+        ) {
+            Text(
+                text,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            )
+        }
     }
 }
 

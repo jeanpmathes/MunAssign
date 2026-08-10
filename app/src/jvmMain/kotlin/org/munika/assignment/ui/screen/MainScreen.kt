@@ -680,7 +680,7 @@ private fun TopBarActionRow(
                     enabled = !state.loading && state.selectedConference?.questions?.isNotEmpty() == true,
                 )
             } else {
-                WithTooltip("Choose the online Excel file for this conference update.") {
+                WithTooltip("Choose the Excel workbook for this conference update.") {
                     Button(
                         onClick = { onOpenWorkbook?.invoke() },
                         enabled = !state.loading && state.selectedConferenceId != null && onOpenWorkbook != null,
@@ -857,12 +857,12 @@ private fun ConferenceStats(conference: Conference) {
         StatGroup(
             label = "Applications",
             value = "${acceptedApplications.size} accepted · $paidApplications/$unpaidApplications paid/unpaid · $submittedApplications submitted",
-            tooltip = "Accepted paid delegates can be assigned. Unpaid accepted delegates are counted separately because they are not confirmed for assignment yet. Submitted delegates still need an online acceptance decision.",
+            tooltip = "Accepted paid delegates can be assigned. Unpaid accepted delegates are counted separately because they are not confirmed for assignment yet.",
         )
         StatGroup(
             label = "Delegates",
             value = "$assignedActivePaidDelegates / $activePaidDelegates assigned · $pendingActivePaidDelegates pending",
-            tooltip = "Shows how many usable delegates already have a pending or confirmed assignment. Pending assignments still need confirmation in a later update.",
+            tooltip = "Shows how many active, paid delegates already have a pending or confirmed assignment. Pending assignments still need confirmation in a later update.",
         )
         StatGroup(
             label = "Slots",

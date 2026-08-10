@@ -250,7 +250,7 @@ fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiSta
             DelegateStatusChipUiState(
                 label = it,
                 tone = DelegateStatusTone.Blue,
-                tooltip = "Online application status.",
+                tooltip = "Application status reported by the latest update.",
             )
         },
         inactiveMarker = if (delegate.active) {
@@ -315,7 +315,7 @@ fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiSta
         delegation = delegate.delegation?.let { delegation ->
             DelegateDelegationUiState(
                 label = delegation.displayLabel,
-                tooltip = "Online delegation linked to this delegate.",
+                tooltip = "Delegation associated with this delegate in the latest update.",
             )
         },
         reservation = delegate.reservationLink?.let { link ->
@@ -384,12 +384,12 @@ private fun Delegate.paymentStatusChip(): DelegateStatusChipUiState =
         PaymentStatus.Paid -> DelegateStatusChipUiState(
             label = "Paid",
             tone = DelegateStatusTone.Green,
-            tooltip = "Payment is marked as paid online.",
+            tooltip = "Payment is marked as paid in the latest update.",
         )
         PaymentStatus.Unpaid -> DelegateStatusChipUiState(
             label = "Unpaid",
             tone = DelegateStatusTone.Red,
-            tooltip = "Payment is still marked as unpaid online.",
+            tooltip = "Payment is marked as unpaid in the latest update.",
         )
     }
 

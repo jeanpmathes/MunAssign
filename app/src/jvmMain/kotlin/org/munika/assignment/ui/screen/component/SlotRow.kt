@@ -173,7 +173,7 @@ private fun SlotBoardStatus.style(): SlotStyle =
         SlotBoardStatus.Pending -> SlotStyle(
             label = "Pending",
             emptyText = "",
-            tooltip = "Pending assignment. Confirm it online, then load a later update.",
+            tooltip = "Pending assignment. It becomes confirmed when a later update includes it.",
             icon = Icons.Filled.HourglassEmpty,
             accentColor = Color(0xFFB26A00),
             borderColor = Color(0xFFB26A00).copy(alpha = 0.46f),

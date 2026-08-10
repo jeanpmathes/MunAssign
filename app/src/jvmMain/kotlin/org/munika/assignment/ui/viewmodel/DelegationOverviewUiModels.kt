@@ -15,13 +15,13 @@ data class DelegationOverviewRowUiState(
     val name: String,
     val country: String?,
     val expectedDelegateCount: Int?,
-    val currentDelegateCountFromMymun: Int?,
+    val memberCount: Int?,
     val isHighSchoolDelegation: Boolean,
     val needsReview: Boolean,
-    val activePaidAcceptedDelegateCount: Int,
-    val linkedReservations: List<DelegationReservationUiState>,
-    val acceptedDelegates: List<DelegationDelegateUiState>,
-    val submittedDelegates: List<DelegationDelegateUiState>,
+    val readyMemberCount: Int,
+    val associatedReservations: List<DelegationReservationUiState>,
+    val acceptedMembers: List<DelegationDelegateUiState>,
+    val submittedMembers: List<DelegationDelegateUiState>,
 )
 
 data class DelegationReservationUiState(
@@ -54,19 +54,19 @@ private fun Delegation.toOverviewRowUiState(conference: Conference): DelegationO
         name = name,
         country = country,
         expectedDelegateCount = expectedDelegateCount,
-        currentDelegateCountFromMymun = currentDelegateCountFromMymun,
+        memberCount = currentDelegateCountFromMymun,
         isHighSchoolDelegation = isHighSchoolDelegation,
         needsReview = needsReview,
-        activePaidAcceptedDelegateCount = delegates.count { it.isActivePaidAcceptedOrAssigned() },
-        linkedReservations = conference.reservations
+        readyMemberCount = delegates.count { it.isReadyMember() },
+        associatedReservations = conference.reservations
             .filter { it.delegation === this }
             .sortedBy { it.name }
             .map { it.toDelegationReservationUiState() },
-        acceptedDelegates = delegates
+        acceptedMembers = delegates
             .filter { it.profile.isUsableForAssignment }
             .sortedBy { it.displayName }
             .map { it.toDelegationDelegateUiState() },
-        submittedDelegates = delegates
+        submittedMembers = delegates
             .filter { it.profile.applicationStatus.isSubmitted() }
             .sortedBy { it.displayName }
             .map { it.toDelegationDelegateUiState() },
@@ -91,7 +91,7 @@ private fun Delegate.toDelegationDelegateUiState(): DelegationDelegateUiState =
         isHighSchooler = isHighSchooler,
     )
 
-private fun Delegate.isActivePaidAcceptedOrAssigned(): Boolean =
+private fun Delegate.isReadyMember(): Boolean =
     active &&
         paymentStatus == PaymentStatus.Paid &&
         profile.isUsableForAssignment

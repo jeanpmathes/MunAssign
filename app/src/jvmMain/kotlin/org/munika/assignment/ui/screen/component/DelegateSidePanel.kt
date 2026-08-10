@@ -240,7 +240,7 @@ fun DelegateSidePanel(
             onDismissRequest = { deactivateDialogOpen = false },
             title = { Text("Deactivate ${detail.name}?") },
             text = {
-                Text("This prevents usage of this delegate for assignment and management, and will remove any pending assignments. Use after deleting a delegate online. To undo deactivation, find the delegate in the All view in the delegates list.")
+                Text("This removes the delegate from assignment and management views and clears any pending assignment. Use this when the delegate should no longer take part in the conference. To undo deactivation, find the delegate in the All view of the delegate list.")
             },
             confirmButton = {
                 Button(
@@ -342,7 +342,7 @@ private fun Header(
                     DelegateStatusChipUiState(
                         label = "Head delegate",
                         tone = DelegateStatusTone.Neutral,
-                        tooltip = "This delegate is marked as a head delegate online.",
+                        tooltip = "This delegate is marked as a head delegate in the latest update.",
                     ),
                 )
             }
