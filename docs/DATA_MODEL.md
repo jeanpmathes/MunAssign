@@ -108,11 +108,12 @@ Questions with an expected role are special profile fields. They are shown in th
 of delegate detail, not in the general answer overview, and are pinned above reorderable general
 questions in the question editor.
 
-General questions can opt into handling archetypes. The visa archetype raises a notice only for
-meaningful affirmative answers, while blank values, dashes, and explicit no-style answers are
-ignored. The committee-choice explanation archetype warns when the answer has fewer than three
-sentences. Role-backed special questions use their role handling and do not expose these general
-handling archetypes.
+General questions can opt into handling archetypes. The visa archetype raises a notice for
+meaningful answers unless they are blank, an exact placeholder, or begin with a complete recognized
+negative word or phrase. Negative openings may include trailing explanations, but partial word
+prefixes do not count. The committee-choice explanation archetype warns when the answer has fewer
+than three sentences. Role-backed special questions use their role handling and do not expose these
+general handling archetypes.
 
 Role-specific mapping tables are intentionally separate so language-level values cannot be mapped into experience-level values, or similar.
 

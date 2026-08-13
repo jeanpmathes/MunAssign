@@ -69,6 +69,78 @@ class QuestionTest {
     }
 
     @Test
+    fun `complete leading negative responses suppress visa support notice`() {
+        val question = Question(
+            id = QuestionId("question"),
+            questionText = "Do you need visa support?",
+            handling = StandardQuestionHandlingTypes.VisaSupport,
+            rules = listOf(NoticeWhenAffirmative("Visa support requested.")),
+        )
+        val negativeAnswers = listOf(
+            "No, I don't",
+            "No, I don\u2019t",
+            "No visa support needed",
+            "Nope, already arranged",
+            "Nein - already arranged",
+            "None.",
+            "N A, not required",
+            "NA - already arranged",
+            "N/A (diplomatic passport)",
+            "Not applicable because I have a residence permit",
+            "No, actually yes, I need support",
+        )
+
+        negativeAnswers.forEach { answer ->
+            assertTrue(question.issuesFor(answer).isEmpty(), "Expected no notice for answer: $answer")
+        }
+    }
+
+    @Test
+    fun `visa support ignores only complete exact placeholders`() {
+        val question = Question(
+            id = QuestionId("question"),
+            questionText = "Do you need visa support?",
+            handling = StandardQuestionHandlingTypes.VisaSupport,
+            rules = listOf(NoticeWhenAffirmative("Visa support requested.")),
+        )
+        val exactPlaceholders = listOf(null, "", "   ", "\t", "n", "-", "--", "/")
+
+        exactPlaceholders.forEach { answer ->
+            assertTrue(question.issuesFor(answer).isEmpty(), "Expected no notice for answer: $answer")
+        }
+
+        assertEquals(
+            listOf(AnswerIssue("Visa support requested.", AnswerIssueSeverity.Notice)),
+            question.issuesFor("n visa support needed"),
+        )
+    }
+
+    @Test
+    fun `visa support keeps prefix lookalikes and meaningful answers actionable`() {
+        val question = Question(
+            id = QuestionId("question"),
+            questionText = "Do you need visa support?",
+            handling = StandardQuestionHandlingTypes.VisaSupport,
+            rules = listOf(NoticeWhenAffirmative("Visa support requested.")),
+        )
+        val actionableAnswers = listOf(
+            "never",
+            "nationality",
+            "nonetheless",
+            "normal",
+            "Yes",
+            "Yes, support needed for testing",
+            "I need a visa invitation letter",
+            "Maybe; please contact me",
+        )
+        val expectedIssue = listOf(AnswerIssue("Visa support requested.", AnswerIssueSeverity.Notice))
+
+        actionableAnswers.forEach { answer ->
+            assertEquals(expectedIssue, question.issuesFor(answer), "Expected a notice for answer: $answer")
+        }
+    }
+
+    @Test
     fun `answer issue key is stable for matching severity and message`() {
         val first = AnswerIssue(" Visa support requested. ", AnswerIssueSeverity.Notice)
         val second = AnswerIssue("Visa support requested.", AnswerIssueSeverity.Notice)
