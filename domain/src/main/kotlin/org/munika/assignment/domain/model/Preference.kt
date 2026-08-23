@@ -11,6 +11,7 @@ class Preference(
     val position: Position,
     val rank: Int,
     val rawPreferenceText: String,
+    val source: PreferenceSource = PreferenceSource.Mymun,
 ) : DomainObject<PreferenceId> {
     init {
         require(rank > 0) { "Preference rank must be positive." }

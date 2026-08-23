@@ -32,6 +32,8 @@ import org.munika.assignment.domain.model.QuestionId
 import org.munika.assignment.domain.model.ReservationId
 import org.munika.assignment.domain.model.SlotId
 import org.munika.assignment.domain.repository.ConferenceRepository
+import org.munika.assignment.domain.repository.PreferenceCompletionSelection
+import org.munika.assignment.domain.repository.PreferenceCorrectionSelection
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
 import org.munika.assignment.domain.repository.UpdateResult
 import org.munika.assignment.export.MarkdownSafetyExportRunner
@@ -150,6 +152,7 @@ class MainViewModel internal constructor(
                 questionConfigurationOpen = false,
                 questionConfigurationError = null,
                 pendingWorkbookUpdate = null,
+                pendingPreferenceCompletion = null,
             )
         }
         loadConference(conferenceId)
@@ -628,6 +631,95 @@ class MainViewModel internal constructor(
             } catch (exception: Exception) {
                 updateConferenceState(selectedId) {
                     it.copy(boardActionError = "Delegate payment tier update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}")
+                }
+            }
+        }
+    }
+
+    fun savePreferenceCorrections(selections: List<PreferenceCorrectionSelection>) {
+        val pending = _state.value.pendingPreferenceCompletion ?: return
+        if (selections.isEmpty()) {
+            _state.update { it.copy(pendingPreferenceCompletion = null) }
+            return
+        }
+        scope.launch {
+            updateConferenceState(pending.conferenceId) {
+                it.copy(loading = true, pendingPreferenceCompletion = pending.copy(error = null))
+            }
+            try {
+                val conference = repository.savePreferenceCorrections(ConferenceId(pending.conferenceId), selections)
+                updateConferenceState(pending.conferenceId) {
+                    it.copy(
+                        selectedConference = conference,
+                        loading = false,
+                        pendingPreferenceCompletion = null,
+                        boardActionError = null,
+                    )
+                }
+            } catch (exception: Exception) {
+                updateConferenceState(pending.conferenceId) {
+                    it.copy(
+                        loading = false,
+                        pendingPreferenceCompletion = pending.copy(error = exception.readableMessage()),
+                    )
+                }
+            }
+        }
+    }
+
+    fun cancelPreferenceCompletion() {
+        _state.update { it.copy(pendingPreferenceCompletion = null) }
+    }
+
+    fun resetPreferenceCorrections(conferenceId: String) {
+        scope.launch {
+            updateConferenceState(conferenceId) { it.copy(loading = true, conferenceActionError = null) }
+            try {
+                val conference = repository.resetPreferenceCorrections(ConferenceId(conferenceId))
+                updateConferenceState(conferenceId) {
+                    it.copy(selectedConference = conference, loading = false, conferenceActionError = null)
+                }
+            } catch (exception: Exception) {
+                updateConferenceState(conferenceId) {
+                    it.copy(
+                        loading = false,
+                        conferenceActionError = "Preference corrections could not be reset: ${exception.readableMessage()}",
+                    )
+                }
+            }
+        }
+    }
+
+    fun setPreferenceCompletion(delegateId: String, rank: Int, positionId: String) {
+        val selectedId = selectedIdOrNull() ?: return
+        scope.launch {
+            try {
+                val conference = repository.savePreferenceCompletions(
+                    ConferenceId(selectedId),
+                    listOf(PreferenceCompletionSelection(DelegateId(delegateId), rank, PositionId(positionId))),
+                )
+                updateConferenceState(selectedId) { it.copy(selectedConference = conference, boardActionError = null) }
+            } catch (exception: Exception) {
+                updateConferenceState(selectedId) {
+                    it.copy(boardActionError = "Preference completion failed: ${exception.readableMessage()}")
+                }
+            }
+        }
+    }
+
+    fun clearPreferenceCompletion(delegateId: String, rank: Int) {
+        val selectedId = selectedIdOrNull() ?: return
+        scope.launch {
+            try {
+                val conference = repository.clearPreferenceCompletion(
+                    ConferenceId(selectedId),
+                    DelegateId(delegateId),
+                    rank,
+                )
+                updateConferenceState(selectedId) { it.copy(selectedConference = conference, boardActionError = null) }
+            } catch (exception: Exception) {
+                updateConferenceState(selectedId) {
+                    it.copy(boardActionError = "Preference completion could not be cleared: ${exception.readableMessage()}")
                 }
             }
         }
@@ -1177,6 +1269,19 @@ class MainViewModel internal constructor(
                             if (listed.id == conference.id) conference else listed
                         },
                         workbookUpdateNotice = result.toWorkbookUpdateNotice(),
+                        pendingPreferenceCompletion = if (
+                            result.success && conference != null && result.missingPreferences.isNotEmpty()
+                        ) {
+                            PendingPreferenceCompletion(
+                                conferenceId = conferenceId,
+                                preferenceRanks = result.preferenceRanks,
+                                missingRanksByDelegateId = result.missingPreferences
+                                    .groupBy({ it.delegateId.value }, { it.rank })
+                                    .mapValues { (_, ranks) -> ranks.toSet() },
+                            )
+                        } else {
+                            null
+                        },
                         loading = false,
                     )
                 }
@@ -1649,8 +1754,16 @@ data class MainUiState(
     val questionConfigurationOpen: Boolean = false,
     val questionConfigurationError: String? = null,
     val pendingWorkbookUpdate: PendingWorkbookUpdate? = null,
+    val pendingPreferenceCompletion: PendingPreferenceCompletion? = null,
     val pendingSynchronizedImportPath: Path? = null,
     val pendingConferenceReplace: PendingConferenceReplace? = null,
+)
+
+data class PendingPreferenceCompletion(
+    val conferenceId: String,
+    val preferenceRanks: List<Int>,
+    val missingRanksByDelegateId: Map<String, Set<Int>>,
+    val error: String? = null,
 )
 
 data class ConferenceListItem(

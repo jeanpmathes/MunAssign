@@ -108,8 +108,10 @@ import org.munika.assignment.domain.model.Delegate
 import org.munika.assignment.domain.model.PaymentStatus
 import org.munika.assignment.domain.model.PaymentTier
 import org.munika.assignment.domain.model.QuestionConfiguration
+import org.munika.assignment.domain.repository.PreferenceCorrectionSelection
 import org.munika.assignment.ui.screen.dialog.IssueManagerPanel
 import org.munika.assignment.ui.screen.dialog.QuestionConfigurationDialog
+import org.munika.assignment.ui.screen.dialog.MissingPreferenceCompletionDialog
 import org.munika.assignment.ui.screen.dialog.ReservationEditorDialog
 import org.munika.assignment.ui.screen.dialog.ReservationManagerDialog
 import org.munika.assignment.ui.screen.component.AssignmentBoard
@@ -224,7 +226,10 @@ fun MainScreen(
     onOpenWorkbook: () -> Unit,
     onConfirmPendingWorkbookUpdate: () -> Unit,
     onCancelPendingWorkbookUpdate: () -> Unit,
+    onSavePreferenceCorrections: (List<PreferenceCorrectionSelection>) -> Unit = {},
+    onCancelPreferenceCompletion: () -> Unit = {},
     onDeleteMymunUpdateFilenameSignature: (conferenceId: String, signatureId: String) -> Unit,
+    onResetPreferenceCorrections: (conferenceId: String) -> Unit = {},
     onExportConference: (String, String) -> Unit,
     onImportConferenceAsNew: () -> Unit,
     onReplaceConference: (String, String) -> Unit,
@@ -351,6 +356,7 @@ fun MainScreen(
                             onCloseNoticeManager = onCloseNoticeManager,
                             onResolveAnswerIssue = onResolveAnswerIssue,
                             onSetDelegatePaymentTier = onSetDelegatePaymentTier,
+                            onResetPreferenceCorrections = onResetPreferenceCorrections,
                             onUpdateAnswerIssueResolutionJustification = onUpdateAnswerIssueResolutionJustification,
                             onUnresolveAnswerIssue = onUnresolveAnswerIssue,
                             onClearBoardActionError = onClearBoardActionError,
@@ -429,6 +435,7 @@ fun MainScreen(
             onImportConferenceAsNew = onImportConferenceAsNew,
             onReplaceConference = onReplaceConference,
             onDeleteMymunUpdateFilenameSignature = onDeleteMymunUpdateFilenameSignature,
+            onResetPreferenceCorrections = onResetPreferenceCorrections,
             onClearConferenceActionError = onClearConferenceActionError,
         )
     }
@@ -439,6 +446,18 @@ fun MainScreen(
             onDismiss = onCancelPendingWorkbookUpdate,
             onConfirm = onConfirmPendingWorkbookUpdate,
         )
+    }
+
+    if (selectedConference != null) {
+        state.pendingPreferenceCompletion?.let { pending ->
+            MissingPreferenceCompletionDialog(
+                conference = selectedConference,
+                pending = pending,
+                loading = state.loading,
+                onDismiss = onCancelPreferenceCompletion,
+                onSave = onSavePreferenceCorrections,
+            )
+        }
     }
 
     state.pendingConferenceReplace?.let { pending ->
@@ -1194,6 +1213,7 @@ private fun ConferenceWorkspace(
     onCloseNoticeManager: () -> Unit,
     onResolveAnswerIssue: (delegateId: String, questionId: String?, issueKey: String, justification: String?) -> Unit,
     onSetDelegatePaymentTier: (delegateId: String, paymentTier: PaymentTier) -> Unit,
+    onResetPreferenceCorrections: (conferenceId: String) -> Unit,
     onUpdateAnswerIssueResolutionJustification: (resolutionId: String, justification: String?) -> Unit,
     onUnresolveAnswerIssue: (resolutionId: String) -> Unit,
     onClearBoardActionError: () -> Unit,
@@ -1274,6 +1294,8 @@ private fun ConferenceWorkspace(
                     onResolveIssue = onResolveAnswerIssue,
                     onUnresolveIssue = onUnresolveAnswerIssue,
                     onSetPaymentTier = onSetDelegatePaymentTier,
+                    conferenceName = conference.name,
+                    onResetPreferenceCorrections = { onResetPreferenceCorrections(conference.id.value) },
                 )
             }
         }
@@ -1368,6 +1390,7 @@ internal enum class ConferenceManagementAction {
     Export,
     Replace,
     TrustedFilenames,
+    ResetPreferenceCorrections,
     Rename,
     MoveToSynchronized,
     Locate,
@@ -1402,6 +1425,7 @@ internal fun ConferenceListItem.overflowManagementActions(): List<ConferenceMana
         add(ConferenceManagementMenuAction(ConferenceManagementAction.Export, available))
         add(ConferenceManagementMenuAction(ConferenceManagementAction.Replace, available))
         add(ConferenceManagementMenuAction(ConferenceManagementAction.TrustedFilenames, available))
+        add(ConferenceManagementMenuAction(ConferenceManagementAction.ResetPreferenceCorrections, available))
         add(ConferenceManagementMenuAction(ConferenceManagementAction.Rename, available))
         add(
             if (storageKind == ConferenceListStorageKind.Local) {
@@ -1433,6 +1457,7 @@ private fun ConferenceManagementDialog(
     onImportConferenceAsNew: () -> Unit,
     onReplaceConference: (String, String) -> Unit,
     onDeleteMymunUpdateFilenameSignature: (conferenceId: String, signatureId: String) -> Unit,
+    onResetPreferenceCorrections: (conferenceId: String) -> Unit,
     onClearConferenceActionError: () -> Unit,
 ) {
     val orderedConferences = remember { state.conferenceEntries.toMutableStateList() }
@@ -1440,6 +1465,7 @@ private fun ConferenceManagementDialog(
     var renameTarget by remember { mutableStateOf<ConferenceListItem?>(null) }
     var deleteTarget by remember { mutableStateOf<ConferenceListItem?>(null) }
     var filenameSignatureTargetId by remember { mutableStateOf<String?>(null) }
+    var resetPreferenceTarget by remember { mutableStateOf<ConferenceListItem?>(null) }
 
     LaunchedEffect(state.conferenceEntries) {
         orderedConferences.replaceAll(state.conferenceEntries)
@@ -1482,6 +1508,10 @@ private fun ConferenceManagementDialog(
                             onManageFilenameSignatures = {
                                 onClearConferenceActionError()
                                 filenameSignatureTargetId = conference.id
+                            },
+                            onResetPreferenceCorrections = {
+                                onClearConferenceActionError()
+                                resetPreferenceTarget = conference
                             },
                             onMoved = {
                                 onReorderConferences(orderedConferences.map { it.id })
@@ -1596,6 +1626,31 @@ private fun ConferenceManagementDialog(
                 },
             )
         }
+    }
+
+    resetPreferenceTarget?.let { conference ->
+        AlertDialog(
+            onDismissRequest = { resetPreferenceTarget = null },
+            title = { Text("Reset preference corrections") },
+            text = {
+                Text(
+                    "This removes every filled missing preference, intentional empty choice, and saved ordering " +
+                        "correction for ${conference.name}. Raw MyMUN preferences are restored immediately.",
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onResetPreferenceCorrections(conference.id)
+                        resetPreferenceTarget = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                ) { Text("Reset") }
+            },
+            dismissButton = {
+                TextButton(onClick = { resetPreferenceTarget = null }) { Text("Cancel") }
+            },
+        )
     }
 }
 
@@ -1801,6 +1856,7 @@ private fun ReorderableConferenceRow(
     onLocate: () -> Unit,
     onReload: () -> Unit,
     onManageFilenameSignatures: () -> Unit,
+    onResetPreferenceCorrections: () -> Unit,
     onMoved: () -> Unit,
 ) {
     var accumulatedDrag by remember { mutableFloatStateOf(0f) }
@@ -1902,6 +1958,7 @@ private fun ReorderableConferenceRow(
                 onExport = onExport,
                 onReplace = onReplace,
                 onManageFilenameSignatures = onManageFilenameSignatures,
+                onResetPreferenceCorrections = onResetPreferenceCorrections,
                 onRename = onRename,
                 onMoveToSynchronized = onMoveToSynchronized,
                 onLocate = onLocate,
@@ -1920,6 +1977,7 @@ private fun ConferenceManagementMenu(
     onExport: () -> Unit,
     onReplace: () -> Unit,
     onManageFilenameSignatures: () -> Unit,
+    onResetPreferenceCorrections: () -> Unit,
     onRename: () -> Unit,
     onMoveToSynchronized: () -> Unit,
     onLocate: () -> Unit,
@@ -1934,6 +1992,7 @@ private fun ConferenceManagementMenu(
                 ConferenceManagementAction.Export -> "Export conference"
                 ConferenceManagementAction.Replace -> "Replace from file"
                 ConferenceManagementAction.TrustedFilenames -> "Trusted filename signatures"
+                ConferenceManagementAction.ResetPreferenceCorrections -> "Reset preference corrections"
                 ConferenceManagementAction.Rename -> "Rename conference"
                 ConferenceManagementAction.MoveToSynchronized -> "Move to synchronized file"
                 ConferenceManagementAction.Locate -> "Locate synchronized file"
@@ -1948,6 +2007,7 @@ private fun ConferenceManagementMenu(
                 ConferenceManagementAction.Export -> Icons.Filled.FileUpload
                 ConferenceManagementAction.Replace -> Icons.Filled.RestorePage
                 ConferenceManagementAction.TrustedFilenames -> Icons.Filled.Verified
+                ConferenceManagementAction.ResetPreferenceCorrections -> Icons.Filled.Refresh
                 ConferenceManagementAction.Rename -> Icons.Filled.Edit
                 ConferenceManagementAction.MoveToSynchronized -> Icons.Filled.CloudUpload
                 ConferenceManagementAction.Locate -> Icons.Filled.FolderOpen
@@ -1958,6 +2018,7 @@ private fun ConferenceManagementMenu(
                 ConferenceManagementAction.Export -> onExport
                 ConferenceManagementAction.Replace -> onReplace
                 ConferenceManagementAction.TrustedFilenames -> onManageFilenameSignatures
+                ConferenceManagementAction.ResetPreferenceCorrections -> onResetPreferenceCorrections
                 ConferenceManagementAction.Rename -> onRename
                 ConferenceManagementAction.MoveToSynchronized -> onMoveToSynchronized
                 ConferenceManagementAction.Locate -> onLocate

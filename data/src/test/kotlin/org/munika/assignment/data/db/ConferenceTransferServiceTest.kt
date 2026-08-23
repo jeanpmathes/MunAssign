@@ -21,6 +21,8 @@ import org.munika.assignment.domain.model.AnswerIssueSeverity
 import org.munika.assignment.domain.model.ConferenceId
 import org.munika.assignment.domain.model.MymunUpdateFilenameCandidate
 import org.munika.assignment.domain.model.PaymentTier
+import org.munika.assignment.domain.model.PreferenceSource
+import org.munika.assignment.domain.repository.PreferenceCompletionSelection
 
 class ConferenceTransferServiceTest {
     @Test
@@ -56,6 +58,10 @@ class ConferenceTransferServiceTest {
         assertEquals(sourceLoaded.reservations.size, imported.reservations.size)
         assertEquals(sourceLoaded.delegates.sumOf { it.comments.size }, imported.delegates.sumOf { it.comments.size })
         assertEquals(sourceLoaded.delegates.sumOf { it.preferences.size }, imported.delegates.sumOf { it.preferences.size })
+        assertEquals(
+            sourceLoaded.delegates.sumOf { delegate -> delegate.preferences.count { it.source == PreferenceSource.OrganizerCompletion } },
+            imported.delegates.sumOf { delegate -> delegate.preferences.count { it.source == PreferenceSource.OrganizerCompletion } },
+        )
         assertEquals(sourceLoaded.delegates.sumOf { it.answers.size }, imported.delegates.sumOf { it.answers.size })
         assertEquals(sourceLoaded.delegates.sumOf { it.issueResolutions.size }, imported.delegates.sumOf { it.issueResolutions.size })
         assertTrue(imported.delegations.single().isHighSchoolDelegation)
@@ -234,6 +240,22 @@ class ConferenceTransferServiceTest {
         )
         assertTrue(update.success, update.issues.joinToString("; ") { it.message })
         val loaded = requireNotNull(repository.getConference(conference.id))
+        update.missingPreferences.firstOrNull()?.let { missing ->
+            val missingDelegate = loaded.delegates.single { it.id == missing.delegateId }
+            val availablePosition = loaded.positions.first { position ->
+                missingDelegate.preferences.none { it.position.id == position.id }
+            }
+            repository.savePreferenceCompletions(
+                conference.id,
+                listOf(PreferenceCompletionSelection(missing.delegateId, missing.rank, availablePosition.id)),
+            )
+            val repeatedUpdate = MymunWorkbookUpdater(repository).applyUpdate(
+                conference.id.value,
+                Path.of(workbook.toURI()),
+                signatureToTrust = null,
+            )
+            assertTrue(repeatedUpdate.success, repeatedUpdate.issues.joinToString("; ") { it.message })
+        }
         val delegate = loaded.delegates.first()
         repository.setCommitteePaymentTier(conference.id, loaded.committees.first().id, PaymentTier.Reduced)
         repository.setDelegatePaymentTier(conference.id, delegate.id, PaymentTier.Full)

@@ -10,7 +10,8 @@ import java.time.temporal.ChronoUnit
  * Assignable participant from the MyMUN Delegates sheet.
  *
  * Profile and [paymentStatus] are MyMUN-managed during updates. [paymentTier], comments, active
- * state, and pending assignments are organizer-managed state preserved when possible.
+ * state, pending assignments, and [hasPreferenceCorrections] are organizer-managed state preserved
+ * when possible. The correction marker also covers acknowledged empty ranks that have no [Preference].
  */
 class Delegate(
     override val id: DelegateId,
@@ -29,6 +30,7 @@ class Delegate(
     val issueResolutions: MutableList<AnswerIssueResolution> = mutableListOf(),
     val createdAtFromMymun: Instant? = null,
     val submittedAt: Instant? = null,
+    val hasPreferenceCorrections: Boolean = false,
 ) : DomainObject<DelegateId> {
     var delegation: Delegation? = null
         internal set

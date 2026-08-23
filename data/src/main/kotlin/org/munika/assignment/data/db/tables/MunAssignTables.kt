@@ -19,6 +19,7 @@ val MunAssignTables: Array<Table> = arrayOf(
     ReservationDelegateLinkTable,
     SlotTable,
     PreferenceTable,
+    PreferenceCompletionTable,
     DelegateCommentTable,
     QuestionRoleTable,
     QuestionHandlingTypeTable,

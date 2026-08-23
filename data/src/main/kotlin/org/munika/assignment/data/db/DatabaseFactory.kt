@@ -25,6 +25,7 @@ import org.munika.assignment.data.db.tables.MymunUpdateFilenamePartTable
 import org.munika.assignment.data.db.tables.MymunUpdateFilenameSignatureTable
 import org.munika.assignment.data.db.tables.MymunUpdateIssueTable
 import org.munika.assignment.data.db.tables.MymunUpdateRunTable
+import org.munika.assignment.data.db.tables.PreferenceCompletionTable
 import org.munika.assignment.data.db.tables.QuestionHandlingTypeTable
 import org.munika.assignment.data.db.tables.QuestionRoleTable
 import org.munika.assignment.data.db.tables.ReservationDelegateLinkTable
@@ -211,7 +212,63 @@ object DatabaseFactory {
             )
             addColumnIfMissing("delegates", "payment_tier", "VARCHAR(32) NULL")
         },
+        SchemaMigration(version = 14, name = "add_preference_completions") {
+            SchemaUtils.create(PreferenceCompletionTable)
+        },
+        SchemaMigration(version = 15, name = "expand_preference_completions_to_corrections") {
+            addColumnIfMissing("conferences", "last_mymun_preference_ranks", "VARCHAR(512) NULL")
+            if (preferenceCompletionSchemaNeedsUpgrade()) {
+                TransactionManager.current().exec(
+                    """
+                    CREATE TABLE preference_completions_v15 (
+                        id VARCHAR(36) NOT NULL PRIMARY KEY,
+                        delegate_id VARCHAR(36) NOT NULL REFERENCES delegates(id) ON DELETE CASCADE,
+                        position_id VARCHAR(36) NULL REFERENCES positions(id) ON DELETE SET NULL,
+                        rank INT NOT NULL,
+                        origin VARCHAR(32) NULL,
+                        empty_acknowledged BOOLEAN NOT NULL DEFAULT FALSE,
+                        baseline_position_id VARCHAR(36) NULL REFERENCES positions(id) ON DELETE SET NULL,
+                        baseline_raw_preference_text TEXT NULL,
+                        detected_ranks VARCHAR(512) NULL
+                    )
+                    """.trimIndent(),
+                )
+                TransactionManager.current().exec(
+                    """
+                    INSERT INTO preference_completions_v15 (
+                        id, delegate_id, position_id, rank, origin, empty_acknowledged,
+                        baseline_position_id, baseline_raw_preference_text, detected_ranks
+                    )
+                    SELECT id, delegate_id, position_id, rank, 'Organizer', FALSE, NULL, NULL, NULL
+                    FROM preference_completions
+                    """.trimIndent(),
+                )
+                TransactionManager.current().exec("DROP TABLE preference_completions")
+                TransactionManager.current().exec("ALTER TABLE preference_completions_v15 RENAME TO preference_completions")
+                TransactionManager.current().exec(
+                    "CREATE UNIQUE INDEX ux_preference_completions_delegate_rank " +
+                        "ON preference_completions(delegate_id, rank)",
+                )
+                TransactionManager.current().exec(
+                    "CREATE UNIQUE INDEX ux_preference_completions_delegate_position " +
+                        "ON preference_completions(delegate_id, position_id)",
+                )
+            }
+        },
     )
+
+    private fun preferenceCompletionSchemaNeedsUpgrade(): Boolean =
+        TransactionManager.current().exec("PRAGMA table_info(preference_completions)") { resultSet ->
+            var hasOrigin = false
+            var positionIsRequired = false
+            while (resultSet.next()) {
+                when (resultSet.getString("name")) {
+                    "origin" -> hasOrigin = true
+                    "position_id" -> positionIsRequired = resultSet.getInt("notnull") == 1
+                }
+            }
+            !hasOrigin || positionIsRequired
+        } ?: true
 
     private fun backfillMymunUpdateFilenameSignatures() {
         ConferenceTable.selectAll().toList().forEach { conference ->

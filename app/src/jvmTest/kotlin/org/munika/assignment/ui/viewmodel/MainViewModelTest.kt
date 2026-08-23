@@ -33,6 +33,10 @@ import org.munika.assignment.domain.model.QuestionId
 import org.munika.assignment.domain.model.ReservationId
 import org.munika.assignment.domain.model.SlotId
 import org.munika.assignment.domain.repository.ConferenceRepository
+import org.munika.assignment.domain.repository.MissingPreference
+import org.munika.assignment.domain.repository.PreferenceCompletionSelection
+import org.munika.assignment.domain.repository.PreferenceCorrectionSelection
+import org.munika.assignment.domain.repository.PreferenceValueOrigin
 import org.munika.assignment.domain.repository.UpdateIssue
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
 import org.munika.assignment.domain.repository.UpdateResult
@@ -940,6 +944,7 @@ class MainViewModelTest {
 
         waitUntil { viewModel.state.value.workbookUpdateNotice != null }
         assertEquals("Update failed: Countries sheet is missing.", viewModel.state.value.workbookUpdateNotice?.message)
+        assertNull(viewModel.state.value.pendingPreferenceCompletion)
         assertFalse(viewModel.state.value.loading)
         viewModel.close()
     }
@@ -1132,6 +1137,62 @@ class MainViewModelTest {
         waitUntil { viewModel.state.value.boardActionError != null }
         assertTrue("Issue could not be resolved" in requireNotNull(viewModel.state.value.boardActionError))
         assertTrue("Database is locked." in requireNotNull(viewModel.state.value.boardActionError))
+        viewModel.close()
+    }
+
+    @Test
+    fun `successful workbook update opens missing preference completion and save closes it`() {
+        val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val repository = FakeConferenceRepository(initialConference = conference)
+        val viewModel = viewModelWith(repository) { _, _, _ ->
+            UpdateResult(
+                success = true,
+                issues = emptyList(),
+                preferenceRanks = listOf(1, 2, 3),
+                missingPreferences = listOf(MissingPreference(DelegateId("delegate"), 2)),
+            )
+        }
+        waitUntil { viewModel.state.value.selectedConference === conference }
+
+        viewModel.updateFromWorkbook(Path.of("conference.xlsx"))
+
+        waitUntil { viewModel.state.value.pendingPreferenceCompletion != null }
+        assertEquals(listOf(1, 2, 3), viewModel.state.value.pendingPreferenceCompletion?.preferenceRanks)
+        assertEquals(mapOf("delegate" to setOf(2)), viewModel.state.value.pendingPreferenceCompletion?.missingRanksByDelegateId)
+
+        val correction = PreferenceCorrectionSelection(
+            DelegateId("delegate"),
+            2,
+            PositionId("position"),
+            PreferenceValueOrigin.Organizer,
+        )
+        viewModel.savePreferenceCorrections(listOf(correction))
+
+        waitUntil { viewModel.state.value.pendingPreferenceCompletion == null }
+        assertEquals(listOf(correction), repository.savedPreferenceCorrections)
+        viewModel.close()
+    }
+
+    @Test
+    fun `cancelling missing preference completion records nothing`() {
+        val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val repository = FakeConferenceRepository(initialConference = conference)
+        val viewModel = viewModelWith(repository) { _, _, _ ->
+            UpdateResult(
+                success = true,
+                issues = emptyList(),
+                preferenceRanks = listOf(1),
+                missingPreferences = listOf(MissingPreference(DelegateId("delegate"), 1)),
+            )
+        }
+        waitUntil { viewModel.state.value.selectedConference === conference }
+        viewModel.updateFromWorkbook(Path.of("conference.xlsx"))
+        waitUntil { viewModel.state.value.pendingPreferenceCompletion != null }
+
+        viewModel.cancelPreferenceCompletion()
+
+        assertNull(viewModel.state.value.pendingPreferenceCompletion)
+        assertTrue(repository.savedPreferenceCompletions.isEmpty())
         viewModel.close()
     }
 
@@ -1547,6 +1608,10 @@ private class FakeConferenceRepository(
         private set
     var delegationSchoolIsHighSchool: Boolean? = null
         private set
+    var savedPreferenceCompletions: List<PreferenceCompletionSelection> = emptyList()
+        private set
+    var savedPreferenceCorrections: List<PreferenceCorrectionSelection> = emptyList()
+        private set
 
     override suspend fun listConferences(): List<Conference> =
         when {
@@ -1749,6 +1814,31 @@ private class FakeConferenceRepository(
     ): Conference = unsupported()
 
     override suspend fun unresolveAnswerIssue(conferenceId: ConferenceId, resolutionId: AnswerIssueResolutionId): Conference = unsupported()
+
+    override suspend fun savePreferenceCompletions(
+        conferenceId: ConferenceId,
+        selections: List<PreferenceCompletionSelection>,
+    ): Conference {
+        savedPreferenceCompletions = selections
+        return requireNotNull(initialConference)
+    }
+
+    override suspend fun clearPreferenceCompletion(
+        conferenceId: ConferenceId,
+        delegateId: DelegateId,
+        rank: Int,
+    ): Conference = requireNotNull(initialConference)
+
+    override suspend fun savePreferenceCorrections(
+        conferenceId: ConferenceId,
+        selections: List<PreferenceCorrectionSelection>,
+    ): Conference {
+        savedPreferenceCorrections = selections
+        return requireNotNull(initialConference)
+    }
+
+    override suspend fun resetPreferenceCorrections(conferenceId: ConferenceId): Conference =
+        requireNotNull(initialConference)
 
     override suspend fun getConference(conferenceId: ConferenceId): Conference? {
         getConferenceStarted?.complete(Unit)

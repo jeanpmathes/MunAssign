@@ -27,6 +27,8 @@ import org.munika.assignment.domain.model.QuestionId
 import org.munika.assignment.domain.model.ReservationId
 import org.munika.assignment.domain.model.SlotId
 import org.munika.assignment.domain.repository.ConferenceRepository
+import org.munika.assignment.domain.repository.PreferenceCompletionSelection
+import org.munika.assignment.domain.repository.PreferenceCorrectionSelection
 import org.munika.assignment.domain.repository.UpdateResult
 
 /**
@@ -415,6 +417,26 @@ class ConferenceStorageCoordinator(
         conferenceId: ConferenceId,
         resolutionId: AnswerIssueResolutionId,
     ): Conference = routed(conferenceId) { unresolveAnswerIssue(conferenceId, resolutionId) }
+
+    override suspend fun savePreferenceCompletions(
+        conferenceId: ConferenceId,
+        selections: List<PreferenceCompletionSelection>,
+    ): Conference = routed(conferenceId) { savePreferenceCompletions(conferenceId, selections) }
+
+    override suspend fun clearPreferenceCompletion(
+        conferenceId: ConferenceId,
+        delegateId: DelegateId,
+        rank: Int,
+    ): Conference = routed(conferenceId) { clearPreferenceCompletion(conferenceId, delegateId, rank) }
+
+    override suspend fun savePreferenceCorrections(
+        conferenceId: ConferenceId,
+        selections: List<PreferenceCorrectionSelection>,
+    ): Conference = routed(conferenceId) { savePreferenceCorrections(conferenceId, selections) }
+
+    override suspend fun resetPreferenceCorrections(
+        conferenceId: ConferenceId,
+    ): Conference = routed(conferenceId) { resetPreferenceCorrections(conferenceId) }
 
     override suspend fun getConference(conferenceId: ConferenceId): Conference? {
         ensureInitialized()

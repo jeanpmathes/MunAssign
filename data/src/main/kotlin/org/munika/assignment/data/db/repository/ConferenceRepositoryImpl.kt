@@ -40,6 +40,7 @@ import org.munika.assignment.data.db.model.MunExperienceAnswerMappingRow
 import org.munika.assignment.data.db.model.MymunUpdateFilenamePartRow
 import org.munika.assignment.data.db.model.MymunUpdateFilenameSignatureRow
 import org.munika.assignment.data.db.model.PositionRow
+import org.munika.assignment.data.db.model.PreferenceCompletionRow
 import org.munika.assignment.data.db.model.PreferenceRow
 import org.munika.assignment.data.db.model.ReservationDelegateLinkRow
 import org.munika.assignment.data.db.model.ReservationRow
@@ -61,6 +62,7 @@ import org.munika.assignment.data.db.tables.MymunUpdateRunTable
 import org.munika.assignment.data.db.tables.MymunUpdateFilenamePartTable
 import org.munika.assignment.data.db.tables.MymunUpdateFilenameSignatureTable
 import org.munika.assignment.data.db.tables.PositionTable
+import org.munika.assignment.data.db.tables.PreferenceCompletionTable
 import org.munika.assignment.data.db.tables.PreferenceTable
 import org.munika.assignment.data.db.tables.ReservationDelegateLinkTable
 import org.munika.assignment.data.db.tables.ReservationTable
@@ -109,6 +111,10 @@ import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
 import org.munika.assignment.domain.model.TypedAnswerMappings
 import org.munika.assignment.domain.repository.ConferenceRepository
+import org.munika.assignment.domain.repository.MissingPreference
+import org.munika.assignment.domain.repository.PreferenceCompletionSelection
+import org.munika.assignment.domain.repository.PreferenceCorrectionSelection
+import org.munika.assignment.domain.repository.PreferenceValueOrigin
 import org.munika.assignment.domain.repository.UpdateIssue
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
 import org.munika.assignment.domain.repository.UpdateResult
@@ -172,6 +178,7 @@ class ConferenceRepositoryImpl(
             it[ConferenceTable.createdAtEpochMillis] = now
             it[ConferenceTable.updatedAtEpochMillis] = now
             it[ConferenceTable.lastMymunUpdateAtEpochMillis] = null
+            it[ConferenceTable.lastMymunPreferenceRanks] = null
         }
         loadConferenceGraph(id)
     }
@@ -522,6 +529,254 @@ class ConferenceRepositoryImpl(
             replacedDelegateId,
         )
         loadConferenceGraph(conferenceId)
+    }
+
+    override suspend fun savePreferenceCompletions(
+        conferenceId: ConferenceId,
+        selections: List<PreferenceCompletionSelection>,
+    ): Conference = db {
+        val conferenceIdValue = conferenceId.value
+        require(selections.map { it.delegateId to it.rank }.distinct().size == selections.size) {
+            "Preference completions must contain each delegate rank at most once."
+        }
+        require(selections.map { it.delegateId to it.positionId }.distinct().size == selections.size) {
+            "A delegate cannot select the same position for multiple preference ranks."
+        }
+
+        val selectedDelegateIds = selections.map { it.delegateId.value }.toSet()
+        val selectedPositionIds = selections.map { it.positionId.value }.toSet()
+        val delegatesInConference = if (selectedDelegateIds.isEmpty()) emptySet() else DelegateTable.selectAll().where {
+            (DelegateTable.conferenceId eq conferenceIdValue) and (DelegateTable.id inList selectedDelegateIds.toList())
+        }.map { it[DelegateTable.id] }.toSet()
+        val positionsInConference = if (selectedPositionIds.isEmpty()) emptySet() else PositionTable.selectAll().where {
+            (PositionTable.conferenceId eq conferenceIdValue) and (PositionTable.id inList selectedPositionIds.toList())
+        }.map { it[PositionTable.id] }.toSet()
+        require(delegatesInConference == selectedDelegateIds) { "Every preference delegate must belong to the conference." }
+        require(positionsInConference == selectedPositionIds) { "Every preference position must belong to the conference." }
+
+        selections.groupBy { it.delegateId.value }.forEach { (delegateId, delegateSelections) ->
+            val replacedRanks = delegateSelections.map { it.rank }.toSet()
+            val existingPositions = PreferenceTable.selectAll().where { PreferenceTable.delegateId eq delegateId }
+                .filterNot { it[PreferenceTable.rank] in replacedRanks }
+                .map { it[PreferenceTable.positionId] }
+                .toSet()
+            require(delegateSelections.none { it.positionId.value in existingPositions }) {
+                "A delegate cannot select the same position for multiple preference ranks."
+            }
+            delegateSelections.forEach { selection ->
+                val existingCompletion = PreferenceCompletionTable.selectAll().where {
+                    (PreferenceCompletionTable.delegateId eq delegateId) and
+                        (PreferenceCompletionTable.rank eq selection.rank)
+                }.singleOrNull()
+                val existingPreference = PreferenceTable.selectAll().where {
+                    (PreferenceTable.delegateId eq delegateId) and (PreferenceTable.rank eq selection.rank)
+                }.singleOrNull()
+                require(existingPreference == null || existingCompletion != null) {
+                    "MyMUN preferences cannot be replaced by organizer completions."
+                }
+            }
+        }
+
+        selections.forEach { selection ->
+            val delegateId = selection.delegateId.value
+            val existingCompletion = PreferenceCompletionTable.selectAll().where {
+                (PreferenceCompletionTable.delegateId eq delegateId) and
+                    (PreferenceCompletionTable.rank eq selection.rank)
+            }.singleOrNull()
+            PreferenceTable.deleteWhere {
+                (PreferenceTable.delegateId eq delegateId) and (PreferenceTable.rank eq selection.rank)
+            }
+            PreferenceCompletionTable.deleteWhere {
+                (PreferenceCompletionTable.delegateId eq delegateId) and
+                    (PreferenceCompletionTable.rank eq selection.rank)
+            }
+            val position = PositionTable.selectAll().where { PositionTable.id eq selection.positionId.value }.single()
+            val committeeName = CommitteeTable.selectAll().where {
+                CommitteeTable.id eq position[PositionTable.committeeId]
+            }.single()[CommitteeTable.mymunName]
+            PreferenceCompletionTable.insert {
+                it[id] = UUID.randomUUID().toString()
+                it[PreferenceCompletionTable.delegateId] = delegateId
+                it[positionId] = selection.positionId.value
+                it[rank] = selection.rank
+                it[origin] = PreferenceValueOrigin.Organizer.name
+                it[emptyAcknowledged] = false
+                it[baselinePositionId] = existingCompletion?.get(PreferenceCompletionTable.baselinePositionId)
+                it[baselineRawPreferenceText] = existingCompletion?.get(PreferenceCompletionTable.baselineRawPreferenceText)
+                it[detectedRanks] = existingCompletion?.get(PreferenceCompletionTable.detectedRanks)
+            }
+            PreferenceTable.insert {
+                it[id] = UUID.randomUUID().toString()
+                it[PreferenceTable.delegateId] = delegateId
+                it[positionId] = selection.positionId.value
+                it[rank] = selection.rank
+                it[rawPreferenceText] =
+                    "$committeeName (${position[PositionTable.name]})"
+            }
+        }
+        loadConferenceGraph(conferenceIdValue)
+    }
+
+    override suspend fun clearPreferenceCompletion(
+        conferenceId: ConferenceId,
+        delegateId: DelegateId,
+        rank: Int,
+    ): Conference = db {
+        require(rank > 0) { "Preference rank must be positive." }
+        val delegateIdValue = delegateId.value
+        requireDelegateInConference(conferenceId.value, delegateIdValue)
+        val completion = PreferenceCompletionTable.selectAll().where {
+            (PreferenceCompletionTable.delegateId eq delegateIdValue) and
+                (PreferenceCompletionTable.rank eq rank)
+        }.singleOrNull()
+        require(completion?.get(PreferenceCompletionTable.origin) == PreferenceValueOrigin.Organizer.name) {
+            "Only organizer-completed preferences can be cleared."
+        }
+        PreferenceTable.deleteWhere {
+            (PreferenceTable.delegateId eq delegateIdValue) and (PreferenceTable.rank eq rank)
+        }
+        if (completion[PreferenceCompletionTable.detectedRanks] == null) {
+            PreferenceCompletionTable.deleteWhere {
+                (PreferenceCompletionTable.delegateId eq delegateIdValue) and
+                    (PreferenceCompletionTable.rank eq rank)
+            }
+        } else {
+            PreferenceCompletionTable.update({ PreferenceCompletionTable.id eq completion[PreferenceCompletionTable.id] }) {
+                it[positionId] = null
+                it[origin] = null
+                it[emptyAcknowledged] = false
+            }
+        }
+        loadConferenceGraph(conferenceId.value)
+    }
+
+    override suspend fun savePreferenceCorrections(
+        conferenceId: ConferenceId,
+        selections: List<PreferenceCorrectionSelection>,
+    ): Conference = db {
+        val conferenceIdValue = conferenceId.value
+        val expectedRanks = ConferenceTable.selectAll()
+            .where { ConferenceTable.id eq conferenceIdValue }
+            .singleOrNull()
+            ?.get(ConferenceTable.lastMymunPreferenceRanks)
+            ?.toPreferenceRanks()
+            .orEmpty()
+        require(expectedRanks.isNotEmpty()) { "Preference corrections require a completed MyMUN update." }
+        require(selections.isNotEmpty()) { "At least one delegate preference correction is required." }
+        require(selections.map { it.delegateId to it.rank }.distinct().size == selections.size) {
+            "Preference corrections must contain each delegate rank exactly once."
+        }
+
+        val selectionsByDelegate = selections.groupBy { it.delegateId.value }
+        require(selectionsByDelegate.values.all { group -> group.map { it.rank }.sorted() == expectedRanks }) {
+            "Each preference correction must contain every detected rank exactly once."
+        }
+        val delegateIds = selectionsByDelegate.keys
+        val delegatesInConference = DelegateTable.selectAll().where {
+            (DelegateTable.conferenceId eq conferenceIdValue) and (DelegateTable.id inList delegateIds.toList())
+        }.mapTo(mutableSetOf()) { it[DelegateTable.id] }
+        require(delegatesInConference == delegateIds) { "Every preference delegate must belong to the conference." }
+
+        val selectedPositionIds = selections.mapNotNullTo(mutableSetOf()) { it.positionId?.value }
+        val positionsInConference = if (selectedPositionIds.isEmpty()) emptySet() else PositionTable.selectAll().where {
+            (PositionTable.conferenceId eq conferenceIdValue) and (PositionTable.id inList selectedPositionIds.toList())
+        }.mapTo(mutableSetOf()) { it[PositionTable.id] }
+        require(positionsInConference == selectedPositionIds) { "Every preference position must belong to the conference." }
+
+        selectionsByDelegate.forEach { (delegateId, delegateSelections) ->
+            val effectivePositionIds = delegateSelections.mapNotNull { it.positionId?.value }
+            require(effectivePositionIds.distinct().size == effectivePositionIds.size) {
+                "A delegate cannot select the same position for multiple preference ranks."
+            }
+
+            val existingCorrections = PreferenceCompletionTable.selectAll().where {
+                PreferenceCompletionTable.delegateId eq delegateId
+            }.toList()
+            val currentPreferences = PreferenceTable.selectAll().where {
+                PreferenceTable.delegateId eq delegateId
+            }.associateBy { it[PreferenceTable.rank] }
+            val existingByRank = existingCorrections.associateBy { it[PreferenceCompletionTable.rank] }
+            val hasCompleteCorrection = existingCorrections.any { it[PreferenceCompletionTable.detectedRanks] != null }
+            val baselineByRank = expectedRanks.associateWith { rank ->
+                val correction = existingByRank[rank]
+                when {
+                    hasCompleteCorrection -> correction?.get(PreferenceCompletionTable.baselinePositionId) to
+                        correction?.get(PreferenceCompletionTable.baselineRawPreferenceText)
+                    correction?.get(PreferenceCompletionTable.origin) == PreferenceValueOrigin.Organizer.name -> null to null
+                    else -> currentPreferences[rank]?.let {
+                        it[PreferenceTable.positionId] to it[PreferenceTable.rawPreferenceText]
+                    } ?: (null to null)
+                }
+            }
+            val importedPositionIds = baselineByRank.values.mapNotNullTo(mutableSetOf()) { it.first }
+            val selectedImportedPositionIds = delegateSelections
+                .filter { it.origin == PreferenceValueOrigin.Mymun }
+                .mapNotNullTo(mutableSetOf()) { it.positionId?.value }
+            require(selectedImportedPositionIds == importedPositionIds) {
+                "Imported preference cards can be reordered but not replaced or removed."
+            }
+
+            PreferenceTable.deleteWhere { PreferenceTable.delegateId eq delegateId }
+            PreferenceCompletionTable.deleteWhere { PreferenceCompletionTable.delegateId eq delegateId }
+            val encodedRanks = expectedRanks.joinToString(",")
+            delegateSelections.sortedBy { it.rank }.forEach { selection ->
+                val baseline = requireNotNull(baselineByRank[selection.rank])
+                PreferenceCompletionTable.insert {
+                    it[id] = UUID.randomUUID().toString()
+                    it[PreferenceCompletionTable.delegateId] = delegateId
+                    it[positionId] = selection.positionId?.value
+                    it[rank] = selection.rank
+                    it[origin] = selection.origin?.name
+                    it[emptyAcknowledged] = selection.emptyAcknowledged
+                    it[baselinePositionId] = baseline.first
+                    it[baselineRawPreferenceText] = baseline.second
+                    it[detectedRanks] = encodedRanks
+                }
+                selection.positionId?.value?.let { positionId ->
+                    insertPreference(delegateId, selection.rank, positionId, preferenceRawLabel(positionId))
+                }
+            }
+        }
+        loadConferenceGraph(conferenceIdValue)
+    }
+
+    override suspend fun resetPreferenceCorrections(conferenceId: ConferenceId): Conference = db {
+        val conferenceIdValue = conferenceId.value
+        require(ConferenceTable.selectAll().where { ConferenceTable.id eq conferenceIdValue }.any()) {
+            "Conference $conferenceIdValue does not exist."
+        }
+        val delegateIds = DelegateTable.selectAll().where { DelegateTable.conferenceId eq conferenceIdValue }
+            .map { it[DelegateTable.id] }
+        if (delegateIds.isNotEmpty()) {
+            PreferenceCompletionTable.selectAll().where {
+                PreferenceCompletionTable.delegateId inList delegateIds
+            }.toList().groupBy { it[PreferenceCompletionTable.delegateId] }.forEach { (delegateId, corrections) ->
+                val complete = corrections.any { it[PreferenceCompletionTable.detectedRanks] != null }
+                if (complete) {
+                    PreferenceTable.deleteWhere { PreferenceTable.delegateId eq delegateId }
+                    corrections.sortedBy { it[PreferenceCompletionTable.rank] }.forEach { correction ->
+                        correction[PreferenceCompletionTable.baselinePositionId]?.let { positionId ->
+                            insertPreference(
+                                delegateId,
+                                correction[PreferenceCompletionTable.rank],
+                                positionId,
+                                correction[PreferenceCompletionTable.baselineRawPreferenceText]
+                                    ?: preferenceRawLabel(positionId),
+                            )
+                        }
+                    }
+                } else {
+                    corrections.forEach { correction ->
+                        PreferenceTable.deleteWhere {
+                            (PreferenceTable.delegateId eq delegateId) and
+                                (PreferenceTable.rank eq correction[PreferenceCompletionTable.rank])
+                        }
+                    }
+                }
+            }
+            PreferenceCompletionTable.deleteWhere { PreferenceCompletionTable.delegateId inList delegateIds }
+        }
+        loadConferenceGraph(conferenceIdValue)
     }
 
     override suspend fun clearPendingSlot(conferenceId: ConferenceId, slotId: SlotId): Conference = db {
@@ -1301,19 +1556,102 @@ class ConferenceRepositoryImpl(
 
         replaceWorkbookManagedChildren(retainedDelegateIds, retainedQuestionIds)
 
-        snapshot.preferenceCandidates.forEach { preference ->
-            val delegateId = delegateIdsByRow[preference.delegateRowNumber] ?: return@forEach
-            val committeeName = preference.parsedCommitteeName?.let(::normalize) ?: return@forEach
-            val positionName = preference.parsedPositionName?.let(::normalize) ?: return@forEach
-            val positionId = positionIds[committeeName to positionName] ?: return@forEach
-            PreferenceTable.insert {
-                it[PreferenceTable.id] = UUID.randomUUID().toString()
-                it[PreferenceTable.delegateId] = delegateId
-                it[PreferenceTable.positionId] = positionId
-                it[PreferenceTable.rank] = preference.rank
-                it[PreferenceTable.rawPreferenceText] = preference.rawPreferenceText
+        val resolvedIncomingPreferences = snapshot.preferenceCandidates.mapNotNull { preference ->
+            val delegateId = delegateIdsByRow[preference.delegateRowNumber] ?: return@mapNotNull null
+            val committeeName = preference.parsedCommitteeName?.let(::normalize) ?: return@mapNotNull null
+            val positionName = preference.parsedPositionName?.let(::normalize) ?: return@mapNotNull null
+            val positionId = positionIds[committeeName to positionName] ?: return@mapNotNull null
+            Triple(preference, delegateId, positionId)
+        }
+        val unresolvedMissingPreferences = mutableListOf<MissingPreference>()
+        val incomingByDelegate = resolvedIncomingPreferences.groupBy { it.second }
+        val correctionsByDelegate = if (retainedDelegateIds.isEmpty()) emptyMap() else {
+            PreferenceCompletionTable.selectAll().where {
+                PreferenceCompletionTable.delegateId inList retainedDelegateIds.toList()
+            }.toList().groupBy { it[PreferenceCompletionTable.delegateId] }
+        }
+        val encodedRanks = snapshot.preferenceRanks.joinToString(",")
+        retainedDelegateIds.forEach { delegateId ->
+            val incomingByRank = incomingByDelegate[delegateId].orEmpty().associateBy { it.first.rank }
+            var corrections = correctionsByDelegate[delegateId].orEmpty()
+            val legacyCorrections = corrections.isNotEmpty() && corrections.all {
+                it[PreferenceCompletionTable.detectedRanks] == null
             }
-            delta.preferencesWritten++
+            if (legacyCorrections) {
+                val legacyValid = corrections.all { correction ->
+                    val positionId = correction[PreferenceCompletionTable.positionId]
+                    incomingByRank[correction[PreferenceCompletionTable.rank]] == null &&
+                        positionId != null && positionId in retainedPositionIds &&
+                        incomingByRank.values.none { it.third == positionId }
+                }
+                if (legacyValid) {
+                    val legacyByRank = corrections.associateBy { it[PreferenceCompletionTable.rank] }
+                    PreferenceCompletionTable.deleteWhere { PreferenceCompletionTable.delegateId eq delegateId }
+                    snapshot.preferenceRanks.forEach { rank ->
+                        val incoming = incomingByRank[rank]
+                        val legacy = legacyByRank[rank]
+                        insertPreferenceCorrection(
+                            delegateId = delegateId,
+                            rank = rank,
+                            positionId = incoming?.third ?: legacy?.get(PreferenceCompletionTable.positionId),
+                            origin = if (incoming != null) PreferenceValueOrigin.Mymun else {
+                                legacy?.let { PreferenceValueOrigin.Organizer }
+                            },
+                            emptyAcknowledged = false,
+                            baselinePositionId = incoming?.third,
+                            baselineRawPreferenceText = incoming?.first?.rawPreferenceText,
+                            detectedRanks = encodedRanks,
+                        )
+                    }
+                    corrections = PreferenceCompletionTable.selectAll().where {
+                        PreferenceCompletionTable.delegateId eq delegateId
+                    }.toList()
+                } else {
+                    PreferenceCompletionTable.deleteWhere { PreferenceCompletionTable.delegateId eq delegateId }
+                    corrections = emptyList()
+                }
+            }
+
+            val correctionValid = corrections.isNotEmpty() &&
+                corrections.size == snapshot.preferenceRanks.size &&
+                corrections.all { it[PreferenceCompletionTable.detectedRanks] == encodedRanks } &&
+                corrections.associateBy { it[PreferenceCompletionTable.rank] }.keys == snapshot.preferenceRanks.toSet() &&
+                corrections.all { correction ->
+                    val rank = correction[PreferenceCompletionTable.rank]
+                    val positionId = correction[PreferenceCompletionTable.positionId]
+                    correction[PreferenceCompletionTable.baselinePositionId] == incomingByRank[rank]?.third &&
+                        (positionId == null || positionId in retainedPositionIds) &&
+                        ((positionId == null) == (correction[PreferenceCompletionTable.origin] == null))
+                } &&
+                corrections.mapNotNull { it[PreferenceCompletionTable.positionId] }.let { it.distinct().size == it.size } &&
+                corrections.filter { it[PreferenceCompletionTable.origin] == PreferenceValueOrigin.Mymun.name }
+                    .mapNotNullTo(mutableSetOf()) { it[PreferenceCompletionTable.positionId] } ==
+                incomingByRank.values.mapTo(mutableSetOf()) { it.third }
+
+            if (corrections.isNotEmpty() && !correctionValid) {
+                PreferenceCompletionTable.deleteWhere { PreferenceCompletionTable.delegateId eq delegateId }
+            }
+
+            if (correctionValid) {
+                corrections.sortedBy { it[PreferenceCompletionTable.rank] }.forEach { correction ->
+                    val rank = correction[PreferenceCompletionTable.rank]
+                    val positionId = correction[PreferenceCompletionTable.positionId]
+                    if (positionId != null) {
+                        insertPreference(delegateId, rank, positionId, preferenceRawLabel(positionId))
+                        delta.preferencesWritten++
+                    } else if (!correction[PreferenceCompletionTable.emptyAcknowledged]) {
+                        unresolvedMissingPreferences += MissingPreference(DelegateId(delegateId), rank)
+                    }
+                }
+            } else {
+                incomingByRank.values.sortedBy { it.first.rank }.forEach { (preference, _, positionId) ->
+                    insertPreference(delegateId, preference.rank, positionId, preference.rawPreferenceText)
+                    delta.preferencesWritten++
+                }
+                snapshot.preferenceRanks.filterNot { it in incomingByRank }.forEach { rank ->
+                    unresolvedMissingPreferences += MissingPreference(DelegateId(delegateId), rank)
+                }
+            }
         }
 
         val questionIdsByText = mutableMapOf<String, String>()
@@ -1455,6 +1793,7 @@ class ConferenceRepositoryImpl(
         ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
             it[ConferenceTable.updatedAtEpochMillis] = Instant.now().toEpochMilli()
             it[ConferenceTable.lastMymunUpdateAtEpochMillis] = Instant.now().toEpochMilli()
+            it[ConferenceTable.lastMymunPreferenceRanks] = encodedRanks
         }
         reconcileReservations(conferenceId, Instant.now().toEpochMilli())
 
@@ -1498,7 +1837,13 @@ class ConferenceRepositoryImpl(
             summary.answersWritten,
         )
 
-        UpdateResult(success = true, issues = issues, summary = summary)
+        UpdateResult(
+            success = true,
+            issues = issues,
+            summary = summary,
+            preferenceRanks = snapshot.preferenceRanks,
+            missingPreferences = unresolvedMissingPreferences,
+        )
     }
 
     private fun resolveConfirmedAssignment(
@@ -2330,6 +2675,21 @@ class ConferenceRepositoryImpl(
                     resolvedAtEpochMillis = row[AnswerIssueResolutionTable.resolvedAtEpochMillis],
                 )
             },
+            preferenceCompletions = if (delegateIds.isEmpty()) emptyList() else PreferenceCompletionTable.selectAll().where {
+                PreferenceCompletionTable.delegateId inList delegateIds
+            }.map { row ->
+                PreferenceCompletionRow(
+                    id = row[PreferenceCompletionTable.id],
+                    delegateId = row[PreferenceCompletionTable.delegateId],
+                    positionId = row[PreferenceCompletionTable.positionId],
+                    rank = row[PreferenceCompletionTable.rank],
+                    origin = row[PreferenceCompletionTable.origin],
+                    emptyAcknowledged = row[PreferenceCompletionTable.emptyAcknowledged],
+                    baselinePositionId = row[PreferenceCompletionTable.baselinePositionId],
+                    baselineRawPreferenceText = row[PreferenceCompletionTable.baselineRawPreferenceText],
+                    detectedRanks = row[PreferenceCompletionTable.detectedRanks],
+                )
+            },
             mymunUpdateFilenameSignatures = loadMymunUpdateFilenameSignatureRows(conferenceId),
         )
         return ConferenceGraphMapper.toDomain(rows)
@@ -2439,6 +2799,50 @@ class ConferenceRepositoryImpl(
     }
 
     private fun normalize(value: String): String = value.trim().lowercase().replace(Regex("\\s+"), " ")
+
+    private fun String.toPreferenceRanks(): List<Int> =
+        split(',').mapNotNull { it.toIntOrNull() }.filter { it > 0 }.distinct().sorted()
+
+    private fun insertPreference(delegateId: String, rank: Int, positionId: String, rawPreferenceText: String) {
+        PreferenceTable.insert {
+            it[id] = UUID.randomUUID().toString()
+            it[PreferenceTable.delegateId] = delegateId
+            it[PreferenceTable.positionId] = positionId
+            it[PreferenceTable.rank] = rank
+            it[PreferenceTable.rawPreferenceText] = rawPreferenceText
+        }
+    }
+
+    private fun insertPreferenceCorrection(
+        delegateId: String,
+        rank: Int,
+        positionId: String?,
+        origin: PreferenceValueOrigin?,
+        emptyAcknowledged: Boolean,
+        baselinePositionId: String?,
+        baselineRawPreferenceText: String?,
+        detectedRanks: String,
+    ) {
+        PreferenceCompletionTable.insert {
+            it[id] = UUID.randomUUID().toString()
+            it[PreferenceCompletionTable.delegateId] = delegateId
+            it[PreferenceCompletionTable.positionId] = positionId
+            it[PreferenceCompletionTable.rank] = rank
+            it[PreferenceCompletionTable.origin] = origin?.name
+            it[PreferenceCompletionTable.emptyAcknowledged] = emptyAcknowledged
+            it[PreferenceCompletionTable.baselinePositionId] = baselinePositionId
+            it[PreferenceCompletionTable.baselineRawPreferenceText] = baselineRawPreferenceText
+            it[PreferenceCompletionTable.detectedRanks] = detectedRanks
+        }
+    }
+
+    private fun preferenceRawLabel(positionId: String): String {
+        val position = PositionTable.selectAll().where { PositionTable.id eq positionId }.single()
+        val committeeName = CommitteeTable.selectAll().where {
+            CommitteeTable.id eq position[PositionTable.committeeId]
+        }.single()[CommitteeTable.mymunName]
+        return "$committeeName (${position[PositionTable.name]})"
+    }
 
     private fun normalizeAnswer(value: String): String = value.trim().lowercase()
 

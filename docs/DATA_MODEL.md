@@ -10,7 +10,8 @@ This document records persistence and update rules that are not obvious from the
 - `Slot` stores the current delegate reference and assignment source.
 - `Delegate` stores MyMUN profile data plus organizer-managed active/inactive state and an optional organizer-managed payment tier.
 - `Question` stores dynamic MyMUN question text plus local handling configuration.
-- `Preference` resolves a delegate's ranked MyMUN preference to a position.
+- `Preference` resolves a delegate's effective ranked preference to a position and identifies direct MyMUN values, organizer-supplied values, and MyMUN values whose rank was corrected locally.
+- `PreferenceCompletion` stores one rank in a complete organizer correction sequence, including its effective value origin, the MyMUN baseline value, and whether an empty rank was explicitly acknowledged.
 - `Delegation` stores delegation context from MyMUN plus organizer-managed school level and review state.
 - `Reservation` stores organizer-managed high-school and university capacity holds, with an optional linked delegation.
 - `ReservationDelegateLink` stores current reservation consumption by one delegate, either manual or delegation-automatic.
@@ -79,6 +80,8 @@ Mapped targets must be committees in the same conference whose mode is not `Mapp
 
 During an update:
 
+- Numbered `Preference N` columns define the expected ranks for that workbook. Empty cells are non-blocking and are returned for post-update completion across every delegate row, regardless of status.
+- A saved organizer correction may supply a missing position, acknowledge an intentional empty rank, or reorder imported values. It is tied to the delegate's detected rank set and complete MyMUN baseline arrangement. An identical update reapplies it; changed ranks or non-empty values retire it and use the new MyMUN sequence. Unresolved blanks and cancelled dialogs persist no acknowledgement.
 - Non-empty `Countries.Delegates` values become confirmed MyMUN assignments.
 - Existing pending assignments are preserved where possible when MyMUN does not contradict them.
 - If `Countries.Delegates` implies more assigned delegates for a position than the committee slot count allows, the update must abort before writing and name the affected committee/counts.
@@ -168,6 +171,7 @@ MyMUN updates preserve where the referenced objects still exist:
 - organizer-managed reservations;
 - manual reservation links for retained active delegates;
 - trusted MyMUN update filename signatures;
+- organizer preference corrections while their delegate and referenced positions remain present and MyMUN keeps the same baseline arrangement;
 
 MyMUN updates remove delegates, preferences, assignments, and answers that no longer exist in the workbook source.
 When an incoming delegate becomes unpaid, the repository clears the organizer-managed delegate tier. If that delegate later becomes paid again, the tier remains unassigned until an organizer classifies it.
@@ -207,6 +211,7 @@ Core tables:
 - `reservations`
 - `reservation_delegate_links`
 - `preferences`
+- `preference_completions`
 - `delegate_comments`
 - `delegate_questions`
 - `delegate_question_answers`
@@ -240,6 +245,8 @@ File metadata tables:
 - `slots(position_id, slot_index)` unique.
 - `preferences(delegate_id, rank)` unique.
 - `preferences(delegate_id, position_id)` unique.
+- `preference_completions(delegate_id, rank)` unique.
+- `preference_completions(delegate_id, position_id)` unique when the effective position is non-null.
 - `delegate_questions(conference_id, question_text)` unique.
 - `delegate_questions(conference_id, expected_role)` unique when role is not null.
 - Role-specific answer mappings unique by `(question_id, normalized_raw_value)`.

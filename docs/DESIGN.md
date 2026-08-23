@@ -6,6 +6,7 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It g
 
 - A conference is the top-level boundary. Deleting a conference deletes its committees, positions, slots, delegates, preferences, questions, answers, comments, delegations, reservations, and update metadata.
 - MyMUN Excel updates replace MyMUN-managed data for the selected conference and preserve organizer-managed state where the referenced delegate or position still exists.
+- Empty numbered MyMUN preference cells are offered for organizer correction after a successful update. Organizers may fill a blank, explicitly keep it empty, or reorder the complete preference sequence. Corrections remain effective while later updates retain the same source arrangement; changed MyMUN values or ranks retire the affected correction.
 - Successful MyMUN updates establish conference-specific trusted filename signatures. Later filenames that do not match any trusted signature require explicit confirmation before the workbook is read.
 - `.munassign` import/export transfers one complete conference as a self-contained SQLite snapshot.
 - A synchronized conference remains authoritative in one user-selected `*.sync.munassign` file. MunAssign only manages the filesystem path; OneDrive, Google Drive, network storage, or another provider may synchronize that folder independently.
@@ -48,11 +49,12 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It g
 2. They drop a MyMUN workbook into the app to update the conference.
 3. The parser builds a staging snapshot and validation issues before writing.
 4. Blocking validation errors abort the update and leave the database unchanged.
-5. Organizers may create reservations and review MyMUN delegations before or during assignment work.
-6. The board shows committees as columns, positions as cards, and slots as rows.
-7. Organizers can switch a committee between high-school, university, and mapped mode, and classify it as `Full` or `Reduced`. Mapped committee positions use a per-position dropdown to select the corresponding non-mapped committee.
-8. Slot controls can create or clear pending assignments, but cannot locally confirm a final assignment.
-9. Later MyMUN updates reconcile confirmed assignments from `Countries.Delegates` and rebuild automatic reservation usage.
+5. After a successful update, the organizer may complete empty preference ranks, acknowledge intentional blanks, reorder preference cards, or leave blanks unresolved to be offered again after the next update.
+6. Organizers may create reservations and review MyMUN delegations before or during assignment work.
+7. The board shows committees as columns, positions as cards, and slots as rows.
+8. Organizers can switch a committee between high-school, university, and mapped mode, and classify it as `Full` or `Reduced`. Mapped committee positions use a per-position dropdown to select the corresponding non-mapped committee.
+9. Slot controls can create or clear pending assignments, but cannot locally confirm a final assignment.
+10. Later MyMUN updates reconcile confirmed assignments from `Countries.Delegates` and rebuild automatic reservation usage.
 
 ## UI Requirements
 
@@ -66,6 +68,7 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It g
 - Reduced committees show a percent marker. Candidate and occupied-slot rows show a red downward arrow for `Reduced` into `Full`, or a yellow upward arrow for `Full` into `Reduced`; acknowledged mismatches keep a muted marker. Candidate ordering considers availability, then tier fit (exact, notice, warning), then school fit, preference, and name.
 - The issue manager offers inline `Full` and `Reduced` actions for missing classifications. Delegate detail exposes the same tier editor. The delegate list shows and filters `Full`, `Reduced`, and paid-unassigned tiers.
 - Clicking a delegate opens a side panel with profile data, assignment state, reservation usage, preferences, configured question answers, comment history, and deactivate/reactivate controls. Manual reservation links can be assigned, changed, or removed there; automatic delegation links can be changed by assigning a manual reservation.
+- The missing-preference dialog lists every affected delegate and every detected preference rank. Every rank card can be dragged into any order without changing its contents. MyMUN values remain read-only; empty and organizer-supplied values use a searchable committee/position selector whose first choice explicitly keeps the rank empty. Delegate detail marks corrected preferences with one section-level note and offers the same confirmed conference-wide reset as conference management; individual corrections are changed only in the completion dialog after a later update.
 - The delegate list panel shows active paid delegates by default, with search, assignment/payment/active/committee filters, presets, and sorting by submitted date, difficulty, name, assignment status, and warning/notice count. Difficulty is a sort key only. The difficulty sort is intentionally ascending (easiest-to-place delegates first), so organizers clear easy delegates and are left with only the hard ones.
 - The delegation overview is a non-modal workspace panel similar to the delegate overview. Its summary distinguishes the expected member count, the current member count reported by the latest update, and ready members who are active, paid, and accepted, assigned, or checked in. Associated reservations, accepted members, and submitted members are shown separately with tooltips that explain their inclusion rules. Long delegation names remain compact and expose the full name on hover. Each delegation can be marked high-school and can open a directly prefilled reservation editor using its full expected count; absent or non-positive counts prefill as zero. New delegations show review markers on their cards and on the top-bar delegation action until the panel is explicitly closed.
 - User-facing status and workflow text should describe the relevant state or latest update rather than referring to an online system. MyMUN remains named where the supported workbook format or MyMUN update operation is specifically relevant.

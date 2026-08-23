@@ -154,6 +154,7 @@ class ConferenceTransferService(
 
         copyByIds(source, target, "slots", "position_id", positionIds)
         copyByIds(source, target, "preferences", "delegate_id", delegateIds)
+        copyByIds(source, target, "preference_completions", "delegate_id", delegateIds)
         copyByIds(source, target, "delegate_comments", "delegate_id", delegateIds)
         copyByIds(source, target, "delegate_question_rules", "question_id", questionIds)
         copyByIds(source, target, "mun_experience_answer_mappings", "question_id", questionIds)
@@ -191,6 +192,7 @@ class ConferenceTransferService(
         )
         val slotIdMap = source.idMapIn("slots", "position_id", positionIdMap.keys)
         val preferenceIdMap = source.idMapIn("preferences", "delegate_id", delegateIdMap.keys)
+        val preferenceCompletionIdMap = source.idMapIn("preference_completions", "delegate_id", delegateIdMap.keys)
         val commentIdMap = source.idMapIn("delegate_comments", "delegate_id", delegateIdMap.keys)
         val questionRuleIdMap = source.idMapIn("delegate_question_rules", "question_id", questionIdMap.keys)
         val munExperienceMapIdMap = source.idMapIn("mun_experience_answer_mappings", "question_id", questionIdMap.keys)
@@ -224,6 +226,7 @@ class ConferenceTransferService(
                 createdAt = localConference.long("created_at_epoch_millis"),
                 updatedAt = now,
                 lastMymunUpdateAt = sourceConference.optionalLong("last_mymun_update_at_epoch_millis"),
+                lastMymunPreferenceRanks = sourceConference["last_mymun_preference_ranks"] as String?,
             )
         }
 
@@ -270,6 +273,12 @@ class ConferenceTransferService(
             row.remap("id", preferenceIdMap)
                 .remap("delegate_id", delegateIdMap)
                 .remap("position_id", positionIdMap)
+        }
+        copyImportedByIds(source, target, "preference_completions", "delegate_id", delegateIdMap.keys) { row ->
+            row.remap("id", preferenceCompletionIdMap)
+                .remap("delegate_id", delegateIdMap)
+                .remapNullable("position_id", positionIdMap)
+                .remapNullable("baseline_position_id", positionIdMap)
         }
         copyImportedByIds(source, target, "delegate_comments", "delegate_id", delegateIdMap.keys) { row ->
             row.remap("id", commentIdMap).remap("delegate_id", delegateIdMap)
@@ -372,6 +381,7 @@ class ConferenceTransferService(
         connection.deleteIn("mun_experience_answer_mappings", "question_id", questionIds)
         connection.deleteIn("delegate_question_rules", "question_id", questionIds)
         connection.deleteWhere("delegate_questions", "conference_id = ?", listOf(conferenceId))
+        connection.deleteIn("preference_completions", "delegate_id", delegateIds)
         connection.deleteIn("preferences", "delegate_id", delegateIds)
         connection.deleteIn("delegate_comments", "delegate_id", delegateIds)
         connection.deleteIn("slots", "position_id", positionIds)
@@ -481,6 +491,7 @@ private fun Connection.updateConferenceForReplacement(
     createdAt: Long,
     updatedAt: Long,
     lastMymunUpdateAt: Long?,
+    lastMymunPreferenceRanks: String?,
 ) {
     prepareStatement(
         """
@@ -489,7 +500,8 @@ private fun Connection.updateConferenceForReplacement(
             display_order = ?,
             created_at_epoch_millis = ?,
             updated_at_epoch_millis = ?,
-            last_mymun_update_at_epoch_millis = ?
+            last_mymun_update_at_epoch_millis = ?,
+            last_mymun_preference_ranks = ?
         WHERE id = ?
         """.trimIndent(),
     ).use { statement ->
@@ -498,7 +510,8 @@ private fun Connection.updateConferenceForReplacement(
         statement.setLong(3, createdAt)
         statement.setLong(4, updatedAt)
         statement.setObject(5, lastMymunUpdateAt)
-        statement.setString(6, conferenceId)
+        statement.setString(6, lastMymunPreferenceRanks)
+        statement.setString(7, conferenceId)
         statement.executeUpdate()
     }
 }

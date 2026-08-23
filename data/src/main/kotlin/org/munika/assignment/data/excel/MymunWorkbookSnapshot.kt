@@ -16,6 +16,8 @@ data class MymunWorkbookSnapshot(
     val preferenceCandidates: List<MymunPreferenceCandidate>,
     val confirmedAssignmentCandidates: List<MymunConfirmedAssignmentCandidate>,
     val issues: List<MymunValidationIssue>,
+    val preferenceRanks: List<Int> = emptyList(),
+    val missingPreferences: List<MymunMissingPreference> = emptyList(),
 ) : MymunStagingObject() {
     override fun displayString(): String =
         "Workbook ${workbookName ?: "<stream>"}: ${delegates.size} delegates, ${countryPositions.size} positions, ${issues.count { it.severity == MymunValidationSeverity.Error }} errors"

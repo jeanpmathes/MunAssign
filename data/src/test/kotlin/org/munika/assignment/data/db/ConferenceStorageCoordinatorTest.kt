@@ -101,7 +101,26 @@ class ConferenceStorageCoordinatorTest {
         creator.createSynchronizedConference("Older", synchronizedPath)
         DriverManager.getConnection("jdbc:sqlite:${synchronizedPath.toAbsolutePath()}").use { connection ->
             connection.createStatement().use { statement ->
-                statement.executeUpdate("DELETE FROM schema_migrations WHERE version = 13")
+                statement.executeUpdate("DROP TABLE preference_completions")
+                statement.executeUpdate(
+                    """
+                    CREATE TABLE preference_completions (
+                        id VARCHAR(36) NOT NULL PRIMARY KEY,
+                        delegate_id VARCHAR(36) NOT NULL REFERENCES delegates(id) ON DELETE CASCADE,
+                        position_id VARCHAR(36) NOT NULL REFERENCES positions(id) ON DELETE CASCADE,
+                        rank INT NOT NULL
+                    )
+                    """.trimIndent(),
+                )
+                statement.executeUpdate(
+                    "CREATE UNIQUE INDEX ux_preference_completions_delegate_rank " +
+                        "ON preference_completions(delegate_id, rank)",
+                )
+                statement.executeUpdate(
+                    "CREATE UNIQUE INDEX ux_preference_completions_delegate_position " +
+                        "ON preference_completions(delegate_id, position_id)",
+                )
+                statement.executeUpdate("DELETE FROM schema_migrations WHERE version = 15")
             }
         }
         val consumerRoot = root.resolve("consumer")

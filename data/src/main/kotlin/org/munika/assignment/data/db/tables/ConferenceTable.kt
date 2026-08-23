@@ -9,6 +9,7 @@ object ConferenceTable : Table("conferences") {
     val createdAtEpochMillis = long("created_at_epoch_millis")
     val updatedAtEpochMillis = long("updated_at_epoch_millis")
     val lastMymunUpdateAtEpochMillis = long("last_mymun_update_at_epoch_millis").nullable()
+    val lastMymunPreferenceRanks = varchar("last_mymun_preference_ranks", 512).nullable()
 
     override val primaryKey = PrimaryKey(id)
 }

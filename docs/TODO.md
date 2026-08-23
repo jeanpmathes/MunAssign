@@ -1,6 +1,5 @@
 # TODO
 
-- Handling for missing preferences
 - Separator between resolved and unresolved issues.
 - The manager buttons should also close the managers.
 - Long committee names make the box longer.

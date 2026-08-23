@@ -286,4 +286,26 @@ interface ConferenceRepository {
     suspend fun unresolveAnswerIssue(conferenceId: ConferenceId, resolutionId: AnswerIssueResolutionId): Conference
 
     suspend fun getConference(conferenceId: ConferenceId): Conference?
+
+    /** Saves organizer choices for empty MyMUN preference ranks in one transaction. */
+    suspend fun savePreferenceCompletions(
+        conferenceId: ConferenceId,
+        selections: List<PreferenceCompletionSelection>,
+    ): Conference
+
+    /** Clears one organizer-completed preference so a later empty update offers it again. */
+    suspend fun clearPreferenceCompletion(
+        conferenceId: ConferenceId,
+        delegateId: DelegateId,
+        rank: Int,
+    ): Conference
+
+    /** Atomically saves complete corrected preference sequences for the supplied delegates. */
+    suspend fun savePreferenceCorrections(
+        conferenceId: ConferenceId,
+        selections: List<PreferenceCorrectionSelection>,
+    ): Conference
+
+    /** Removes every organizer preference completion, empty acknowledgement, and rank correction. */
+    suspend fun resetPreferenceCorrections(conferenceId: ConferenceId): Conference
 }

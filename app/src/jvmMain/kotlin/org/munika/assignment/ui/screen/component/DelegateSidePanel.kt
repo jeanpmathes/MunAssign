@@ -85,6 +85,7 @@ import org.munika.assignment.ui.viewmodel.ReservationSummaryUiState
 import org.munika.assignment.domain.model.PaymentTier
 
 private const val ManualReservationSourceLabel = "Manual"
+private val PreferenceCorrectionMarkerColor = Color(0xFFE56A00)
 
 @Composable
 fun DelegateSidePanel(
@@ -105,9 +106,12 @@ fun DelegateSidePanel(
     onResolveIssue: (delegateId: String, questionId: String?, issueKey: String, justification: String?) -> Unit,
     onUnresolveIssue: (resolutionId: String) -> Unit,
     onSetPaymentTier: (delegateId: String, paymentTier: PaymentTier) -> Unit,
+    conferenceName: String,
+    onResetPreferenceCorrections: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var deactivateDialogOpen by remember(detail.id) { mutableStateOf(false) }
+    var resetPreferenceCorrectionsDialogOpen by remember(detail.id) { mutableStateOf(false) }
     var resolveTarget by remember(detail.id) { mutableStateOf<DelegateAnswerIssueUiState?>(null) }
     val sectionExpanded = remember(detail.id) {
         mutableStateMapOf(
@@ -205,8 +209,22 @@ fun DelegateSidePanel(
                         title = "Preferences",
                         expanded = sectionExpanded["Preferences"] == true,
                         onToggle = { sectionExpanded["Preferences"] = sectionExpanded["Preferences"] != true },
+                        titleContent = {
+                            if (detail.hasPreferenceCorrections) {
+                                Text(
+                                    "*",
+                                    color = PreferenceCorrectionMarkerColor,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        },
                     ) {
-                        PreferencesContent(detail.preferences, onNavigateToPosition)
+                        PreferencesContent(
+                            detail = detail,
+                            loading = loading,
+                            onNavigateToPosition = onNavigateToPosition,
+                            onResetPreferenceCorrections = { resetPreferenceCorrectionsDialogOpen = true },
+                        )
                     }
                 }
                 item {
@@ -255,6 +273,37 @@ fun DelegateSidePanel(
             },
             dismissButton = {
                 TextButton(onClick = { deactivateDialogOpen = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
+    if (resetPreferenceCorrectionsDialogOpen) {
+        AlertDialog(
+            onDismissRequest = { resetPreferenceCorrectionsDialogOpen = false },
+            title = { Text("Reset preference corrections") },
+            text = {
+                Text(
+                    "This removes all preference corrections for $conferenceName, not only ${detail.name}. " +
+                        "Raw MyMUN preferences are restored immediately, and unresolved blanks will be offered " +
+                        "again after the next update.",
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onResetPreferenceCorrections()
+                        resetPreferenceCorrectionsDialogOpen = false
+                    },
+                    enabled = !loading,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                ) {
+                    Text("Reset")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { resetPreferenceCorrectionsDialogOpen = false }) {
                     Text("Cancel")
                 }
             },
@@ -685,15 +734,53 @@ private fun ProfileContent(
 
 @Composable
 private fun PreferencesContent(
-    preferences: List<DelegatePreferenceUiState>,
+    detail: DelegateDetailUiState,
+    loading: Boolean,
     onNavigateToPosition: (committeeId: String, positionId: String) -> Unit,
+    onResetPreferenceCorrections: () -> Unit,
 ) {
+    val preferences = detail.preferences
     if (preferences.isEmpty()) {
         Text("No preferences", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        return
+    } else {
+        preferences.forEach { preference ->
+            PreferenceRow(
+                preference = preference,
+                onNavigateToPosition = onNavigateToPosition,
+            )
+        }
     }
-    preferences.forEach { preference ->
-        PreferenceRow(preference, onNavigateToPosition)
+    if (detail.hasPreferenceCorrections) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Text(
+                "*",
+                style = MaterialTheme.typography.bodySmall,
+                color = PreferenceCorrectionMarkerColor,
+                fontWeight = FontWeight.Bold,
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    "Rank and/or content of preferences corrected during update.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "Click here to reset and choose a new correction on the next update.",
+                    modifier = Modifier.clickable(enabled = !loading, onClick = onResetPreferenceCorrections),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (loading) {
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                    textDecoration = TextDecoration.Underline,
+                )
+            }
+        }
     }
 }
 
@@ -985,6 +1072,7 @@ private fun FoldableSection(
     title: String,
     expanded: Boolean,
     onToggle: () -> Unit,
+    titleContent: @Composable RowScope.() -> Unit = {},
     headerContent: @Composable RowScope.() -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -998,7 +1086,9 @@ private fun FoldableSection(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            titleContent()
+            Spacer(modifier = Modifier.weight(1f))
             headerContent()
             Icon(
                 if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,

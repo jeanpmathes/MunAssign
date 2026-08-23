@@ -39,6 +39,8 @@ import org.munika.assignment.data.excel.MymunConfirmedAssignmentCandidate
 import org.munika.assignment.data.excel.MymunCountryPositionRow
 import org.munika.assignment.data.excel.MymunDelegateRow
 import org.munika.assignment.data.excel.MymunDelegationRow
+import org.munika.assignment.data.excel.MymunMissingPreference
+import org.munika.assignment.data.excel.MymunPreferenceCandidate
 import org.munika.assignment.data.excel.MymunQuestionAnswerCell
 import org.munika.assignment.data.excel.MymunQuestionColumn
 import org.munika.assignment.data.excel.MymunWorkbookSnapshot
@@ -56,6 +58,7 @@ import org.munika.assignment.domain.model.MunExperienceLevel
 import org.munika.assignment.domain.model.NoticeWhenNonBlank
 import org.munika.assignment.domain.model.PaymentStatus
 import org.munika.assignment.domain.model.PaymentTier
+import org.munika.assignment.domain.model.PreferenceSource
 import org.munika.assignment.domain.model.QuestionConfiguration
 import org.munika.assignment.domain.model.QuestionId
 import org.munika.assignment.domain.model.ReservationLinkSource
@@ -64,8 +67,186 @@ import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
 import org.munika.assignment.domain.model.TypedAnswerMappings
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
+import org.munika.assignment.domain.repository.PreferenceCompletionSelection
+import org.munika.assignment.domain.repository.PreferenceCorrectionSelection
+import org.munika.assignment.domain.repository.PreferenceValueOrigin
 
 class ConferenceRepositoryImplTest {
+    @Test
+    fun `preference correction reorders imported values and acknowledges an intentional empty rank`() = runBlocking {
+        val database = DatabaseFactory.connect(Files.createTempDirectory("munassign-preference-order").resolve("data.db"))
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        val firstUpdate = repository.applyMymunUpdateSnapshot(conference.id.value, gappedPreferenceSnapshot())
+        val loaded = requireNotNull(repository.getConference(conference.id))
+        val delegate = loaded.delegates.single()
+        val france = loaded.positions.single { it.name == "France" }
+        val germany = loaded.positions.single { it.name == "Germany" }
+        assertEquals(listOf(2), firstUpdate.missingPreferences.map { it.rank })
+
+        assertFailsWith<IllegalArgumentException> {
+            repository.savePreferenceCorrections(
+                conference.id,
+                listOf(
+                    PreferenceCorrectionSelection(delegate.id, 1, france.id, PreferenceValueOrigin.Mymun),
+                    PreferenceCorrectionSelection(delegate.id, 2, positionId = null, origin = null),
+                    PreferenceCorrectionSelection(delegate.id, 3, positionId = null, origin = null, emptyAcknowledged = true),
+                ),
+            )
+        }
+        assertEquals(
+            listOf(1 to "France", 3 to "Germany"),
+            requireNotNull(repository.getConference(conference.id)).delegates.single().preferences
+                .sortedBy { it.rank }.map { it.rank to it.position.name },
+        )
+
+        val corrected = repository.savePreferenceCorrections(
+            conference.id,
+            listOf(
+                PreferenceCorrectionSelection(delegate.id, 1, france.id, PreferenceValueOrigin.Mymun),
+                PreferenceCorrectionSelection(delegate.id, 2, germany.id, PreferenceValueOrigin.Mymun),
+                PreferenceCorrectionSelection(delegate.id, 3, positionId = null, origin = null, emptyAcknowledged = true),
+            ),
+        )
+        assertEquals(
+            listOf(1 to "France", 2 to "Germany"),
+            corrected.delegates.single().preferences.sortedBy { it.rank }.map { it.rank to it.position.name },
+        )
+        assertEquals(
+            PreferenceSource.OrganizerCorrection,
+            corrected.delegates.single().preferences.single { it.rank == 2 }.source,
+        )
+
+        val repeated = repository.applyMymunUpdateSnapshot(conference.id.value, gappedPreferenceSnapshot())
+        assertTrue(repeated.missingPreferences.isEmpty())
+        assertEquals(
+            listOf(1 to "France", 2 to "Germany"),
+            requireNotNull(repository.getConference(conference.id)).delegates.single().preferences
+                .sortedBy { it.rank }.map { it.rank to it.position.name },
+        )
+
+        val changed = repository.applyMymunUpdateSnapshot(
+            conference.id.value,
+            gappedPreferenceSnapshot(germanyRank = 2, missingRank = 3),
+        )
+        assertEquals(listOf(3), changed.missingPreferences.map { it.rank })
+        val changedPreferences = requireNotNull(repository.getConference(conference.id)).delegates.single().preferences
+        assertEquals(PreferenceSource.Mymun, changedPreferences.single { it.rank == 2 }.source)
+    }
+
+    @Test
+    fun `reset preference corrections restores raw MyMUN ranks and makes blanks unresolved again`() = runBlocking {
+        val database = DatabaseFactory.connect(Files.createTempDirectory("munassign-preference-reset").resolve("data.db"))
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        repository.applyMymunUpdateSnapshot(conference.id.value, gappedPreferenceSnapshot())
+        val loaded = requireNotNull(repository.getConference(conference.id))
+        val delegate = loaded.delegates.single()
+        val france = loaded.positions.single { it.name == "France" }
+        val germany = loaded.positions.single { it.name == "Germany" }
+
+        repository.savePreferenceCorrections(
+            conference.id,
+            listOf(
+                PreferenceCorrectionSelection(delegate.id, 1, france.id, PreferenceValueOrigin.Mymun),
+                PreferenceCorrectionSelection(delegate.id, 2, germany.id, PreferenceValueOrigin.Mymun),
+                PreferenceCorrectionSelection(delegate.id, 3, positionId = null, origin = null, emptyAcknowledged = true),
+            ),
+        )
+
+        val reset = repository.resetPreferenceCorrections(conference.id)
+        assertEquals(
+            listOf(1 to "France", 3 to "Germany"),
+            reset.delegates.single().preferences.sortedBy { it.rank }.map { it.rank to it.position.name },
+        )
+        val nextUpdate = repository.applyMymunUpdateSnapshot(conference.id.value, gappedPreferenceSnapshot())
+        assertEquals(listOf(2), nextUpdate.missingPreferences.map { it.rank })
+    }
+
+    @Test
+    fun `organizer completion supplies repeated empty preference and MyMUN later wins`() = runBlocking {
+        val database = DatabaseFactory.connect(Files.createTempDirectory("munassign-preference-completion").resolve("data.db"))
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+
+        val firstUpdate = repository.applyMymunUpdateSnapshot(conference.id.value, missingPreferenceSnapshot())
+        val firstLoaded = requireNotNull(repository.getConference(conference.id))
+        val delegate = firstLoaded.delegates.single()
+        val germany = firstLoaded.positions.single { it.name == "Germany" }
+        assertEquals(listOf(delegate.id.value to 1), firstUpdate.missingPreferences.map { it.delegateId.value to it.rank })
+
+        val completed = repository.savePreferenceCompletions(
+            conference.id,
+            listOf(PreferenceCompletionSelection(delegate.id, rank = 1, germany.id)),
+        )
+        assertEquals(PreferenceSource.OrganizerCompletion, completed.delegates.single().preferences.single().source)
+
+        val repeated = repository.applyMymunUpdateSnapshot(conference.id.value, missingPreferenceSnapshot())
+        assertTrue(repeated.missingPreferences.isEmpty())
+        assertEquals("Germany", requireNotNull(repository.getConference(conference.id)).delegates.single().preferences.single().position.name)
+
+        val mymunUpdate = repository.applyMymunUpdateSnapshot(
+            conference.id.value,
+            missingPreferenceSnapshot(
+                preference = MymunPreferenceCandidate(
+                    delegateRowNumber = 2,
+                    rank = 1,
+                    rawPreferenceText = "GA (France)",
+                    parsedCommitteeName = "GA",
+                    parsedPositionName = "France",
+                    resolvedCountryRowNumber = 2,
+                    location = CellLocation("Delegates", 2, 5, "Preference 1"),
+                ),
+            ),
+        )
+
+        assertTrue(mymunUpdate.missingPreferences.isEmpty())
+        val finalPreference = requireNotNull(repository.getConference(conference.id)).delegates.single().preferences.single()
+        assertEquals("France", finalPreference.position.name)
+        assertEquals(PreferenceSource.Mymun, finalPreference.source)
+    }
+
+    @Test
+    fun `preference completion rejects duplicate positions and can be cleared`() = runBlocking {
+        val database = DatabaseFactory.connect(Files.createTempDirectory("munassign-preference-validation").resolve("data.db"))
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        repository.applyMymunUpdateSnapshot(conference.id.value, missingPreferenceSnapshot(ranks = listOf(1, 2)))
+        val loaded = requireNotNull(repository.getConference(conference.id))
+        val delegate = loaded.delegates.single()
+        val germany = loaded.positions.single { it.name == "Germany" }
+
+        assertFailsWith<IllegalArgumentException> {
+            repository.savePreferenceCompletions(
+                conference.id,
+                listOf(
+                    PreferenceCompletionSelection(delegate.id, 1, germany.id),
+                    PreferenceCompletionSelection(delegate.id, 2, germany.id),
+                ),
+            )
+        }
+        assertTrue(requireNotNull(repository.getConference(conference.id)).delegates.single().preferences.isEmpty())
+
+        val otherConference = repository.createConference("Other")
+        repository.applyMymunUpdateSnapshot(otherConference.id.value, missingPreferenceSnapshot())
+        val otherPosition = requireNotNull(repository.getConference(otherConference.id)).positions.first()
+        assertFailsWith<IllegalArgumentException> {
+            repository.savePreferenceCompletions(
+                conference.id,
+                listOf(PreferenceCompletionSelection(delegate.id, 1, otherPosition.id)),
+            )
+        }
+        assertTrue(requireNotNull(repository.getConference(conference.id)).delegates.single().preferences.isEmpty())
+
+        repository.savePreferenceCompletions(
+            conference.id,
+            listOf(PreferenceCompletionSelection(delegate.id, 1, germany.id)),
+        )
+        val cleared = repository.clearPreferenceCompletion(conference.id, delegate.id, rank = 1)
+        assertTrue(cleared.delegates.single().preferences.isEmpty())
+    }
+
     @Test
     fun `conference CRUD and cascade delete works`() = runBlocking {
         val dbPath = Files.createTempDirectory("munassign-test").resolve("data.db")
@@ -2440,6 +2621,84 @@ class ConferenceRepositoryImplTest {
 
     private fun snapshotWithQuestion(): MymunWorkbookSnapshot =
         snapshotWithQuestions(listOf("Question: Please explain your choice of comittees."))
+
+    private fun missingPreferenceSnapshot(
+        ranks: List<Int> = listOf(1),
+        preference: MymunPreferenceCandidate? = null,
+    ): MymunWorkbookSnapshot = MymunWorkbookSnapshot(
+        workbookName = "missing-preference.xlsx",
+        delegates = listOf(delegate()),
+        countryPositions = listOf(
+            MymunCountryPositionRow(2, "GA", "France", null, null),
+            MymunCountryPositionRow(3, "GA", "Germany", null, null),
+        ),
+        delegations = emptyList(),
+        questionColumns = emptyList(),
+        questionAnswers = emptyList(),
+        preferenceCandidates = listOfNotNull(preference),
+        confirmedAssignmentCandidates = emptyList(),
+        issues = emptyList(),
+        preferenceRanks = ranks,
+        missingPreferences = if (preference == null) {
+            ranks.map { rank ->
+                MymunMissingPreference(
+                    delegateRowNumber = 2,
+                    rank = rank,
+                    location = CellLocation("Delegates", 2, rank + 4, "Preference $rank"),
+                )
+            }
+        } else {
+            emptyList()
+        },
+    )
+
+    private fun gappedPreferenceSnapshot(
+        germanyRank: Int = 3,
+        missingRank: Int = 2,
+    ): MymunWorkbookSnapshot {
+        val preferences = listOf(
+            MymunPreferenceCandidate(
+                delegateRowNumber = 2,
+                rank = 1,
+                rawPreferenceText = "GA (France)",
+                parsedCommitteeName = "GA",
+                parsedPositionName = "France",
+                resolvedCountryRowNumber = 2,
+                location = CellLocation("Delegates", 2, 5, "Preference 1"),
+            ),
+            MymunPreferenceCandidate(
+                delegateRowNumber = 2,
+                rank = germanyRank,
+                rawPreferenceText = "GA (Germany)",
+                parsedCommitteeName = "GA",
+                parsedPositionName = "Germany",
+                resolvedCountryRowNumber = 3,
+                location = CellLocation("Delegates", 2, germanyRank + 4, "Preference $germanyRank"),
+            ),
+        )
+        return MymunWorkbookSnapshot(
+            workbookName = "gapped-preference.xlsx",
+            delegates = listOf(delegate()),
+            countryPositions = listOf(
+                MymunCountryPositionRow(2, "GA", "France", null, null),
+                MymunCountryPositionRow(3, "GA", "Germany", null, null),
+            ),
+            delegations = emptyList(),
+            questionColumns = emptyList(),
+            questionAnswers = emptyList(),
+            preferenceCandidates = preferences,
+            confirmedAssignmentCandidates = emptyList(),
+            issues = emptyList(),
+            preferenceRanks = listOf(1, 2, 3),
+            missingPreferences = listOf(
+                MymunMissingPreference(
+                    delegateRowNumber = 2,
+                    rank = missingRank,
+                    location = CellLocation("Delegates", 2, missingRank + 4, "Preference $missingRank"),
+                ),
+            ),
+        )
+    }
 
     private fun snapshotWithRoleAnswer(answer: String): MymunWorkbookSnapshot {
         val questionText = "Question: Are you a high-schooler?"

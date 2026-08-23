@@ -58,7 +58,9 @@ class MyMunWorkbookParser {
                 delegations = delegations,
                 questionColumns = delegateParse.questionColumns,
                 questionAnswers = delegateParse.questionAnswers,
+                preferenceRanks = delegateParse.preferenceRanks,
                 preferenceCandidates = delegateParse.preferenceCandidates,
+                missingPreferences = delegateParse.missingPreferences,
                 confirmedAssignmentCandidates = parseConfirmedAssignments(countries),
                 issues = issues,
             )
@@ -134,6 +136,7 @@ class MyMunWorkbookParser {
         val delegates = mutableListOf<MymunDelegateRow>()
         val questionAnswers = mutableListOf<MymunQuestionAnswerCell>()
         val preferences = mutableListOf<MymunPreferenceCandidate>()
+        val missingPreferences = mutableListOf<MymunMissingPreference>()
 
         dataRows(sheet).forEach { row ->
             val firstName = row.text(headers, DelegateFirstName).trimToNull()
@@ -193,7 +196,15 @@ class MyMunWorkbookParser {
             }
 
             preferenceColumns.forEach { preferenceColumn ->
-                val rawPreference = row.text(headers, preferenceColumn.header).trimToNull() ?: return@forEach
+                val rawPreference = row.text(headers, preferenceColumn.header).trimToNull()
+                if (rawPreference == null) {
+                    missingPreferences += MymunMissingPreference(
+                        delegateRowNumber = row.excelRowNumber,
+                        rank = preferenceColumn.rank,
+                        location = row.location(sheet.sheetName, preferenceColumn.header, headers),
+                    )
+                    return@forEach
+                }
                 val parsed = parsePreference(rawPreference)
                 val resolved = parsed?.let {
                     countryLookup[PositionKey(normalizeLookup(it.committeeName), normalizeLookup(it.positionName))]
@@ -220,7 +231,14 @@ class MyMunWorkbookParser {
             }
         }
 
-        return DelegateParseResult(delegates, questionColumns, questionAnswers, preferences)
+        return DelegateParseResult(
+            delegates = delegates,
+            questionColumns = questionColumns,
+            questionAnswers = questionAnswers,
+            preferenceRanks = preferenceColumns.map { it.rank },
+            preferenceCandidates = preferences,
+            missingPreferences = missingPreferences,
+        )
     }
 
     private fun parseDelegations(
@@ -473,7 +491,9 @@ class MyMunWorkbookParser {
         val delegates: List<MymunDelegateRow> = emptyList(),
         val questionColumns: List<MymunQuestionColumn> = emptyList(),
         val questionAnswers: List<MymunQuestionAnswerCell> = emptyList(),
+        val preferenceRanks: List<Int> = emptyList(),
         val preferenceCandidates: List<MymunPreferenceCandidate> = emptyList(),
+        val missingPreferences: List<MymunMissingPreference> = emptyList(),
     )
 
     private data class PreferenceColumn(val header: String, val rank: Int)

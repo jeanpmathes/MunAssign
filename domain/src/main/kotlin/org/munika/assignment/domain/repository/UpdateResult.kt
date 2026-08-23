@@ -10,4 +10,6 @@ data class UpdateResult(
     val success: Boolean,
     val issues: List<UpdateIssue>,
     val summary: UpdateSummary = UpdateSummary(),
+    val preferenceRanks: List<Int> = emptyList(),
+    val missingPreferences: List<MissingPreference> = emptyList(),
 )

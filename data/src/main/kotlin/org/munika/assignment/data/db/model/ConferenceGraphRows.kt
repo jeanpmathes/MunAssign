@@ -19,4 +19,5 @@ data class ConferenceGraphRows(
     val answers: List<DelegateQuestionAnswerRow>,
     val issueResolutions: List<AnswerIssueResolutionRow>,
     val mymunUpdateFilenameSignatures: List<MymunUpdateFilenameSignatureRow> = emptyList(),
+    val preferenceCompletions: List<PreferenceCompletionRow> = emptyList(),
 )

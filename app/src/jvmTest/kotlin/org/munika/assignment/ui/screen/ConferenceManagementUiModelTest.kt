@@ -38,6 +38,7 @@ class ConferenceManagementUiModelTest {
                 ConferenceManagementAction.Export,
                 ConferenceManagementAction.Replace,
                 ConferenceManagementAction.TrustedFilenames,
+                ConferenceManagementAction.ResetPreferenceCorrections,
                 ConferenceManagementAction.Rename,
                 ConferenceManagementAction.MoveToSynchronized,
                 ConferenceManagementAction.Remove,
@@ -49,6 +50,7 @@ class ConferenceManagementUiModelTest {
                 ConferenceManagementAction.Export,
                 ConferenceManagementAction.Replace,
                 ConferenceManagementAction.TrustedFilenames,
+                ConferenceManagementAction.ResetPreferenceCorrections,
                 ConferenceManagementAction.Rename,
                 ConferenceManagementAction.Locate,
                 ConferenceManagementAction.Remove,
@@ -68,6 +70,7 @@ class ConferenceManagementUiModelTest {
         assertFalse(actions.getValue(ConferenceManagementAction.Export))
         assertFalse(actions.getValue(ConferenceManagementAction.Replace))
         assertFalse(actions.getValue(ConferenceManagementAction.TrustedFilenames))
+        assertFalse(actions.getValue(ConferenceManagementAction.ResetPreferenceCorrections))
         assertFalse(actions.getValue(ConferenceManagementAction.Rename))
         assertTrue(actions.getValue(ConferenceManagementAction.Locate))
         assertTrue(actions.getValue(ConferenceManagementAction.Remove))

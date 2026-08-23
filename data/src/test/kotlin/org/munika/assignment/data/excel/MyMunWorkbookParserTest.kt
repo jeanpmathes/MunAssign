@@ -204,6 +204,61 @@ class MyMunWorkbookParserTest {
     }
 
     @Test
+    fun `empty preference cells are staged for every delegate and detected rank`() {
+        val workbookBytes = ByteArrayOutputStream().use { output ->
+            XSSFWorkbook().use { workbook ->
+                val countries = workbook.createSheet("Countries")
+                countries.createRow(0).apply {
+                    createCell(0).setCellValue("Committee Name")
+                    createCell(1).setCellValue("Member Name")
+                    createCell(2).setCellValue("Delegates")
+                }
+                countries.createRow(1).apply {
+                    createCell(0).setCellValue("GA")
+                    createCell(1).setCellValue("France")
+                }
+
+                val delegates = workbook.createSheet("Delegates")
+                delegates.createRow(0).apply {
+                    createCell(0).setCellValue("First Name")
+                    createCell(1).setCellValue("Last Name")
+                    createCell(2).setCellValue("Email")
+                    createCell(3).setCellValue("Fee Paid")
+                    createCell(4).setCellValue("Preference 1")
+                    createCell(5).setCellValue("Preference 2")
+                    createCell(6).setCellValue("Preference 4")
+                }
+                delegates.createRow(1).apply {
+                    createCell(0).setCellValue("Alex")
+                    createCell(1).setCellValue("Kim")
+                    createCell(2).setCellValue("alex@example.test")
+                    createCell(3).setCellValue("yes")
+                    createCell(4).setCellValue("GA (France)")
+                }
+                delegates.createRow(2).apply {
+                    createCell(0).setCellValue("Sam")
+                    createCell(1).setCellValue("Lee")
+                    createCell(2).setCellValue("sam@example.test")
+                    createCell(3).setCellValue("no")
+                    createCell(5).setCellValue("GA (France)")
+                }
+
+                workbook.write(output)
+            }
+            output.toByteArray()
+        }
+
+        val snapshot = parser.parse(ByteArrayInputStream(workbookBytes), "missing-preferences.xlsx")
+
+        assertEquals(listOf(1, 2, 4), snapshot.preferenceRanks)
+        assertEquals(
+            listOf(2 to 2, 2 to 4, 3 to 1, 3 to 4),
+            snapshot.missingPreferences.map { it.delegateRowNumber to it.rank },
+        )
+        assertTrue(snapshot.issues.none { it.severity == MymunValidationSeverity.Error })
+    }
+
+    @Test
     fun `invalid date cells become blocking validation issues`() {
         val workbookBytes = ByteArrayOutputStream().use { output ->
             XSSFWorkbook().use { workbook ->

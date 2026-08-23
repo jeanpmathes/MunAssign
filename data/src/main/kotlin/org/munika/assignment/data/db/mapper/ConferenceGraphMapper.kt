@@ -42,6 +42,7 @@ import org.munika.assignment.domain.model.Position
 import org.munika.assignment.domain.model.PositionId
 import org.munika.assignment.domain.model.Preference
 import org.munika.assignment.domain.model.PreferenceId
+import org.munika.assignment.domain.model.PreferenceSource
 import org.munika.assignment.domain.model.Question
 import org.munika.assignment.domain.model.QuestionAnswer
 import org.munika.assignment.domain.model.QuestionAnswerId
@@ -57,6 +58,7 @@ import org.munika.assignment.domain.model.SlotId
 import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
 import org.munika.assignment.domain.model.TypedAnswerMappings
+import org.munika.assignment.domain.repository.PreferenceValueOrigin
 
 /**
  * Rehydrates table-shaped rows into a connected domain object graph.
@@ -138,8 +140,19 @@ object ConferenceGraphMapper {
             row.id to delegation
         }
 
+        val correctedDelegateIds = rows.preferenceCompletions
+            .filter { correction ->
+                correction.emptyAcknowledged ||
+                    correction.origin == PreferenceValueOrigin.Organizer.name ||
+                    correction.positionId != correction.baselinePositionId
+            }
+            .mapTo(mutableSetOf()) { it.delegateId }
         val delegatesById = rows.delegates.associate { row ->
-            val delegate = row.toDomain(conference, row.delegationId?.let { delegationsById[it] })
+            val delegate = row.toDomain(
+                conference = conference,
+                delegation = row.delegationId?.let { delegationsById[it] },
+                hasPreferenceCorrections = row.id in correctedDelegateIds,
+            )
             conference.delegates += delegate
             row.id to delegate
         }
@@ -168,6 +181,7 @@ object ConferenceGraphMapper {
             row.id to reservation
         }
 
+        val correctionsByDelegateAndRank = rows.preferenceCompletions.associateBy { it.delegateId to it.rank }
         rows.preferences.forEach { row ->
             val delegate = requireNotNull(delegatesById[row.delegateId]) {
                 "Preference ${row.id} references missing delegate ${row.delegateId}."
@@ -181,6 +195,13 @@ object ConferenceGraphMapper {
                 position = position,
                 rank = row.rank,
                 rawPreferenceText = row.rawPreferenceText,
+                source = correctionsByDelegateAndRank[row.delegateId to row.rank]?.let { correction ->
+                    when {
+                        correction.origin == PreferenceValueOrigin.Organizer.name -> PreferenceSource.OrganizerCompletion
+                        correction.baselinePositionId != row.positionId -> PreferenceSource.OrganizerCorrection
+                        else -> PreferenceSource.Mymun
+                    }
+                } ?: PreferenceSource.Mymun,
             )
         }
 
@@ -306,7 +327,11 @@ object ConferenceGraphMapper {
         return conference
     }
 
-    private fun DelegateRow.toDomain(conference: Conference, delegation: org.munika.assignment.domain.model.Delegation?): Delegate =
+    private fun DelegateRow.toDomain(
+        conference: Conference,
+        delegation: org.munika.assignment.domain.model.Delegation?,
+        hasPreferenceCorrections: Boolean,
+    ): Delegate =
         Delegate(
             id = DelegateId(id),
             conference = conference,
@@ -331,6 +356,7 @@ object ConferenceGraphMapper {
             delegation = delegation,
             createdAtFromMymun = createdAtFromMymunEpochMillis?.toInstant(),
             submittedAt = submittedAtEpochMillis?.toInstant(),
+            hasPreferenceCorrections = hasPreferenceCorrections,
         )
 
     private fun DelegateQuestionRuleRow.toDomainRule(): AnswerRule? =

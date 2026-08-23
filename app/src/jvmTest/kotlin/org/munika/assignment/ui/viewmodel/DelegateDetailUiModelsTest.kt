@@ -38,6 +38,7 @@ import org.munika.assignment.domain.model.Position
 import org.munika.assignment.domain.model.PositionId
 import org.munika.assignment.domain.model.Preference
 import org.munika.assignment.domain.model.PreferenceId
+import org.munika.assignment.domain.model.PreferenceSource
 import org.munika.assignment.domain.model.Question
 import org.munika.assignment.domain.model.QuestionAnswer
 import org.munika.assignment.domain.model.QuestionAnswerId
@@ -91,6 +92,8 @@ class DelegateDetailUiModelsTest {
         assertEquals(DelegateStatusTone.Yellow, detail.preferences.first().status.tone)
         assertEquals("Open", detail.preferences[1].status.label)
         assertEquals(DelegateStatusTone.Green, detail.preferences[1].status.tone)
+        assertFalse(detail.preferences.first().organizerCompleted)
+        assertTrue(detail.preferences[1].organizerCompleted)
         assertEquals(listOf("Motivation", "Visa"), detail.answers.map { it.label })
         assertEquals("No answer", detail.answers.single { it.label == "Motivation" }.answer)
         assertEquals("Yes", detail.answers.single { it.label == "Visa" }.answer)
@@ -308,7 +311,14 @@ class DelegateDetailUiModelsTest {
         france.slots += franceSlot
         germany.slots += Slot(SlotId("germany-slot"), germany, 1, Instant.EPOCH)
         delegate.preferences += Preference(PreferenceId("preference-1"), delegate, france, 1, "GA (France)")
-        delegate.preferences += Preference(PreferenceId("preference-2"), delegate, germany, 2, "GA (Germany)")
+        delegate.preferences += Preference(
+            PreferenceId("preference-2"),
+            delegate,
+            germany,
+            2,
+            "GA (Germany)",
+            PreferenceSource.OrganizerCompletion,
+        )
         delegate.answers += QuestionAnswer(QuestionAnswerId("answer-1"), delegate, visibleQuestion, null)
         val resolvedIssue = AnswerIssue("Required", AnswerIssueSeverity.Warning)
         delegate.issueResolutions += AnswerIssueResolution(

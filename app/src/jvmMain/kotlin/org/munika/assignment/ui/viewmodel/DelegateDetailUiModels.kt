@@ -11,6 +11,7 @@ import org.munika.assignment.domain.model.PaymentStatus
 import org.munika.assignment.domain.model.PaymentTier
 import org.munika.assignment.domain.model.Position
 import org.munika.assignment.domain.model.Preference
+import org.munika.assignment.domain.model.PreferenceSource
 import org.munika.assignment.domain.model.ResolvedAnswerIssue
 import org.munika.assignment.domain.model.StandardQuestionRoles
 
@@ -36,6 +37,7 @@ data class DelegateDetailUiState(
     val assignment: DelegateAssignmentUiState?,
     val canDeactivate: Boolean,
     val preferences: List<DelegatePreferenceUiState>,
+    val hasPreferenceCorrections: Boolean,
     val answers: List<DelegateAnswerUiState>,
     val profileIssues: List<DelegateAnswerIssueUiState>,
     val resolvedProfileIssues: List<DelegateResolvedIssueUiState>,
@@ -99,6 +101,8 @@ data class DelegatePreferenceUiState(
     val positionId: String,
     val isCurrentAssignment: Boolean,
     val status: PreferenceSlotStatusUiState,
+    val organizerCompleted: Boolean = false,
+    val organizerReordered: Boolean = false,
 )
 
 data class PreferenceSlotStatusUiState(
@@ -302,6 +306,7 @@ fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiSta
         preferences = delegate.preferences
             .sortedBy { it.rank }
             .map { preference -> preference.toUiState(currentSlot?.position) },
+        hasPreferenceCorrections = delegate.hasPreferenceCorrections,
         answers = displayAnswers,
         profileIssues = profileIssues,
         resolvedProfileIssues = resolvedProfileIssues,
@@ -414,6 +419,8 @@ private fun Preference.toUiState(currentPosition: Position?): DelegatePreference
         positionId = position.id.value,
         isCurrentAssignment = position === currentPosition,
         status = position.preferenceStatus(),
+        organizerCompleted = source == PreferenceSource.OrganizerCompletion,
+        organizerReordered = source == PreferenceSource.OrganizerCorrection,
     )
 
 private fun Position.preferenceStatus(): PreferenceSlotStatusUiState {
