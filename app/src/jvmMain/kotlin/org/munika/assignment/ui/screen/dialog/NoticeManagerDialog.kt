@@ -98,6 +98,11 @@ fun IssueManagerPanel(
                     items = manager.issues,
                     key = { _, issue -> "${issue.delegateId}:${issue.questionId}:${issue.issueKey}:${issue.resolved}" },
                 ) { index, issue ->
+                    val isFirstResolvedIssue = issue.resolved &&
+                        (index == 0 || !manager.issues[index - 1].resolved)
+                    if (isFirstResolvedIssue) {
+                        ResolvedIssuesSeparator()
+                    }
                     IssueRow(
                         issue = issue,
                         onResolve = { resolveTarget = issue },
@@ -106,7 +111,8 @@ fun IssueManagerPanel(
                         onOpenDelegate = { onOpenDelegate(issue.delegateId) },
                         onSetPaymentTier = { tier -> onSetDelegatePaymentTier(issue.delegateId, tier) },
                     )
-                    if (index < manager.issues.lastIndex) {
+                    val nextIssue = manager.issues.getOrNull(index + 1)
+                    if (nextIssue != null && nextIssue.resolved == issue.resolved) {
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f))
                     }
                 }
@@ -142,6 +148,24 @@ fun IssueManagerPanel(
                 },
             )
         }
+    }
+}
+
+@Composable
+private fun ResolvedIssuesSeparator() {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+        Text(
+            "Resolved",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 
