@@ -29,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.runtime.getValue
@@ -93,6 +94,11 @@ fun MissingPreferenceCompletionDialog(
             }.toMutableStateList()
         }
     }
+    val swapNoticesByDelegate = remember(pending, conference) {
+        affectedDelegates.associate { delegate ->
+            delegate.id.value to mutableStateMapOf<Int, Int>()
+        }
+    }
     val tableWidth = 190.dp + (272.dp * pending.preferenceRanks.size)
     val horizontalScrollState = rememberScrollState()
     val delegateListState = rememberLazyListState()
@@ -153,6 +159,7 @@ fun MissingPreferenceCompletionDialog(
                                         delegate = delegate,
                                         preferenceRanks = pending.preferenceRanks,
                                         cards = requireNotNull(cardsByDelegate[delegate.id.value]),
+                                        swapNotices = requireNotNull(swapNoticesByDelegate[delegate.id.value]),
                                         options = options,
                                         loading = loading,
                                     )
@@ -208,9 +215,11 @@ private fun PreferenceCompletionRow(
     delegate: Delegate,
     preferenceRanks: List<Int>,
     cards: MutableList<PreferenceCorrectionCardUiState>,
+    swapNotices: MutableMap<Int, Int>,
     options: List<PreferencePositionOptionUiState>,
     loading: Boolean,
 ) {
+    val rankedOptions = preferencePositionOptionsWithCurrentRanks(options, cards, preferenceRanks)
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(
             modifier = Modifier.width(190.dp).heightIn(min = 72.dp),
@@ -220,9 +229,6 @@ private fun PreferenceCompletionRow(
         }
         preferenceRanks.forEachIndexed { index, rank ->
             val card = cards[index]
-            val usedPositions = cards.mapIndexedNotNullTo(mutableSetOf()) { otherIndex, otherCard ->
-                otherCard.positionId?.takeIf { otherIndex != index }
-            }
             Row(
                 modifier = Modifier.width(260.dp).heightIn(min = 72.dp).padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -230,30 +236,68 @@ private fun PreferenceCompletionRow(
                 PreferenceDragHandle(
                     delegateId = delegate.id.value,
                     index = index,
-                    cards = cards,
+                    cardCount = cards.size,
                     enabled = !loading,
+                    onMove = { fromIndex, toIndex ->
+                        val reordered = movePreferenceCorrectionCard(cards, fromIndex, toIndex)
+                        cards.clear()
+                        cards.addAll(reordered)
+                        val updatedNotices = clearPreferenceSwapNoticesForMove(
+                            current = swapNotices,
+                            preferenceRanks = preferenceRanks,
+                            fromIndex = fromIndex,
+                            toIndex = toIndex,
+                        )
+                        swapNotices.clear()
+                        swapNotices.putAll(updatedNotices)
+                    },
                 )
                 if (card.origin == PreferenceValueOrigin.Mymun) {
                     Text(card.label.orEmpty(), modifier = Modifier.weight(1f))
                 } else {
                     PreferencePositionSelector(
                         selectedPositionId = card.positionId,
-                        options = options,
-                        excludedPositionIds = usedPositions,
+                        options = rankedOptions,
+                        editingRank = rank,
                         label = "Preference $rank",
                         enabled = !loading,
-                        onSelect = { positionId ->
-                            val option = options.firstOrNull { it.id == positionId }
-                            cards[index] = card.copy(
-                                positionId = positionId,
-                                label = option?.label,
-                                origin = positionId?.let { PreferenceValueOrigin.Organizer },
-                                emptyAcknowledged = false,
-                            )
+                        onSelect = { option ->
+                            if (option == null) {
+                                swapNotices.remove(rank)
+                                cards[index] = card.copy(
+                                    positionId = null,
+                                    label = null,
+                                    origin = null,
+                                    emptyAcknowledged = false,
+                                )
+                            } else {
+                                val selection = selectPreferencePosition(
+                                    cards = cards,
+                                    preferenceRanks = preferenceRanks,
+                                    targetIndex = index,
+                                    option = option,
+                                )
+                                if (selection.changed) {
+                                    cards.clear()
+                                    cards.addAll(selection.cards)
+                                    val updatedNotices = updatePreferenceSwapNotices(
+                                        current = swapNotices,
+                                        editedRank = rank,
+                                        swappedFromRank = selection.swappedFromRank,
+                                    )
+                                    swapNotices.clear()
+                                    swapNotices.putAll(updatedNotices)
+                                }
+                            }
                         },
                         modifier = Modifier.weight(1f),
                         intentionalEmpty = card.emptyAcknowledged,
+                        swapNotice = swapNotices[rank]?.let { swappedWithRank ->
+                            "Swapped with preference $swappedWithRank"
+                        },
+                        onEdit = { swapNotices.remove(rank) },
                         onSelectIntentionalEmpty = {
+                            swapNotices.remove(rank)
                             cards[index] = card.copy(
                                 positionId = null,
                                 label = null,
@@ -275,19 +319,99 @@ internal data class PreferenceCorrectionCardUiState(
     val emptyAcknowledged: Boolean,
 )
 
+internal data class PreferenceCardSelectionResult(
+    val cards: List<PreferenceCorrectionCardUiState>,
+    val swappedFromRank: Int?,
+    val changed: Boolean,
+)
+
+internal fun preferencePositionOptionsWithCurrentRanks(
+    options: List<PreferencePositionOptionUiState>,
+    cards: List<PreferenceCorrectionCardUiState>,
+    preferenceRanks: List<Int>,
+): List<PreferencePositionOptionUiState> {
+    require(cards.size == preferenceRanks.size) { "Preference cards and ranks must have the same size." }
+    val currentRankByPositionId = cards.mapIndexedNotNull { index, card ->
+        card.positionId?.let { it to preferenceRanks[index] }
+    }.toMap()
+    return options.map { option -> option.copy(currentRank = currentRankByPositionId[option.id]) }
+}
+
+internal fun selectPreferencePosition(
+    cards: List<PreferenceCorrectionCardUiState>,
+    preferenceRanks: List<Int>,
+    targetIndex: Int,
+    option: PreferencePositionOptionUiState,
+): PreferenceCardSelectionResult {
+    require(cards.size == preferenceRanks.size) { "Preference cards and ranks must have the same size." }
+    require(targetIndex in cards.indices) { "Target preference card index must be valid." }
+    val sourceIndex = option.currentRank?.let { currentRank ->
+        preferenceRanks.indexOf(currentRank).takeIf { it >= 0 }
+            ?: error("Current preference rank must belong to the displayed sequence.")
+    }
+    if (sourceIndex == targetIndex) {
+        return PreferenceCardSelectionResult(cards, swappedFromRank = null, changed = false)
+    }
+
+    val updated = cards.toMutableList()
+    if (sourceIndex == null) {
+        updated[targetIndex] = PreferenceCorrectionCardUiState(
+            positionId = option.id,
+            label = option.label,
+            origin = PreferenceValueOrigin.Organizer,
+            emptyAcknowledged = false,
+        )
+    } else {
+        updated[targetIndex] = cards[sourceIndex]
+        updated[sourceIndex] = cards[targetIndex]
+    }
+    return PreferenceCardSelectionResult(
+        cards = updated,
+        swappedFromRank = sourceIndex?.let(preferenceRanks::get),
+        changed = true,
+    )
+}
+
+internal fun updatePreferenceSwapNotices(
+    current: Map<Int, Int>,
+    editedRank: Int,
+    swappedFromRank: Int?,
+): Map<Int, Int> = current.toMutableMap().apply {
+    remove(editedRank)
+    swappedFromRank?.let { sourceRank ->
+        remove(sourceRank)
+        this[sourceRank] = editedRank
+    }
+}
+
+internal fun clearPreferenceSwapNoticesForMove(
+    current: Map<Int, Int>,
+    preferenceRanks: List<Int>,
+    fromIndex: Int,
+    toIndex: Int,
+): Map<Int, Int> {
+    require(fromIndex in preferenceRanks.indices && toIndex in preferenceRanks.indices) {
+        "Preference card indexes must be valid."
+    }
+    val movedRange = minOf(fromIndex, toIndex)..maxOf(fromIndex, toIndex)
+    val movedRanks = movedRange.mapTo(mutableSetOf()) { preferenceRanks[it] }
+    return current.filterKeys { it !in movedRanks }
+}
+
 @Composable
 private fun PreferenceDragHandle(
     delegateId: String,
     index: Int,
-    cards: MutableList<PreferenceCorrectionCardUiState>,
+    cardCount: Int,
     enabled: Boolean,
+    onMove: (Int, Int) -> Unit,
 ) {
     var accumulatedDrag by remember(delegateId, index) { mutableFloatStateOf(0f) }
     Icon(
         Icons.Filled.DragIndicator,
         contentDescription = "Drag preference ${index + 1} to reorder",
         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(end = 6.dp).pointerInput(enabled, index, cards.size) {
+        modifier = Modifier.padding(end = 6.dp).pointerInput(enabled, index, cardCount) {
             if (!enabled) return@pointerInput
             detectHorizontalDragGestures(
                 onDragEnd = { accumulatedDrag = 0f },
@@ -296,11 +420,9 @@ private fun PreferenceDragHandle(
                     change.consume()
                     accumulatedDrag += dragAmount
                     if (abs(accumulatedDrag) >= 72f) {
-                        val target = (index + if (accumulatedDrag > 0) 1 else -1).coerceIn(0, cards.lastIndex)
+                        val target = (index + if (accumulatedDrag > 0) 1 else -1).coerceIn(0, cardCount - 1)
                         if (target != index) {
-                            val reordered = movePreferenceCorrectionCard(cards, index, target)
-                            cards.clear()
-                            cards.addAll(reordered)
+                            onMove(index, target)
                         }
                         accumulatedDrag = 0f
                     }

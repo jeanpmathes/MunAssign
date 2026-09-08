@@ -1,6 +1,5 @@
 # TODO
 
-- Fix: Cannot select solomon islands for empty preference.
 - The manager buttons should also close the managers.
 - Long committee names make the box longer.
 - Improve tooltips and texts.
