@@ -1,6 +1,5 @@
 # TODO
 
-- Long committee names make the box longer.
 - Improve tooltips and texts.
 - A way to assign from the delegate view.
 - Tooltips for spots should show how many others have that preference as well.

@@ -175,13 +175,17 @@ private fun CommitteeHeader(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = committee.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                BoardTooltip(committee.name, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = committee.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        minLines = 2,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 Text(
                     text = "${committee.positions.size} positions",
                     style = MaterialTheme.typography.labelMedium,
