@@ -279,9 +279,13 @@ fun MainScreen(
                         onClearConferenceActionError()
                         managementOpen = true
                     },
-                    onOpenDelegateList = onOpenDelegateList,
-                    onOpenNoticeManager = onOpenNoticeManager,
-                    onOpenDelegationOverview = onOpenDelegationOverview,
+                    onToggleDelegateList = if (state.delegateListOpen) onCloseDelegateList else onOpenDelegateList,
+                    onToggleNoticeManager = if (state.noticeManagerOpen) onCloseNoticeManager else onOpenNoticeManager,
+                    onToggleDelegationOverview = if (state.delegationOverviewOpen) {
+                        onCloseDelegationOverview
+                    } else {
+                        onOpenDelegationOverview
+                    },
                     onOpenReservationManager = { onOpenReservationManager(null) },
                     onOpenQuestionConfiguration = onOpenQuestionConfiguration,
                     onOpenWorkbook = onOpenWorkbook,
@@ -589,9 +593,9 @@ private fun TopBar(
     onOpenCreate: () -> Unit,
     onOpenRename: (ConferenceListItem) -> Unit,
     onOpenManagement: () -> Unit,
-    onOpenDelegateList: () -> Unit,
-    onOpenNoticeManager: () -> Unit,
-    onOpenDelegationOverview: () -> Unit,
+    onToggleDelegateList: () -> Unit,
+    onToggleNoticeManager: () -> Unit,
+    onToggleDelegationOverview: () -> Unit,
     onOpenReservationManager: () -> Unit,
     onOpenQuestionConfiguration: () -> Unit,
     onOpenWorkbook: (() -> Unit)? = null,
@@ -609,9 +613,9 @@ private fun TopBar(
                     onOpenCreate = onOpenCreate,
                     onOpenRename = onOpenRename,
                     onOpenManagement = onOpenManagement,
-                    onOpenDelegateList = onOpenDelegateList,
-                    onOpenNoticeManager = onOpenNoticeManager,
-                    onOpenDelegationOverview = onOpenDelegationOverview,
+                    onToggleDelegateList = onToggleDelegateList,
+                    onToggleNoticeManager = onToggleNoticeManager,
+                    onToggleDelegationOverview = onToggleDelegationOverview,
                     onOpenReservationManager = onOpenReservationManager,
                     onOpenQuestionConfiguration = onOpenQuestionConfiguration,
                     onOpenWorkbook = onOpenWorkbook,
@@ -641,9 +645,9 @@ private fun TopBarActionRow(
     onOpenCreate: () -> Unit,
     onOpenRename: (ConferenceListItem) -> Unit,
     onOpenManagement: () -> Unit,
-    onOpenDelegateList: () -> Unit,
-    onOpenNoticeManager: () -> Unit,
-    onOpenDelegationOverview: () -> Unit,
+    onToggleDelegateList: () -> Unit,
+    onToggleNoticeManager: () -> Unit,
+    onToggleDelegationOverview: () -> Unit,
     onOpenReservationManager: () -> Unit,
     onOpenQuestionConfiguration: () -> Unit,
     onOpenWorkbook: (() -> Unit)?,
@@ -727,22 +731,27 @@ private fun TopBarActionRow(
             val issueManager = state.selectedConference?.toIssueManagerUiState()
             val openIssueCount = (issueManager?.openWarningCount ?: 0) + (issueManager?.openNoticeCount ?: 0)
             NoticeIconButton(
-                tooltip = "Open issues ($openIssueCount unresolved)",
+                tooltip = if (state.noticeManagerOpen) {
+                    "Close issues"
+                } else {
+                    "Open issues ($openIssueCount unresolved)"
+                },
                 warningCount = issueManager?.openWarningCount ?: 0,
                 noticeCount = issueManager?.openNoticeCount ?: 0,
-                onClick = onOpenNoticeManager,
+                onClick = onToggleNoticeManager,
                 enabled = !state.loading && state.selectedConference != null,
             )
             TooltipIconButton(
-                tooltip = "Open delegate list",
+                tooltip = if (state.delegateListOpen) "Close delegate list" else "Open delegate list",
                 icon = Icons.Filled.People,
-                onClick = onOpenDelegateList,
+                onClick = onToggleDelegateList,
                 enabled = !state.loading && state.selectedConference != null,
             )
             val unreviewedDelegationCount = state.selectedConference?.delegations?.count { it.needsReview } ?: 0
             DelegationIconButton(
                 unreviewedCount = unreviewedDelegationCount,
-                onClick = onOpenDelegationOverview,
+                open = state.delegationOverviewOpen,
+                onClick = onToggleDelegationOverview,
                 enabled = !state.loading && state.selectedConference != null,
             )
             TooltipIconButton(
@@ -1054,10 +1063,13 @@ private fun NoticeIconButton(
 @Composable
 private fun DelegationIconButton(
     unreviewedCount: Int,
+    open: Boolean,
     onClick: () -> Unit,
     enabled: Boolean,
 ) {
-    val tooltip = if (unreviewedCount > 0) {
+    val tooltip = if (open) {
+        "Close delegation overview"
+    } else if (unreviewedCount > 0) {
         "Open delegation overview ($unreviewedCount new)"
     } else {
         "Open delegation overview"

@@ -1,6 +1,5 @@
 # TODO
 
-- The manager buttons should also close the managers.
 - Long committee names make the box longer.
 - Improve tooltips and texts.
 - A way to assign from the delegate view.
@@ -11,3 +10,4 @@
 - Refactoring of large classes
 - No visa warning for unpaid delegates.
 - Make three sentence warning less strict (enough words should pass it too)
+- Validate date component of update.
