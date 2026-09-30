@@ -3,10 +3,10 @@ package org.munika.assignment.domain.model
 import java.time.Instant
 
 /**
- * Organizer-managed resolution for a derived answer or profile issue.
+ * Organizer-managed resolution for a derived answer or delegate-level issue.
  *
- * Question-backed issues use [questionId]. Profile checks use `null` and are matched by delegate
- * plus issue key.
+ * Question-backed issues use [questionId]. Delegate-level checks use `null` and are matched by
+ * delegate plus issue key.
  */
 data class AnswerIssueResolution(
     override val id: AnswerIssueResolutionId,

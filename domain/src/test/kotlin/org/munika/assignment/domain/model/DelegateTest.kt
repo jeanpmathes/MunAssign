@@ -217,6 +217,63 @@ class DelegateTest {
         )
     }
 
+    @Test
+    fun `school assignment issues warn for non high school delegates in direct and mapped high school positions`() {
+        val direct = assignedSchoolLevelDelegate(
+            status = HighSchoolerStatus.No,
+            mode = CommitteeMode.HighSchool,
+            source = AssignmentSource.Application,
+        )
+        val missingStatus = assignedSchoolLevelDelegate(
+            status = null,
+            mode = CommitteeMode.HighSchool,
+            source = AssignmentSource.Mymun,
+        )
+        val mapped = assignedSchoolLevelDelegate(
+            status = HighSchoolerStatus.No,
+            mode = CommitteeMode.Mapped,
+            source = AssignmentSource.Application,
+            mappedTargetMode = CommitteeMode.HighSchool,
+        )
+
+        assertEquals(Delegate.SchoolAssignmentMismatchIssueKey, direct.schoolAssignmentIssues().single().key)
+        assertEquals(AnswerIssueSeverity.Warning, direct.schoolAssignmentIssues().single().severity)
+        assertEquals(1, missingStatus.schoolAssignmentIssues().size)
+        assertEquals(1, mapped.schoolAssignmentIssues().size)
+    }
+
+    @Test
+    fun `school assignment issues warn whenever delegate and effective position school levels differ`() {
+        val highSchoolDelegate = assignedSchoolLevelDelegate(
+            status = HighSchoolerStatus.Yes,
+            mode = CommitteeMode.University,
+            source = AssignmentSource.Application,
+        )
+        val universityPosition = assignedSchoolLevelDelegate(
+            status = HighSchoolerStatus.No,
+            mode = CommitteeMode.University,
+            source = AssignmentSource.Application,
+        )
+        val mappedUniversityPosition = assignedSchoolLevelDelegate(
+            status = HighSchoolerStatus.Yes,
+            mode = CommitteeMode.Mapped,
+            source = AssignmentSource.Mymun,
+            mappedTargetMode = CommitteeMode.University,
+        )
+        val incompleteMappedPosition = assignedSchoolLevelDelegate(
+            status = HighSchoolerStatus.No,
+            mode = CommitteeMode.Mapped,
+            source = AssignmentSource.Application,
+        )
+        val unassigned = delegateWithAgeAndHighSchoolStatus(age = null, status = HighSchoolerStatus.No)
+
+        assertEquals(1, highSchoolDelegate.schoolAssignmentIssues().size)
+        assertTrue(universityPosition.schoolAssignmentIssues().isEmpty())
+        assertEquals(1, mappedUniversityPosition.schoolAssignmentIssues().size)
+        assertTrue(incompleteMappedPosition.schoolAssignmentIssues().isEmpty())
+        assertTrue(unassigned.schoolAssignmentIssues().isEmpty())
+    }
+
     private fun assignedPaymentTierDelegate(
         delegateTier: PaymentTier,
         committeeTier: PaymentTier,
@@ -242,6 +299,40 @@ class DelegateTest {
         val slot = Slot(SlotId("slot-${committeeTier.name}"), position, 1, Instant.EPOCH)
         position.slots += slot
         slot.assign(delegate, assignmentSource, Instant.EPOCH)
+        return delegate
+    }
+
+    private fun assignedSchoolLevelDelegate(
+        status: HighSchoolerStatus?,
+        mode: CommitteeMode,
+        source: AssignmentSource,
+        mappedTargetMode: CommitteeMode? = null,
+    ): Delegate {
+        val delegate = delegateWithAgeAndHighSchoolStatus(age = null, status = status)
+        val committee = Committee(
+            id = CommitteeId("committee-school-$status-$mode-$source-$mappedTargetMode"),
+            conference = delegate.conference,
+            mymunName = "School committee",
+            slotsPerPosition = 1,
+            mode = mode,
+        )
+        delegate.conference.committees += committee
+        val position = Position(PositionId("position-school-$status-$mode-$source-$mappedTargetMode"), committee, "Position")
+        committee.positions += position
+        if (mappedTargetMode != null) {
+            val target = Committee(
+                id = CommitteeId("mapped-target-$status-$mode-$source-$mappedTargetMode"),
+                conference = delegate.conference,
+                mymunName = "Mapped target",
+                slotsPerPosition = 1,
+                mode = mappedTargetMode,
+            )
+            delegate.conference.committees += target
+            position.setMappedCommittee(target)
+        }
+        val slot = Slot(SlotId("slot-school-$status-$mode-$source-$mappedTargetMode"), position, 1, Instant.EPOCH)
+        position.slots += slot
+        slot.assign(delegate, source, Instant.EPOCH)
         return delegate
     }
 

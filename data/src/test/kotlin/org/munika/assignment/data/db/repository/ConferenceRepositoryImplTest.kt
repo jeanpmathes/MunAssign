@@ -2099,6 +2099,46 @@ class ConferenceRepositoryImplTest {
     }
 
     @Test
+    fun `school assignment warning resolution follows delegate across high school positions`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-school-assignment-resolution").resolve("data.db")
+        val repository = ConferenceRepositoryImpl(DatabaseFactory.connect(dbPath))
+        val conference = repository.createConference("TestConf")
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithAssignments(confirmedAssignments = emptyList())).success)
+        val loaded = requireNotNull(repository.getConference(conference.id))
+        val committee = loaded.committees.single()
+        val highSchoolConference = repository.setCommitteeMode(conference.id, committee.id, CommitteeMode.HighSchool)
+        val delegate = highSchoolConference.delegates.single()
+        val franceSlot = highSchoolConference.positions.single { it.name == "France" }.slots.single()
+        val germanySlot = highSchoolConference.positions.single { it.name == "Germany" }.slots.single()
+        val assigned = repository.assignDelegateToSlot(conference.id, franceSlot.id, delegate.id, moveExistingPending = false)
+        val issue = assigned.delegates.single().schoolAssignmentIssues().single()
+
+        val resolved = repository.resolveAnswerIssue(
+            conference.id,
+            delegate.id,
+            questionId = null,
+            issueKey = issue.key,
+            justification = "Approved exception.",
+        )
+        assertTrue(resolved.delegates.single().openSchoolAssignmentIssues().isEmpty())
+
+        val moved = repository.assignDelegateToSlot(conference.id, germanySlot.id, delegate.id, moveExistingPending = true)
+        assertTrue(moved.delegates.single().openSchoolAssignmentIssues().isEmpty())
+        assertEquals(
+            "Approved exception.",
+            moved.delegates.single().resolvedSchoolAssignmentIssues().single().resolution.justification,
+        )
+
+        val university = repository.setCommitteeMode(conference.id, committee.id, CommitteeMode.University)
+        assertTrue(university.delegates.single().schoolAssignmentIssues().isEmpty())
+
+        val highSchoolAgain = repository.setCommitteeMode(conference.id, committee.id, CommitteeMode.HighSchool)
+        val retainedResolution = highSchoolAgain.delegates.single().resolvedSchoolAssignmentIssues().single().resolution
+        val reopened = repository.unresolveAnswerIssue(conference.id, retainedResolution.id)
+        assertEquals(1, reopened.delegates.single().openSchoolAssignmentIssues().size)
+    }
+
+    @Test
     fun `answer issue resolution justification can be edited and undone`() = runBlocking {
         val dbPath = Files.createTempDirectory("munassign-issue-resolution-edit").resolve("data.db")
         val database = DatabaseFactory.connect(dbPath)

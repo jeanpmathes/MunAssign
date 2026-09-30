@@ -78,6 +78,8 @@ Committee mode determines the high-school/university bucket used by its position
 
 Mapped targets must be committees in the same conference whose mode is not `Mapped`. This prevents chained or circular IPC correspondences. Multiple positions in one mapped committee may share the same target committee. Unmapped positions in mapped committees are treated as incomplete for board state and do not contribute to high-school or university accept capacity until a target is selected. A mapped committee cannot switch back to high-school or university mode until all of its position correspondences are cleared.
 
+A delegate assigned to a position with the opposite effective school level derives a warning. A configured high-schooler answer mapped to `Yes` must be assigned to a high-school position; every other status must be assigned to a university position. The warning applies regardless of assignment source, payment, or active state. It uses one stable delegate-level issue key, so an acknowledgement follows the delegate across mismatch directions and positions. The issue is absent while the delegate is unassigned, correctly matched, or assigned to an incompletely mapped position; a retained acknowledgement applies again if a later assignment recreates a mismatch.
+
 During an update:
 
 - Numbered `Preference N` columns define the expected ranks for that workbook. Empty cells are non-blocking and are returned for post-update completion across every delegate row, regardless of status.
@@ -144,7 +146,7 @@ Answer issues are derived from current profile/question rules and are either:
 - `Warning`, meaning the answer may justify follow-up or affect assignment;
 - `Notice`, meaning the answer needs operational attention but is not a rejection problem.
 
-Resolved answer issues are organizer-managed state. A resolution stores the delegate, optional question, stable issue key, original issue text/severity, resolution time, and optional justification. Open issue counters and warning markers ignore resolved issues. The issue manager shows open issues first and resolved issues last. MyMUN updates preserve resolutions where the delegate and question still exist; cascade deletion removes resolutions for deleted conferences, delegates, or questions.
+Resolved issues are organizer-managed state. A resolution stores the delegate, optional question, stable issue key, original issue text/severity, resolution time, and optional justification. Open issue counters and warning markers ignore resolved issues. The issue manager shows open issues first and resolved issues last. MyMUN updates preserve resolutions where the delegate and optional question still exist; cascade deletion removes resolutions for deleted conferences, delegates, or questions.
 
 ## MyMUN-Managed vs Organizer-Managed Data
 

@@ -1145,9 +1145,11 @@ class ConferenceRepositoryImpl(
             "Delegate $delegateId does not belong to conference $conferenceId."
         }
         val currentIssue = if (questionId == null) {
-            (delegate.profileIssues() + delegate.paymentTierIssues().filterNot {
-                it.key == Delegate.PaymentTierMissingIssueKey
-            }).firstOrNull { it.key == issueKey }
+            (
+                delegate.profileIssues() +
+                    delegate.schoolAssignmentIssues() +
+                    delegate.paymentTierIssues().filterNot { it.key == Delegate.PaymentTierMissingIssueKey }
+            ).firstOrNull { it.key == issueKey }
         } else {
             delegate.answers
                 .firstOrNull { it.question.id.value == questionId }

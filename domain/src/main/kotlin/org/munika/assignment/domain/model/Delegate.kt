@@ -126,6 +126,41 @@ class Delegate(
             resolutionFor(questionId = null, issue)?.let { resolution -> ResolvedAnswerIssue(issue, resolution) }
         }
 
+    /** Returns the warning derived when delegate and effective position school levels differ. */
+    fun schoolAssignmentIssues(): List<AnswerIssue> {
+        val position = currentPosition ?: return emptyList()
+        val positionIsHighSchool = when (position.effectiveCommitteeMode) {
+            CommitteeMode.HighSchool -> true
+            CommitteeMode.University -> false
+            CommitteeMode.Mapped, null -> return emptyList()
+        }
+        if (isHighSchooler == positionIsHighSchool) return emptyList()
+        val message = if (isHighSchooler) {
+            "High-school delegate is assigned to university position " +
+                "${position.committee.displayName} (${position.displayName})."
+        } else {
+            "Non-high-school delegate is assigned to high-school position " +
+                "${position.committee.displayName} (${position.displayName})."
+        }
+        return listOf(
+            AnswerIssue(
+                message = message,
+                severity = AnswerIssueSeverity.Warning,
+                key = SchoolAssignmentMismatchIssueKey,
+            ),
+        )
+    }
+
+    /** Returns the current unacknowledged school-assignment warning. */
+    fun openSchoolAssignmentIssues(): List<AnswerIssue> =
+        schoolAssignmentIssues().filter { issue -> resolutionFor(questionId = null, issue) == null }
+
+    /** Returns the acknowledged school-assignment warning while the mismatch is still present. */
+    fun resolvedSchoolAssignmentIssues(): List<ResolvedAnswerIssue> =
+        schoolAssignmentIssues().mapNotNull { issue ->
+            resolutionFor(questionId = null, issue)?.let { resolution -> ResolvedAnswerIssue(issue, resolution) }
+        }
+
     /** Returns current payment-tier classification and assignment compatibility issues. */
     fun paymentTierIssues(): List<AnswerIssue> {
         if (!isAssignmentEligible) return emptyList()
@@ -183,6 +218,9 @@ class Delegate(
     companion object {
         /** Stable key for the missing-tier warning used by persistence and inline classification. */
         const val PaymentTierMissingIssueKey = "Warning:payment_tier_missing"
+
+        /** Stable key that lets one acknowledgement follow a delegate across school-level mismatches. */
+        const val SchoolAssignmentMismatchIssueKey = "Warning:non_high_school_delegate_in_high_school_position"
 
         private const val ProfileLowLanguageLevelIssueKey = "Warning:profile_low_language_level"
         private const val ProfileHighSchoolerOverAgeIssueKey = "Warning:profile_high_schooler_over_age"

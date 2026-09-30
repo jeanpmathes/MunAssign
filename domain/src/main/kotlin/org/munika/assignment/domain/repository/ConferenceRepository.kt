@@ -258,10 +258,10 @@ interface ConferenceRepository {
     ): Conference
 
     /**
-     * Marks one currently derived delegate answer or profile issue as resolved.
+     * Marks one currently derived delegate answer or delegate-level issue as resolved.
      *
-     * Passing `null` for [questionId] resolves a profile-level issue. Blank justification is stored
-     * as absent text.
+     * Passing `null` for [questionId] resolves a delegate-level issue. Blank justification is
+     * stored as absent text.
      */
     suspend fun resolveAnswerIssue(
         conferenceId: ConferenceId,
@@ -272,7 +272,7 @@ interface ConferenceRepository {
     ): Conference
 
     /**
-     * Updates the organizer justification on an existing resolved answer or profile issue.
+     * Updates the organizer justification on an existing resolved answer or delegate-level issue.
      */
     suspend fun updateAnswerIssueResolutionJustification(
         conferenceId: ConferenceId,
@@ -281,7 +281,7 @@ interface ConferenceRepository {
     ): Conference
 
     /**
-     * Reopens a previously resolved answer or profile issue by deleting its resolution row.
+     * Reopens a previously resolved answer or delegate-level issue by deleting its resolution row.
      */
     suspend fun unresolveAnswerIssue(conferenceId: ConferenceId, resolutionId: AnswerIssueResolutionId): Conference
 

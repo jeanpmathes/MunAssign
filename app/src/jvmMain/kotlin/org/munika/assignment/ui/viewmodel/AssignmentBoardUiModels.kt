@@ -306,6 +306,7 @@ private fun Delegate.pendingAssignmentLabel(currentSlot: Slot?): String? {
 private fun Delegate.warningCount(): Int =
     answers.sumOf { answer -> answer.openIssues.count { it.severity == AnswerIssueSeverity.Warning } } +
         openProfileIssues().count { it.severity == AnswerIssueSeverity.Warning } +
+        openSchoolAssignmentIssues().count { it.severity == AnswerIssueSeverity.Warning } +
         openPaymentTierIssues().count { it.severity == AnswerIssueSeverity.Warning }
 
 private fun Delegate.noticeCount(): Int =

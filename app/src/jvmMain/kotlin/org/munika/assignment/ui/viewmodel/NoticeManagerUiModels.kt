@@ -104,6 +104,35 @@ private fun Delegate.issueRows(): List<IssueUiState> =
                 answerText = null,
             )
         } +
+        openSchoolAssignmentIssues().map { issue ->
+            IssueUiState(
+                delegateId = id.value,
+                delegateName = displayName,
+                delegateIsHighSchooler = isHighSchooler,
+                questionId = null,
+                resolutionId = null,
+                validationLabel = "Assignment validation",
+                questionText = null,
+                answerText = null,
+                issueKey = issue.key,
+                reasonText = issue.message,
+                severity = issue.severity.name,
+                isWarning = issue.severity == AnswerIssueSeverity.Warning,
+                resolved = false,
+                justificationText = null,
+                canResolve = true,
+                canAssignPaymentTier = false,
+            )
+        } +
+        resolvedSchoolAssignmentIssues().map { resolved ->
+            resolved.toIssueUiState(
+                delegate = this,
+                questionId = null,
+                validationLabel = "Assignment validation",
+                questionText = null,
+                answerText = null,
+            )
+        } +
         openPaymentTierIssues().map { issue ->
             val isMissingTier = issue.key == Delegate.PaymentTierMissingIssueKey
             IssueUiState(

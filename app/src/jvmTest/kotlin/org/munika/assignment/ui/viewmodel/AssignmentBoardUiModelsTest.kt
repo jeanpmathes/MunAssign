@@ -254,16 +254,25 @@ class AssignmentBoardUiModelsTest {
     }
 
     @Test
-    fun `committee state exposes high school mismatch counts`() {
-        val board = board()
-        board.germanySlot.assign(board.available, AssignmentSource.Application, Instant.EPOCH)
-        markHighSchooler(board.available)
+    fun `committee state exposes school mismatch counts in both directions`() {
+        val universityBoard = board()
+        universityBoard.germanySlot.assign(universityBoard.available, AssignmentSource.Application, Instant.EPOCH)
+        markHighSchooler(universityBoard.available)
 
-        val committee = board.conference.toAssignmentBoardUiState().committees.single()
+        val universityCommittee = universityBoard.conference.toAssignmentBoardUiState().committees.single()
 
-        assertEquals(false, committee.isHighSchoolCommittee)
-        assertEquals(1, committee.highSchoolerAssignedCount)
-        assertEquals(0, committee.universityAssignedCount)
+        assertEquals(false, universityCommittee.isHighSchoolCommittee)
+        assertEquals(1, universityCommittee.highSchoolerAssignedCount)
+        assertEquals(0, universityCommittee.universityAssignedCount)
+
+        val highSchoolBoard = board(isHighSchoolCommittee = true)
+        highSchoolBoard.germanySlot.assign(highSchoolBoard.available, AssignmentSource.Application, Instant.EPOCH)
+
+        val highSchoolCommittee = highSchoolBoard.conference.toAssignmentBoardUiState().committees.single()
+
+        assertEquals(true, highSchoolCommittee.isHighSchoolCommittee)
+        assertEquals(0, highSchoolCommittee.highSchoolerAssignedCount)
+        assertEquals(1, highSchoolCommittee.universityAssignedCount)
     }
 
     @Test
@@ -290,6 +299,37 @@ class AssignmentBoardUiModelsTest {
             .assignmentCandidates
 
         assertEquals(listOf("Neutral Delegate", "Available Delegate"), universityCandidates.map { it.name })
+    }
+
+    @Test
+    fun `assignment candidate counts include open school assignment warning`() {
+        val board = board(isHighSchoolCommittee = true)
+        board.germanySlot.assign(board.available, AssignmentSource.Application, Instant.EPOCH)
+
+        val candidate = board.conference.toAssignmentBoardUiState()
+            .committees.single()
+            .positions.single { it.name == "France" }
+            .assignmentCandidates.single { it.id == board.available.id.value }
+
+        assertEquals(1, candidate.warningCount)
+
+        val issue = board.available.schoolAssignmentIssues().single()
+        board.available.issueResolutions += AnswerIssueResolution(
+            id = AnswerIssueResolutionId("school-assignment-resolution"),
+            delegate = board.available,
+            questionId = null,
+            issueKey = issue.key,
+            issueMessage = issue.message,
+            severity = issue.severity,
+            justification = null,
+            resolvedAt = Instant.EPOCH,
+        )
+
+        val resolvedCandidate = board.conference.toAssignmentBoardUiState()
+            .committees.single()
+            .positions.single { it.name == "France" }
+            .assignmentCandidates.single { it.id == board.available.id.value }
+        assertEquals(0, resolvedCandidate.warningCount)
     }
 
     @Test

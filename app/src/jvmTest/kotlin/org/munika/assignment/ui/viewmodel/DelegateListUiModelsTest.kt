@@ -13,6 +13,7 @@ import org.munika.assignment.domain.model.AnswerIssueSeverity
 import org.munika.assignment.domain.model.AssignmentSource
 import org.munika.assignment.domain.model.Committee
 import org.munika.assignment.domain.model.CommitteeId
+import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.ConferenceId
 import org.munika.assignment.domain.model.Delegate
@@ -180,6 +181,39 @@ class DelegateListUiModelsTest {
         )
 
         assertEquals(listOf("Contested Delegate"), reduced.rows.map { it.name })
+    }
+
+    @Test
+    fun `delegate list counts open school assignment warning`() {
+        val conference = Conference(ConferenceId("school-warning"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val committee = Committee(
+            CommitteeId("high-school"),
+            conference,
+            "HS",
+            slotsPerPosition = 1,
+            mode = CommitteeMode.HighSchool,
+        )
+        val position = Position(PositionId("position"), committee, "France")
+        val slot = Slot(SlotId("slot"), position, 1, Instant.EPOCH)
+        val delegate = delegate(
+            conference,
+            "delegate",
+            "Non-HS",
+            "Delegate",
+            PaymentStatus.Paid,
+            PaymentTier.Full,
+            active = true,
+            submittedDaysAgo = 1,
+        )
+        conference.committees += committee
+        committee.positions += position
+        position.slots += slot
+        conference.delegates += delegate
+        slot.assign(delegate, AssignmentSource.Mymun, Instant.EPOCH)
+
+        val row = conference.toDelegateListUiState(DelegateListControlsUiState(), Now).rows.single()
+
+        assertEquals(1, row.warningCount)
     }
 
     private fun board(): Board {
