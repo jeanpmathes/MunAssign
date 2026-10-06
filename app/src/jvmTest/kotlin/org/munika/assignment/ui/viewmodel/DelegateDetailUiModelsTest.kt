@@ -15,6 +15,7 @@ import org.munika.assignment.domain.model.AnswerIssueSeverity
 import org.munika.assignment.domain.model.AssignmentSource
 import org.munika.assignment.domain.model.Committee
 import org.munika.assignment.domain.model.CommitteeId
+import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.ConferenceId
 import org.munika.assignment.domain.model.Delegate
@@ -210,6 +211,128 @@ class DelegateDetailUiModelsTest {
         assertNull(board().conference.toDelegateDetailUiState("missing"))
     }
 
+    @Test
+    fun `preference availability uses every slot and chooses the lowest open index`() {
+        val board = board()
+        val france = board.conference.positions.single { it.id.value == "france" }
+        val occupant = board.addEligibleDelegate("occupant", "Blake")
+        board.franceSlot.assign(occupant, AssignmentSource.Application, Instant.EPOCH)
+        france.slots += Slot(SlotId("france-slot-3"), france, 3, Instant.EPOCH)
+        france.slots += Slot(SlotId("france-slot-2"), france, 2, Instant.EPOCH)
+
+        val detail = requireNotNull(board.conference.toDelegateDetailUiState(board.delegate.id.value))
+        val preference = detail.preferences.single { it.positionId == "france" }
+
+        assertEquals("Open", preference.status.label)
+        assertEquals(2, preference.openSlotCount)
+        assertEquals("france-slot-2", preference.openSlotId)
+        assertTrue(preference.replaceablePendingSlots.isNotEmpty())
+        assertTrue(preference.canAssign)
+    }
+
+    @Test
+    fun `full preference exposes pending occupants but never confirmed occupants for replacement`() {
+        val board = board()
+        val france = board.conference.positions.single { it.id.value == "france" }
+        val pending = board.addEligibleDelegate("pending", "Blake")
+        val confirmed = board.addEligibleDelegate("confirmed", "Casey")
+        board.franceSlot.assign(pending, AssignmentSource.Application, Instant.EPOCH)
+        val confirmedSlot = Slot(SlotId("france-slot-2"), france, 2, Instant.EPOCH)
+        france.slots += confirmedSlot
+        confirmedSlot.assign(confirmed, AssignmentSource.Mymun, Instant.EPOCH)
+
+        val detail = requireNotNull(board.conference.toDelegateDetailUiState(board.delegate.id.value))
+        val preference = detail.preferences.single { it.positionId == "france" }
+
+        assertEquals("Pending", preference.status.label)
+        assertEquals(0, preference.openSlotCount)
+        assertEquals(listOf("france-slot"), preference.replaceablePendingSlots.map { it.id })
+        assertEquals(listOf("Blake Delegate"), preference.replaceablePendingSlots.map { it.delegateName })
+        assertFalse(preference.replaceablePendingSlots.any { it.id == confirmedSlot.id.value })
+    }
+
+    @Test
+    fun `assignment controls are available only to unassigned eligible delegates`() {
+        val board = board()
+
+        assertNotNull(board.conference.toDelegateDetailUiState(board.delegate.id.value)?.assignmentOptions)
+
+        board.delegate.active = false
+        assertNull(board.conference.toDelegateDetailUiState(board.delegate.id.value)?.assignmentOptions)
+
+        board.delegate.active = true
+        board.franceSlot.assign(board.delegate, AssignmentSource.Application, Instant.EPOCH)
+
+        assertNull(board.conference.toDelegateDetailUiState(board.delegate.id.value)?.assignmentOptions)
+    }
+
+    @Test
+    fun `assign other is shown without preferences and disabled when no positions are open`() {
+        val board = board()
+        board.delegate.preferences.clear()
+        board.conference.positions.forEachIndexed { index, position ->
+            val occupant = board.addEligibleDelegate("occupant-$index", "Occupant$index")
+            position.slots.single().assign(occupant, AssignmentSource.Mymun, Instant.EPOCH)
+        }
+
+        val options = requireNotNull(
+            board.conference.toDelegateDetailUiState(board.delegate.id.value)?.assignmentOptions,
+        )
+
+        assertTrue(options.showAssignOther)
+        assertTrue(options.committees.isEmpty())
+    }
+
+    @Test
+    fun `assignment committees sort by combined fit then preference then name`() {
+        val fixture = assignmentOptionsFixture()
+
+        val options = requireNotNull(
+            fixture.conference.toDelegateDetailUiState(fixture.delegate.id.value)?.assignmentOptions,
+        )
+
+        assertTrue(options.showAssignOther)
+        assertEquals(
+            listOf("Zulu Fit", "Beta Preferred", "Alpha Preferred", "Aardvark Other", "Mapped"),
+            options.committees.map { it.name },
+        )
+        assertEquals(listOf(1, 2), options.committees.single { it.name == "Beta Preferred" }.preferenceRanks)
+    }
+
+    @Test
+    fun `open positions sort by combined fit then name and unknown school is not a fit`() {
+        val fixture = assignmentOptionsFixture()
+        val mapped = fixture.conference.committees.single { it.displayName == "Mapped" }
+        val universityTarget = fixture.conference.committees.single { it.displayName == "Zulu Fit" }
+        val highSchoolTarget = fixture.conference.committees.single { it.displayName == "Beta Preferred" }
+        mapped.positions.single { it.name == "Charlie" }.setMappedCommittee(universityTarget)
+        mapped.positions.single { it.name == "Zulu" }.setMappedCommittee(highSchoolTarget)
+
+        val positions = requireNotNull(
+            fixture.conference.toDelegateDetailUiState(fixture.delegate.id.value)?.assignmentOptions,
+        ).committees.single { it.name == "Mapped" }.positions
+
+        assertEquals(listOf("Charlie", "Alpha", "Zulu"), positions.map { it.label })
+        assertEquals(
+            listOf(DelegateSchoolFit.Match, DelegateSchoolFit.Unknown, DelegateSchoolFit.Mismatch),
+            positions.map { it.schoolFit },
+        )
+        assertEquals(listOf(true, false, false), positions.map { it.fullyFits })
+    }
+
+    @Test
+    fun `missing payment tier keeps positions selectable but outside the fit rank`() {
+        val fixture = assignmentOptionsFixture(paymentTier = null)
+
+        val positions = requireNotNull(
+            fixture.conference.toDelegateDetailUiState(fixture.delegate.id.value)?.assignmentOptions,
+        ).committees.flatMap { it.positions }
+
+        assertTrue(positions.isNotEmpty())
+        assertTrue(positions.none { it.fullyFits })
+        assertTrue(positions.none { it.paymentTierKnown })
+    }
+
     private fun board(): Board {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val committee = Committee(CommitteeId("committee"), conference, "GA", slotsPerPosition = 1)
@@ -347,9 +470,104 @@ class DelegateDetailUiModelsTest {
         return Board(conference, delegate, franceSlot)
     }
 
+    private fun assignmentOptionsFixture(paymentTier: PaymentTier? = PaymentTier.Full): AssignmentOptionsFixture {
+        val conference = Conference(ConferenceId("options"), "Options", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val delegate = Delegate(
+            id = DelegateId("options-delegate"),
+            conference = conference,
+            name = PersonName("Alex", "Kim"),
+            email = null,
+            profile = eligibleProfile(),
+            paymentStatus = PaymentStatus.Paid,
+            paymentTier = paymentTier,
+            isHeadDelegate = false,
+        )
+        conference.delegates += delegate
+
+        val fit = conference.addCommittee("fit", "Zulu Fit", CommitteeMode.University)
+        fit.addOpenPosition("fit-position", "Open")
+        val beta = conference.addCommittee("beta", "Beta Preferred", CommitteeMode.HighSchool)
+        val betaFirst = beta.addOpenPosition("beta-first", "Preferred one")
+        val betaSecond = beta.addOpenPosition("beta-second", "Preferred two")
+        beta.addOpenPosition("beta-open", "Other")
+        val alpha = conference.addCommittee("alpha", "Alpha Preferred", CommitteeMode.HighSchool)
+        val alphaPreferred = alpha.addOpenPosition("alpha-preferred", "Preferred")
+        alpha.addOpenPosition("alpha-open", "Other")
+        conference.addCommittee("other", "Aardvark Other", CommitteeMode.HighSchool)
+            .addOpenPosition("other-open", "Other")
+        val mapped = conference.addCommittee("mapped", "Mapped", CommitteeMode.Mapped)
+        mapped.addOpenPosition("mapped-unknown", "Alpha")
+        mapped.addOpenPosition("mapped-fit", "Charlie")
+        mapped.addOpenPosition("mapped-mismatch", "Zulu")
+
+        delegate.preferences += Preference(PreferenceId("beta-pref-1"), delegate, betaFirst, 1, "")
+        delegate.preferences += Preference(PreferenceId("beta-pref-2"), delegate, betaSecond, 2, "")
+        delegate.preferences += Preference(PreferenceId("alpha-pref"), delegate, alphaPreferred, 3, "")
+        occupy(betaFirst, conference, "beta-occupant-1")
+        occupy(betaSecond, conference, "beta-occupant-2")
+        occupy(alphaPreferred, conference, "alpha-occupant")
+
+        return AssignmentOptionsFixture(conference, delegate)
+    }
+
+    private fun Conference.addCommittee(id: String, name: String, mode: CommitteeMode): Committee =
+        Committee(CommitteeId(id), this, name, slotsPerPosition = 1, mode = mode).also { committees += it }
+
+    private fun Committee.addOpenPosition(id: String, name: String): Position =
+        Position(PositionId(id), this, name).also { position ->
+            positions += position
+            position.slots += Slot(SlotId("$id-slot"), position, 1, Instant.EPOCH)
+        }
+
+    private fun occupy(position: Position, conference: Conference, id: String) {
+        val occupant = Delegate(
+            id = DelegateId(id),
+            conference = conference,
+            name = PersonName(id, "Delegate"),
+            email = null,
+            profile = eligibleProfile(),
+            paymentStatus = PaymentStatus.Paid,
+            paymentTier = PaymentTier.Full,
+            isHeadDelegate = false,
+        )
+        conference.delegates += occupant
+        position.slots.single().assign(occupant, AssignmentSource.Application, Instant.EPOCH)
+    }
+
     private data class Board(
         val conference: Conference,
         val delegate: Delegate,
         val franceSlot: Slot,
     )
+
+    private fun Board.addEligibleDelegate(id: String, firstName: String): Delegate =
+        Delegate(
+            id = DelegateId(id),
+            conference = conference,
+            name = PersonName(firstName, "Delegate"),
+            email = null,
+            profile = eligibleProfile(),
+            paymentStatus = PaymentStatus.Paid,
+            paymentTier = PaymentTier.Full,
+            isHeadDelegate = false,
+        ).also { conference.delegates += it }
+
+    private data class AssignmentOptionsFixture(
+        val conference: Conference,
+        val delegate: Delegate,
+    )
+
+    private fun eligibleProfile(): DelegateProfile =
+        DelegateProfile(
+            country = null,
+            city = null,
+            streetAddress = null,
+            zipCode = null,
+            diet = null,
+            phone = null,
+            nationality = null,
+            dateOfBirth = null,
+            delegationNameFromMymun = null,
+            applicationStatus = "Accepted",
+        )
 }

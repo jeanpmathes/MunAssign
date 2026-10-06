@@ -314,7 +314,7 @@ private fun Delegate.noticeCount(): Int =
         openProfileIssues().count { it.severity == AnswerIssueSeverity.Notice } +
         openPaymentTierIssues().count { it.severity == AnswerIssueSeverity.Notice }
 
-private fun Delegate.paymentTierMismatchFor(committee: Committee): PaymentTierMismatchUiState? {
+internal fun Delegate.paymentTierMismatchFor(committee: Committee): PaymentTierMismatchUiState? {
     val delegateTier = paymentTier ?: return null
     val direction = when {
         delegateTier == PaymentTier.Reduced && committee.paymentTier == PaymentTier.Full ->

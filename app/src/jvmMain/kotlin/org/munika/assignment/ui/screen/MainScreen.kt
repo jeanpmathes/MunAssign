@@ -1306,6 +1306,9 @@ private fun ConferenceWorkspace(
                     onResolveIssue = onResolveAnswerIssue,
                     onUnresolveIssue = onUnresolveAnswerIssue,
                     onSetPaymentTier = onSetDelegatePaymentTier,
+                    onAssignDelegateToSlot = { slotId, delegateId ->
+                        onAssignDelegateToSlot(slotId, delegateId, false)
+                    },
                     conferenceName = conference.name,
                     onResetPreferenceCorrections = { onResetPreferenceCorrections(conference.id.value) },
                 )

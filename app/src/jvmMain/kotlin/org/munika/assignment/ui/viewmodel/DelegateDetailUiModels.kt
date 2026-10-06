@@ -3,6 +3,7 @@ package org.munika.assignment.ui.viewmodel
 import java.time.format.DateTimeFormatter
 import org.munika.assignment.domain.model.AnswerIssueSeverity
 import org.munika.assignment.domain.model.AssignmentStatus
+import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.Delegate
 import org.munika.assignment.domain.model.LanguageLevel
@@ -37,6 +38,7 @@ data class DelegateDetailUiState(
     val assignment: DelegateAssignmentUiState?,
     val canDeactivate: Boolean,
     val preferences: List<DelegatePreferenceUiState>,
+    val assignmentOptions: DelegateAssignmentOptionsUiState?,
     val hasPreferenceCorrections: Boolean,
     val answers: List<DelegateAnswerUiState>,
     val profileIssues: List<DelegateAnswerIssueUiState>,
@@ -101,9 +103,51 @@ data class DelegatePreferenceUiState(
     val positionId: String,
     val isCurrentAssignment: Boolean,
     val status: PreferenceSlotStatusUiState,
+    val openSlotId: String?,
+    val openSlotCount: Int,
+    val replaceablePendingSlots: List<DelegatePendingSlotUiState>,
     val organizerCompleted: Boolean = false,
     val organizerReordered: Boolean = false,
+) {
+    val canAssign: Boolean = openSlotId != null || replaceablePendingSlots.isNotEmpty()
+}
+
+data class DelegatePendingSlotUiState(
+    val id: String,
+    val index: Int,
+    val delegateName: String,
 )
+
+data class DelegateAssignmentOptionsUiState(
+    val showAssignOther: Boolean,
+    val committees: List<DelegateAssignmentCommitteeUiState>,
+)
+
+data class DelegateAssignmentCommitteeUiState(
+    val id: String,
+    val name: String,
+    val preferenceRanks: List<Int>,
+    val hasFullyFittingOpenPosition: Boolean,
+    val positions: List<DelegateAssignmentPositionUiState>,
+)
+
+data class DelegateAssignmentPositionUiState(
+    val id: String,
+    val label: String,
+    val flagAssetName: String?,
+    val openSlotId: String,
+    val openSlotCount: Int,
+    val fullyFits: Boolean,
+    val paymentTierMismatch: PaymentTierMismatchUiState?,
+    val paymentTierKnown: Boolean,
+    val schoolFit: DelegateSchoolFit,
+)
+
+enum class DelegateSchoolFit {
+    Match,
+    Mismatch,
+    Unknown,
+}
 
 data class PreferenceSlotStatusUiState(
     val label: String,
@@ -306,6 +350,7 @@ fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiSta
         preferences = delegate.preferences
             .sortedBy { it.rank }
             .map { preference -> preference.toUiState(currentSlot?.position) },
+        assignmentOptions = delegate.toAssignmentOptionsUiState(currentSlot),
         hasPreferenceCorrections = delegate.hasPreferenceCorrections,
         answers = displayAnswers,
         profileIssues = profileIssues,
@@ -419,36 +464,114 @@ private fun Preference.toUiState(currentPosition: Position?): DelegatePreference
         positionId = position.id.value,
         isCurrentAssignment = position === currentPosition,
         status = position.preferenceStatus(),
+        openSlotId = position.slots.filter { it.isEmpty }.minByOrNull { it.index }?.id?.value,
+        openSlotCount = position.slots.count { it.isEmpty },
+        replaceablePendingSlots = position.slots
+            .filter { it.isPending }
+            .sortedBy { it.index }
+            .map { slot ->
+                DelegatePendingSlotUiState(
+                    id = slot.id.value,
+                    index = slot.index,
+                    delegateName = requireNotNull(slot.delegate).displayName,
+                )
+            },
         organizerCompleted = source == PreferenceSource.OrganizerCompletion,
         organizerReordered = source == PreferenceSource.OrganizerCorrection,
     )
 
 private fun Position.preferenceStatus(): PreferenceSlotStatusUiState {
-    val occupiedSlot = slots.firstOrNull { it.delegate != null }
+    val openSlotCount = slots.count { it.isEmpty }
+    val pendingSlots = slots.filter { it.isPending }
+    val confirmedSlots = slots.filter { it.isAssigned }
     return when {
-        occupiedSlot == null -> PreferenceSlotStatusUiState(
+        openSlotCount > 0 -> PreferenceSlotStatusUiState(
             label = "Open",
-            detail = null,
+            detail = if (slots.size > 1) "$openSlotCount of ${slots.size} slots open" else null,
             tone = DelegateStatusTone.Green,
-            tooltip = "No delegate is assigned to this position.",
+            tooltip = if (openSlotCount == slots.size) {
+                "No delegate is assigned to this position."
+            } else {
+                "$openSlotCount of ${slots.size} slots are open."
+            },
         )
-        occupiedSlot.isPending -> PreferenceSlotStatusUiState(
+        pendingSlots.isNotEmpty() -> PreferenceSlotStatusUiState(
             label = "Pending",
-            detail = "Pending: ${occupiedSlot.delegate?.displayName.orEmpty()}",
+            detail = pendingSlots.joinToString(prefix = "Pending: ") { requireNotNull(it.delegate).displayName },
             tone = DelegateStatusTone.Yellow,
-            tooltip = "This position has a pending assignment.",
+            tooltip = if (confirmedSlots.isEmpty()) {
+                "Every slot has a pending assignment."
+            } else {
+                "Every slot is occupied; ${pendingSlots.size} pending assignment${if (pendingSlots.size == 1) " is" else "s are"} replaceable."
+            },
         )
-        occupiedSlot.isAssigned -> PreferenceSlotStatusUiState(
+        confirmedSlots.size == slots.size -> PreferenceSlotStatusUiState(
             label = "Confirmed",
-            detail = "Assigned: ${occupiedSlot.delegate?.displayName.orEmpty()}",
+            detail = confirmedSlots.joinToString(prefix = "Assigned: ") { requireNotNull(it.delegate).displayName },
             tone = DelegateStatusTone.Blue,
-            tooltip = "This position has a confirmed assignment.",
+            tooltip = "Every slot has a MyMUN-confirmed assignment.",
         )
         else -> PreferenceSlotStatusUiState(
             label = "Occupied",
-            detail = occupiedSlot.delegate?.displayName,
+            detail = slots.mapNotNull { it.delegate?.displayName }.joinToString(),
             tone = DelegateStatusTone.Neutral,
             tooltip = "This position is occupied.",
         )
     }
 }
+
+private fun Delegate.toAssignmentOptionsUiState(currentSlot: org.munika.assignment.domain.model.Slot?): DelegateAssignmentOptionsUiState? {
+    if (!isAssignmentEligible || currentSlot != null) return null
+
+    val preferenceRanksByCommittee = preferences
+        .groupBy { it.position.committee }
+        .mapValues { (_, preferences) -> preferences.map { it.rank }.sorted() }
+    val committees = conference.committees.mapNotNull { committee ->
+        val positions = committee.positions.mapNotNull { position ->
+            val openSlots = position.slots.filter { it.isEmpty }.sortedBy { it.index }
+            val openSlot = openSlots.firstOrNull() ?: return@mapNotNull null
+            val schoolFit = schoolFitFor(position)
+            val fullyFits = paymentTier == committee.paymentTier && schoolFit == DelegateSchoolFit.Match
+            DelegateAssignmentPositionUiState(
+                id = position.id.value,
+                label = position.displayName,
+                flagAssetName = position.countryFlagAssetName,
+                openSlotId = openSlot.id.value,
+                openSlotCount = openSlots.size,
+                fullyFits = fullyFits,
+                paymentTierMismatch = paymentTierMismatchFor(committee),
+                paymentTierKnown = paymentTier != null,
+                schoolFit = schoolFit,
+            )
+        }.sortedWith(
+            compareByDescending<DelegateAssignmentPositionUiState> { it.fullyFits }
+                .thenBy { it.label.lowercase() }
+                .thenBy { it.label },
+        )
+        if (positions.isEmpty()) return@mapNotNull null
+        DelegateAssignmentCommitteeUiState(
+            id = committee.id.value,
+            name = committee.displayName,
+            preferenceRanks = preferenceRanksByCommittee[committee].orEmpty(),
+            hasFullyFittingOpenPosition = positions.any { it.fullyFits },
+            positions = positions,
+        )
+    }.sortedWith(
+        compareByDescending<DelegateAssignmentCommitteeUiState> { it.hasFullyFittingOpenPosition }
+            .thenBy { it.preferenceRanks.firstOrNull() ?: Int.MAX_VALUE }
+            .thenBy { it.name.lowercase() }
+            .thenBy { it.name },
+    )
+
+    return DelegateAssignmentOptionsUiState(
+        showAssignOther = preferences.none { preference -> preference.position.slots.any { it.isEmpty } },
+        committees = committees,
+    )
+}
+
+private fun Delegate.schoolFitFor(position: Position): DelegateSchoolFit =
+    when (position.effectiveCommitteeMode) {
+        CommitteeMode.HighSchool -> if (isHighSchooler) DelegateSchoolFit.Match else DelegateSchoolFit.Mismatch
+        CommitteeMode.University -> if (isHighSchooler) DelegateSchoolFit.Mismatch else DelegateSchoolFit.Match
+        CommitteeMode.Mapped, null -> DelegateSchoolFit.Unknown
+    }

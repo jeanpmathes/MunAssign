@@ -106,6 +106,7 @@ fun DelegateSidePanel(
     onResolveIssue: (delegateId: String, questionId: String?, issueKey: String, justification: String?) -> Unit,
     onUnresolveIssue: (resolutionId: String) -> Unit,
     onSetPaymentTier: (delegateId: String, paymentTier: PaymentTier) -> Unit,
+    onAssignDelegateToSlot: (slotId: String, delegateId: String) -> Unit,
     conferenceName: String,
     onResetPreferenceCorrections: () -> Unit,
     modifier: Modifier = Modifier,
@@ -223,6 +224,7 @@ fun DelegateSidePanel(
                             detail = detail,
                             loading = loading,
                             onNavigateToPosition = onNavigateToPosition,
+                            onAssignDelegateToSlot = { slotId -> onAssignDelegateToSlot(slotId, detail.id) },
                             onResetPreferenceCorrections = { resetPreferenceCorrectionsDialogOpen = true },
                         )
                     }
@@ -737,17 +739,47 @@ private fun PreferencesContent(
     detail: DelegateDetailUiState,
     loading: Boolean,
     onNavigateToPosition: (committeeId: String, positionId: String) -> Unit,
+    onAssignDelegateToSlot: (slotId: String) -> Unit,
     onResetPreferenceCorrections: () -> Unit,
 ) {
     val preferences = detail.preferences
+    val assignmentOptions = detail.assignmentOptions
+    var replacementPreference by remember(detail.id) { mutableStateOf<DelegatePreferenceUiState?>(null) }
+    var assignmentChooserOpen by remember(detail.id) { mutableStateOf(false) }
     if (preferences.isEmpty()) {
         Text("No preferences", color = MaterialTheme.colorScheme.onSurfaceVariant)
     } else {
         preferences.forEach { preference ->
             PreferenceRow(
                 preference = preference,
+                assignmentEnabled = assignmentOptions != null && !loading,
+                onAssign = {
+                    val openSlotId = preference.openSlotId
+                    if (openSlotId != null) {
+                        onAssignDelegateToSlot(openSlotId)
+                    } else if (preference.replaceablePendingSlots.isNotEmpty()) {
+                        replacementPreference = preference
+                    }
+                },
                 onNavigateToPosition = onNavigateToPosition,
             )
+        }
+    }
+    if (assignmentOptions?.showAssignOther == true) {
+        BoardTooltip(
+            if (assignmentOptions.committees.isEmpty()) {
+                "No open positions remain in this conference."
+            } else {
+                "Choose an open position outside this delegate's currently open preferences."
+            },
+        ) {
+            OutlinedButton(
+                onClick = { assignmentChooserOpen = true },
+                enabled = !loading && assignmentOptions.committees.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Assign other")
+            }
         }
     }
     if (detail.hasPreferenceCorrections) {
@@ -782,51 +814,104 @@ private fun PreferencesContent(
             }
         }
     }
+
+    replacementPreference?.let { preference ->
+        ReplacePendingPreferenceDialog(
+            preference = preference,
+            onDismiss = { replacementPreference = null },
+            onReplace = { slotId ->
+                onAssignDelegateToSlot(slotId)
+                replacementPreference = null
+            },
+        )
+    }
+    if (assignmentChooserOpen && assignmentOptions != null) {
+        DelegateAssignmentChooserDialog(
+            committees = assignmentOptions.committees,
+            onDismiss = { assignmentChooserOpen = false },
+            onAssign = { slotId ->
+                onAssignDelegateToSlot(slotId)
+                assignmentChooserOpen = false
+            },
+        )
+    }
 }
 
 @Composable
+@OptIn(ExperimentalComposeUiApi::class)
 private fun PreferenceRow(
     preference: DelegatePreferenceUiState,
+    assignmentEnabled: Boolean,
+    onAssign: () -> Unit,
     onNavigateToPosition: (committeeId: String, positionId: String) -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(preference.status.tone.containerColor().copy(alpha = 0.26f), RoundedCornerShape(8.dp))
-            .border(1.dp, preference.status.tone.containerColor().copy(alpha = 0.52f), RoundedCornerShape(8.dp))
-            .clickable { onNavigateToPosition(preference.committeeId, preference.positionId) }
-            .padding(9.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(
-            "#${preference.rank}",
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold,
-            color = preference.status.tone.contentColor(),
+    var menuOpen by remember(preference.positionId) { mutableStateOf(false) }
+    Box {
+        Row(
             modifier = Modifier
-                .background(preference.status.tone.containerColor(), RoundedCornerShape(999.dp))
-                .padding(horizontal = 7.dp, vertical = 3.dp),
-        )
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            FlagAwareText(
-                text = preference.label,
-                flagAssetName = preference.flagAssetName,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                .fillMaxWidth()
+                .background(preference.status.tone.containerColor().copy(alpha = 0.26f), RoundedCornerShape(8.dp))
+                .border(1.dp, preference.status.tone.containerColor().copy(alpha = 0.52f), RoundedCornerShape(8.dp))
+                .pointerInput(preference.positionId, assignmentEnabled) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            if (
+                                assignmentEnabled &&
+                                event.type == PointerEventType.Release &&
+                                event.button == PointerButton.Secondary
+                            ) {
+                                event.changes.forEach { it.consume() }
+                                menuOpen = true
+                            }
+                        }
+                    }
+                }
+                .clickable { onNavigateToPosition(preference.committeeId, preference.positionId) }
+                .padding(9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                "#${preference.rank}",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = preference.status.tone.contentColor(),
+                modifier = Modifier
+                    .background(preference.status.tone.containerColor(), RoundedCornerShape(999.dp))
+                    .padding(horizontal = 7.dp, vertical = 3.dp),
             )
-            preference.status.detail?.let {
-                Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                FlagAwareText(
+                    text = preference.label,
+                    flagAssetName = preference.flagAssetName,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                preference.status.detail?.let {
+                    Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            BoardTooltip(preference.status.tooltip) {
+                StatusChip(
+                    DelegateStatusChipUiState(
+                        label = preference.status.label,
+                        tone = preference.status.tone,
+                        tooltip = preference.status.tooltip,
+                    ),
+                )
             }
         }
-        BoardTooltip(preference.status.tooltip) {
-            StatusChip(
-                DelegateStatusChipUiState(
-                    label = preference.status.label,
-                    tone = preference.status.tone,
-                    tooltip = preference.status.tooltip,
-                ),
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenuItem(
+                text = { Text("Assign") },
+                enabled = preference.canAssign,
+                onClick = {
+                    menuOpen = false
+                    onAssign()
+                },
+                leadingIcon = { Icon(Icons.Filled.Check, contentDescription = null) },
             )
         }
     }

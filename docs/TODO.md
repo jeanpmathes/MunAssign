@@ -1,6 +1,5 @@
 # TODO
 
-- A way to assign from the delegate view.
 - Tooltips for spots should show how many others have that preference as well, also show if someone is assigned to something they do not have a preference.
 - There should be a nice way to see for a position who else wants it when already assigned.
 - The drop down add conference button does not do the same as the management add conference button, also the menu should close when done.
@@ -9,3 +8,4 @@
 - No visa warning for unpaid delegates.
 - Make three sentence warning less strict (enough words should pass it too)
 - Validate date component of update.
+- Overwriting preferences.
