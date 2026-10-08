@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.HourglassEmpty
+import androidx.compose.material.icons.filled.HeartBroken
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.Icon
@@ -98,6 +99,17 @@ fun SlotRow(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        if (slot.delegateId != null && !slot.matchesDelegatePreference) {
+            BoardTooltip("This delegate did not rank this position.") {
+                Icon(
+                    Icons.Filled.HeartBroken,
+                    contentDescription = "Assigned outside delegate preferences",
+                    tint = NoPreferenceColor,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            Spacer(Modifier.width(6.dp))
+        }
         if (slot.delegateIsHighSchooler) {
             BoardTooltip("High-school delegate") {
                 Icon(
@@ -207,3 +219,4 @@ private data class SlotStyle(
 )
 
 private val HighSchoolColor = Color(0xFF8E24AA)
+private val NoPreferenceColor = Color(0xFFC2185B)

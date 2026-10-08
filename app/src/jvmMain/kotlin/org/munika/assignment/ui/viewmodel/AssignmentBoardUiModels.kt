@@ -55,6 +55,7 @@ data class PositionBoardUiState(
     val assignmentCandidates: List<AssignmentDelegateCandidateUiState>,
 ) {
     val occupiedSlotCount: Int = slots.count { it.status != SlotBoardStatus.Empty }
+    val hasOccupiedSlots: Boolean = occupiedSlotCount > 0
     val shouldShowInterestedDelegates: Boolean = slots.any { it.status == SlotBoardStatus.Empty }
     val interestedDelegateCount: Int = interestedDelegates.size
 }
@@ -190,8 +191,10 @@ private fun List<Reservation>.toReservationReminderUiState(isHighSchool: Boolean
 private fun Position.toBoardUiState(
     slotByDelegateId: Map<DelegateId, Slot>,
     issueCountsByDelegateId: Map<DelegateId, DelegateIssueCounts>,
-): PositionBoardUiState =
-    PositionBoardUiState(
+): PositionBoardUiState {
+    val occupiedDelegateIds = slots.mapNotNull { it.delegate?.id }.toSet()
+
+    return PositionBoardUiState(
         id = id.value,
         name = name,
         displayName = name,
@@ -207,6 +210,7 @@ private fun Position.toBoardUiState(
         slots = slots.sortedBy { it.index }.map { it.toBoardUiState() },
         interestedDelegates = interestedDelegates
             .filter { it.visibleOnAssignmentBoard() }
+            .filter { it.id !in occupiedDelegateIds }
             .mapNotNull { delegate ->
                 val rank = delegate.preferences.firstOrNull { it.position === this }?.rank ?: return@mapNotNull null
                 val currentSlot = slotByDelegateId[delegate.id]
@@ -250,6 +254,7 @@ private fun Position.toBoardUiState(
                     .thenBy { it.name },
             ),
     )
+}
 
 private fun Committee.toMappedCommitteeUiState(): PositionMappedCommitteeUiState =
     PositionMappedCommitteeUiState(

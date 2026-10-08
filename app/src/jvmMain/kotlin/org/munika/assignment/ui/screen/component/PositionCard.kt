@@ -3,6 +3,7 @@ package org.munika.assignment.ui.screen.component
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,11 +31,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -67,7 +70,14 @@ fun PositionCard(
     var menuSlot by remember(position.id) { mutableStateOf<SlotBoardUiState?>(null) }
     var assignmentSlot by remember(position.id) { mutableStateOf<SlotBoardUiState?>(null) }
     var pendingMoveRequest by remember(position.id) { mutableStateOf<PendingInterestedMoveRequest?>(null) }
+    var interestedDelegatesExpanded by remember(position.id) {
+        mutableStateOf(position.shouldShowInterestedDelegates)
+    }
     val highSchoolTone = position.highSchoolPositionTone()
+
+    LaunchedEffect(position.shouldShowInterestedDelegates) {
+        interestedDelegatesExpanded = position.shouldShowInterestedDelegates
+    }
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -103,8 +113,20 @@ fun PositionCard(
                         )
                     }
                 }
-                if (highSchoolTone != null) {
-                    HighSchoolPositionIcon()
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (position.hasOccupiedSlots) {
+                        InterestedDelegateBadge(
+                            count = position.interestedDelegateCount,
+                            expanded = interestedDelegatesExpanded,
+                            onToggle = { interestedDelegatesExpanded = !interestedDelegatesExpanded },
+                        )
+                    }
+                    if (highSchoolTone != null) {
+                        HighSchoolPositionIcon()
+                    }
                 }
             }
 
@@ -145,10 +167,12 @@ fun PositionCard(
                 }
             }
 
-            if (position.shouldShowInterestedDelegates && position.interestedDelegates.isNotEmpty()) {
+            val showInterestedDelegates = position.interestedDelegates.isNotEmpty() &&
+                (!position.hasOccupiedSlots || interestedDelegatesExpanded)
+            if (showInterestedDelegates) {
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = "Interested delegates",
+                    text = if (position.hasOccupiedSlots) "Other interested delegates" else "Interested delegates",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -214,6 +238,48 @@ fun PositionCard(
                 }
             },
         )
+    }
+}
+
+@Composable
+private fun InterestedDelegateBadge(
+    count: Int,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+) {
+    val enabled = count > 0
+    val containerColor = if (enabled) InterestBadgeContainerColor else MaterialTheme.colorScheme.surfaceVariant
+    val contentColor = if (enabled) InterestBadgeContentColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f)
+    val delegateLabel = if (count == 1) "delegate" else "delegates"
+    val tooltip = when {
+        count == 0 -> "No other delegates ranked this position."
+        expanded -> "$count other interested $delegateLabel. Click to hide them."
+        else -> "$count other interested $delegateLabel. Click to show them."
+    }
+
+    BoardTooltip(tooltip) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .clickable(enabled = enabled, onClick = onToggle)
+                .background(containerColor)
+                .padding(horizontal = 7.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Filled.People,
+                contentDescription = null,
+                tint = contentColor,
+                modifier = Modifier.size(14.dp),
+            )
+            Text(
+                text = count.toString(),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = contentColor,
+            )
+        }
     }
 }
 
@@ -454,3 +520,5 @@ private val PositionBoardUiState.showsMappingSelector: Boolean
 
 private val HighSchoolColor = Color(0xFF8E24AA)
 private val MissingMappingColor = Color(0xFFF9A825)
+private val InterestBadgeContainerColor = Color(0xFFE0F2F1)
+private val InterestBadgeContentColor = Color(0xFF00695C)

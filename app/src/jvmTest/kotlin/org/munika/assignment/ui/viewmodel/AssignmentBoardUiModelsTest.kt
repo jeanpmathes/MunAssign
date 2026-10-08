@@ -85,6 +85,8 @@ class AssignmentBoardUiModelsTest {
         assertEquals("France", france.name)
         assertEquals("France", france.displayName)
         assertEquals("1f1eb-1f1f7", france.flagAssetName)
+        assertFalse(france.hasOccupiedSlots)
+        assertEquals(2, france.interestedDelegateCount)
     }
 
     @Test
@@ -95,17 +97,36 @@ class AssignmentBoardUiModelsTest {
         val france = board.conference.toAssignmentBoardUiState()
             .committees.single()
             .positions.single { it.name == "France" }
-        val available = france.interestedDelegates.single { it.name == "Available Delegate" }
-
         assertTrue(france.shouldShowInterestedDelegates)
-        assertEquals("GA (France)", available.pendingAssignmentLabel)
-        assertEquals("france-1", available.pendingAssignmentSlotId)
-        assertNull(available.confirmedAssignmentLabel)
-        assertNull(available.confirmedAssignmentSlotId)
+        assertTrue(france.hasOccupiedSlots)
+        assertEquals(listOf("Confirmed Elsewhere"), france.interestedDelegates.map { it.name })
+        assertEquals(1, france.interestedDelegateCount)
     }
 
     @Test
-    fun `interested delegates are hidden when a multi slot position has no open slot`() {
+    fun `occupied position excludes every occupant while retaining interested delegates assigned elsewhere`() {
+        val board = board(slotCount = 2)
+        board.france.slots[0].assign(board.available, AssignmentSource.Application, Instant.EPOCH)
+        board.france.slots[1].assign(
+            board.conference.delegates.single { it.displayName == "Neutral Delegate" },
+            AssignmentSource.Mymun,
+            Instant.EPOCH,
+        )
+        board.germanySlot.assign(board.confirmedElsewhere, AssignmentSource.Mymun, Instant.EPOCH)
+
+        val france = board.conference.toAssignmentBoardUiState()
+            .committees.single()
+            .positions.single { it.name == "France" }
+
+        assertEquals(listOf("Confirmed Elsewhere"), france.interestedDelegates.map { it.name })
+        assertEquals("GA (Germany)", france.interestedDelegates.single().confirmedAssignmentLabel)
+        assertEquals(1, france.interestedDelegateCount)
+        assertTrue(france.slots.single { it.delegateName == "Available Delegate" }.matchesDelegatePreference)
+        assertFalse(france.slots.single { it.delegateName == "Neutral Delegate" }.matchesDelegatePreference)
+    }
+
+    @Test
+    fun `full position reports no other interested delegates when every interested delegate occupies it`() {
         val board = board(slotCount = 2)
         board.france.slots[0].assign(board.available, AssignmentSource.Application, Instant.EPOCH)
         board.france.slots[1].assign(board.confirmedElsewhere, AssignmentSource.Mymun, Instant.EPOCH)
@@ -113,12 +134,11 @@ class AssignmentBoardUiModelsTest {
         val france = board.conference.toAssignmentBoardUiState()
             .committees.single()
             .positions.single { it.name == "France" }
-        val confirmed = france.interestedDelegates.single { it.name == "Confirmed Elsewhere" }
 
         assertFalse(france.shouldShowInterestedDelegates)
-        assertEquals("GA (France)", confirmed.confirmedAssignmentLabel)
-        assertEquals("france-2", confirmed.confirmedAssignmentSlotId)
-        assertFalse(confirmed.canAssign)
+        assertTrue(france.hasOccupiedSlots)
+        assertTrue(france.interestedDelegates.isEmpty())
+        assertEquals(0, france.interestedDelegateCount)
     }
 
     @Test

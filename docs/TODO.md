@@ -1,7 +1,5 @@
 # TODO
 
-- Tooltips for spots should show how many others have that preference as well, also show if someone is assigned to something they do not have a preference.
-- There should be a nice way to see for a position who else wants it when already assigned.
 - The drop down add conference button does not do the same as the management add conference button, also the menu should close when done.
 - Refactoring of constants (e.g., color handling)
 - Refactoring of large classes
