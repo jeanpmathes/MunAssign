@@ -44,6 +44,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -61,6 +62,7 @@ import org.munika.assignment.ui.viewmodel.SlotBoardUiState
 @Composable
 fun PositionCard(
     position: PositionBoardUiState,
+    assignmentEnabled: Boolean,
     onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
     onClearPendingSlot: (slotId: String) -> Unit,
     onOpenDelegateDetail: (String) -> Unit,
@@ -77,6 +79,14 @@ fun PositionCard(
 
     LaunchedEffect(position.shouldShowInterestedDelegates) {
         interestedDelegatesExpanded = position.shouldShowInterestedDelegates
+    }
+
+    LaunchedEffect(assignmentEnabled) {
+        if (!assignmentEnabled) {
+            menuSlot = null
+            assignmentSlot = null
+            pendingMoveRequest = null
+        }
     }
 
     Surface(
@@ -142,6 +152,7 @@ fun PositionCard(
                     Box {
                         SlotRow(
                             slot = slot,
+                            assignmentEnabled = assignmentEnabled,
                             onOpenContextMenu = { menuSlot = slot },
                             onOpenAssignmentDialog = { assignmentSlot = slot },
                             onClearPendingAssignment = { onClearPendingSlot(slot.id) },
@@ -150,6 +161,7 @@ fun PositionCard(
                         SlotContextMenu(
                             expanded = menuSlot?.id == slot.id,
                             slot = slot,
+                            assignmentEnabled = assignmentEnabled,
                             interestedDelegates = position.interestedDelegates,
                             onAssignInterestedDelegate = { delegate ->
                                 assignInterestedDelegate(
@@ -184,6 +196,7 @@ fun PositionCard(
                     position.interestedDelegates.forEach { delegate ->
                         InterestedDelegateChip(
                             delegate = delegate,
+                            assignmentEnabled = assignmentEnabled,
                             onAssign = {
                                 val slot = position.slots.firstOrNull { it.status == org.munika.assignment.ui.viewmodel.SlotBoardStatus.Empty }
                                     ?: return@InterestedDelegateChip
@@ -424,6 +437,7 @@ private fun assignInterestedDelegate(
 @Composable
 private fun InterestedDelegateChip(
     delegate: InterestedDelegateUiState,
+    assignmentEnabled: Boolean,
     onAssign: () -> Unit,
     onOpenDelegateDetail: () -> Unit,
 ) {
@@ -436,6 +450,7 @@ private fun InterestedDelegateChip(
     }
     val rankStyle = delegate.rankStyle()
     val tooltip = when {
+        !assignmentEnabled -> "Wait for the current change to finish before assigning ${delegate.name}."
         confirmedAssignmentLabel != null ->
             "${delegate.name} ranked this position #${delegate.preferenceRank}, but is confirmed for $confirmedAssignmentLabel."
         pendingAssignmentLabel != null ->
@@ -446,13 +461,14 @@ private fun InterestedDelegateChip(
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(999.dp))
+                .alpha(if (assignmentEnabled) 1f else 0.55f)
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f))
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(999.dp))
-                .pointerInput(delegate.id, pendingAssignmentLabel, confirmedAssignmentLabel) {
+                .pointerInput(delegate.id, pendingAssignmentLabel, confirmedAssignmentLabel, assignmentEnabled) {
                     detectTapGestures(
                         onTap = { onOpenDelegateDetail() },
                         onDoubleTap = {
-                            if (confirmedAssignmentLabel == null) {
+                            if (assignmentEnabled && confirmedAssignmentLabel == null) {
                                 onAssign()
                             }
                         },

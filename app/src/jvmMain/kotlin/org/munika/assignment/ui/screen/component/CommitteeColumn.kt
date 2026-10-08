@@ -109,6 +109,7 @@ fun CommitteeColumn(
                 items(committee.positions, key = { it.id }) { position ->
                     PositionCard(
                         position = position,
+                        assignmentEnabled = !loading,
                         onAssignDelegateToSlot = onAssignDelegateToSlot,
                         onClearPendingSlot = onClearPendingSlot,
                         onOpenDelegateDetail = onOpenDelegateDetail,

@@ -46,6 +46,7 @@ import org.munika.assignment.ui.viewmodel.SlotBoardUiState
 @OptIn(ExperimentalComposeUiApi::class)
 fun SlotRow(
     slot: SlotBoardUiState,
+    assignmentEnabled: Boolean,
     onOpenContextMenu: () -> Unit,
     onOpenAssignmentDialog: () -> Unit,
     onClearPendingAssignment: () -> Unit,
@@ -56,11 +57,12 @@ fun SlotRow(
         modifier = Modifier
             .fillMaxWidth()
             .height(42.dp)
-            .pointerInput(slot.id, slot.status) {
-                if (slot.status == SlotBoardStatus.Assigned) return@pointerInput
+            .pointerInput(slot.id, slot.status, assignmentEnabled) {
+                if (!assignmentEnabled || slot.status == SlotBoardStatus.Assigned) return@pointerInput
                 detectTapGestures(onDoubleTap = { onOpenAssignmentDialog() })
             }
-            .pointerInput(slot.id) {
+            .pointerInput(slot.id, assignmentEnabled) {
+                if (!assignmentEnabled) return@pointerInput
                 awaitPointerEventScope {
                     while (true) {
                         val event = awaitPointerEvent()
@@ -129,19 +131,31 @@ fun SlotRow(
             when (slot.status) {
                 SlotBoardStatus.Empty -> {
                     BoardTooltip("Assign a delegate to this open slot.") {
-                        IconButton(onClick = onOpenAssignmentDialog, modifier = Modifier.size(32.dp)) {
+                        IconButton(
+                            onClick = onOpenAssignmentDialog,
+                            enabled = assignmentEnabled,
+                            modifier = Modifier.size(32.dp),
+                        ) {
                             Icon(Icons.Filled.Add, contentDescription = "Assign delegate", modifier = Modifier.size(16.dp))
                         }
                     }
                 }
                 SlotBoardStatus.Pending -> {
                     BoardTooltip("Replace this pending assignment.") {
-                        IconButton(onClick = onOpenAssignmentDialog, modifier = Modifier.size(32.dp)) {
+                        IconButton(
+                            onClick = onOpenAssignmentDialog,
+                            enabled = assignmentEnabled,
+                            modifier = Modifier.size(32.dp),
+                        ) {
                             Icon(Icons.Filled.Edit, contentDescription = "Replace pending assignment", modifier = Modifier.size(16.dp))
                         }
                     }
                     BoardTooltip("Clear this pending assignment.") {
-                        IconButton(onClick = onClearPendingAssignment, modifier = Modifier.size(32.dp)) {
+                        IconButton(
+                            onClick = onClearPendingAssignment,
+                            enabled = assignmentEnabled,
+                            modifier = Modifier.size(32.dp),
+                        ) {
                             Icon(Icons.Filled.Clear, contentDescription = "Clear pending assignment", modifier = Modifier.size(16.dp))
                         }
                     }

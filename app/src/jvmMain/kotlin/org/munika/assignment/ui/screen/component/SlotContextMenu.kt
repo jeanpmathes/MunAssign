@@ -24,6 +24,7 @@ import org.munika.assignment.ui.viewmodel.SlotBoardUiState
 fun SlotContextMenu(
     expanded: Boolean,
     slot: SlotBoardUiState,
+    assignmentEnabled: Boolean,
     interestedDelegates: List<InterestedDelegateUiState>,
     onAssignInterestedDelegate: (InterestedDelegateUiState) -> Unit,
     onOpenManualAssignment: () -> Unit,
@@ -60,6 +61,7 @@ fun SlotContextMenu(
                                 onDismiss()
                                 onAssignInterestedDelegate(delegate)
                             },
+                            enabled = assignmentEnabled,
                         )
                     }
                     HorizontalDivider()
@@ -70,6 +72,7 @@ fun SlotContextMenu(
                         onDismiss()
                         onOpenManualAssignment()
                     },
+                    enabled = assignmentEnabled,
                 )
             }
             SlotBoardStatus.Pending -> {
@@ -79,6 +82,7 @@ fun SlotContextMenu(
                         onDismiss()
                         onOpenManualAssignment()
                     },
+                    enabled = assignmentEnabled,
                 )
                 DropdownMenuItem(
                     text = { Text("Clear pending assignment") },
@@ -86,6 +90,7 @@ fun SlotContextMenu(
                         onDismiss()
                         onClearPendingAssignment()
                     },
+                    enabled = assignmentEnabled,
                 )
             }
             SlotBoardStatus.Assigned -> {
