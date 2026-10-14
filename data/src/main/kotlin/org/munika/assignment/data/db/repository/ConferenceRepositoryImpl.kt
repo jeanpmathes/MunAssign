@@ -531,6 +531,95 @@ class ConferenceRepositoryImpl(
         loadConferenceGraph(conferenceId)
     }
 
+    override suspend fun setPositionPendingAssignments(
+        conferenceId: ConferenceId,
+        positionId: PositionId,
+        selectedDelegateIds: List<DelegateId>,
+    ): Conference = db {
+        val conferenceId = conferenceId.value
+        val positionId = positionId.value
+        require(
+            PositionTable.selectAll()
+                .where { (PositionTable.id eq positionId) and (PositionTable.conferenceId eq conferenceId) }
+                .singleOrNull() != null,
+        ) { "Position $positionId does not belong to conference $conferenceId." }
+
+        val selectedIds = selectedDelegateIds.map { it.value }
+        require(selectedIds.size == selectedIds.toSet().size) {
+            "Position selection must not contain the same delegate more than once."
+        }
+        val slots = SlotTable.selectAll()
+            .where { SlotTable.positionId eq positionId }
+            .orderBy(SlotTable.slotIndex)
+            .toList()
+        val editableSlots = slots.filter { it[SlotTable.assignmentSource] != AssignmentSource.Mymun.name }
+        require(selectedIds.size == editableSlots.size) {
+            "Select exactly ${editableSlots.size} delegate${if (editableSlots.size == 1) "" else "s"} for the non-confirmed slots."
+        }
+
+        val currentPendingByDelegate = editableSlots
+            .filter { it[SlotTable.assignmentSource] == AssignmentSource.Application.name }
+            .associateBy { requireNotNull(it[SlotTable.assignedDelegateId]) }
+        selectedIds.forEach { delegateId ->
+            val delegate = requireDelegateInConference(conferenceId, delegateId)
+            val existingAssignment = SlotTable.selectAll()
+                .where { SlotTable.assignedDelegateId eq delegateId }
+                .singleOrNull()
+            if (delegateId in currentPendingByDelegate) {
+                require(existingAssignment?.get(SlotTable.positionId) == positionId) {
+                    "Pending occupant $delegateId is no longer assigned to this position."
+                }
+            } else {
+                require(existingAssignment == null) {
+                    "Delegate $delegateId already has an assignment and cannot be selected for this position."
+                }
+                require(delegate[DelegateTable.active]) { "Only active delegates can be manually assigned." }
+                require(delegate[DelegateTable.paymentStatus] == PaymentStatus.Paid.name) {
+                    "Only paid delegates can be manually assigned."
+                }
+                require(isUsableApplicationStatus(delegate[DelegateTable.applicationStatus])) {
+                    "Only accepted, assigned, or checked-in delegates can be manually assigned."
+                }
+                require(
+                    PreferenceTable.selectAll().where {
+                        (PreferenceTable.delegateId eq delegateId) and
+                            (PreferenceTable.positionId eq positionId)
+                    }.any(),
+                ) { "Delegate $delegateId did not rank this position." }
+            }
+        }
+
+        val now = Instant.now().toEpochMilli()
+        currentPendingByDelegate
+            .filterKeys { it !in selectedIds }
+            .values
+            .forEach { slot -> clearSlotAssignment(slot[SlotTable.id], now) }
+
+        val retainedSlotIds = currentPendingByDelegate
+            .filterKeys { it in selectedIds }
+            .values
+            .mapTo(mutableSetOf()) { it[SlotTable.id] }
+        val availableSlots = editableSlots.filter { it[SlotTable.id] !in retainedSlotIds }.iterator()
+        selectedIds.filterNot { it in currentPendingByDelegate }.forEach { delegateId ->
+            val slot = availableSlots.next()
+            SlotTable.update({ SlotTable.id eq slot[SlotTable.id] }) {
+                it[assignedDelegateId] = delegateId
+                it[assignmentSource] = AssignmentSource.Application.name
+                it[updatedAtEpochMillis] = now
+            }
+        }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId }) {
+            it[updatedAtEpochMillis] = now
+        }
+        logger.info(
+            "Set pending position selection position={} conference={} delegates={}",
+            positionId,
+            conferenceId,
+            selectedIds,
+        )
+        loadConferenceGraph(conferenceId)
+    }
+
     override suspend fun savePreferenceCompletions(
         conferenceId: ConferenceId,
         selections: List<PreferenceCompletionSelection>,
@@ -1103,6 +1192,7 @@ class ConferenceRepositoryImpl(
             it[roleId] = configuration.role?.id
             it[handlingTypeId] = configuration.handling.id
             it[visibleInDelegateDetail] = configuration.role == null && configuration.visibleInDelegateDetail
+            it[visibleInVersusView] = configuration.visibleInVersusView
             it[organizerLabel] = configuration.organizerLabel?.trim()?.takeIf(String::isNotBlank)
             it[displayOrder] = configuration.displayOrder
         }
@@ -1675,6 +1765,9 @@ class ConferenceRepositoryImpl(
                     it[DelegateQuestionTable.roleId] = roleId
                     it[DelegateQuestionTable.handlingTypeId] = handlingId
                     it[DelegateQuestionTable.visibleInDelegateDetail] = roleId == null
+                    it[DelegateQuestionTable.visibleInVersusView] =
+                        roleId == StandardQuestionRoles.ExperienceLevel.id ||
+                            handlingId == StandardQuestionHandlingTypes.CommitteeChoiceExplanation.id
                     it[DelegateQuestionTable.organizerLabel] = null
                     it[DelegateQuestionTable.displayOrder] = questionColumn.displayOrder
                 }
@@ -2609,6 +2702,7 @@ class ConferenceRepositoryImpl(
                     visibleInDelegateDetail = row[DelegateQuestionTable.visibleInDelegateDetail],
                     organizerLabel = row[DelegateQuestionTable.organizerLabel],
                     displayOrder = row[DelegateQuestionTable.displayOrder],
+                    visibleInVersusView = row[DelegateQuestionTable.visibleInVersusView],
                 )
             },
             questionRules = if (questionIds.isEmpty()) emptyList() else DelegateQuestionRuleTable.selectAll().where {

@@ -796,6 +796,42 @@ class MainViewModel internal constructor(
         }
     }
 
+    fun setPositionPendingAssignments(positionId: String, delegateIds: List<String>) {
+        val selectedId = selectedIdOrNull() ?: return
+        scope.launch {
+            updateConferenceState(selectedId) { it.copy(loading = true, boardActionError = null) }
+            try {
+                val conference = repository.setPositionPendingAssignments(
+                    conferenceId = ConferenceId(selectedId),
+                    positionId = PositionId(positionId),
+                    selectedDelegateIds = delegateIds.map(::DelegateId),
+                )
+                updateConferenceState(selectedId) {
+                    it.copy(
+                        selectedConference = conference,
+                        loading = false,
+                        boardActionError = null,
+                    )
+                }
+            } catch (exception: IllegalArgumentException) {
+                updateConferenceState(selectedId) {
+                    it.copy(
+                        loading = false,
+                        boardActionError = exception.message ?: "Position assignments could not be changed.",
+                    )
+                }
+            } catch (exception: Exception) {
+                updateConferenceState(selectedId) {
+                    it.copy(
+                        loading = false,
+                        boardActionError =
+                            "Position assignment update failed: ${exception.message ?: exception::class.simpleName.orEmpty()}",
+                    )
+                }
+            }
+        }
+    }
+
     fun clearPendingSlot(slotId: String) {
         val selectedId = selectedIdOrNull() ?: return
         scope.launch {

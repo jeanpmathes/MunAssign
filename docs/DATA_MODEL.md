@@ -113,6 +113,10 @@ Questions with an expected role are special profile fields. They are shown in th
 of delegate detail, not in the general answer overview, and are pinned above reorderable general
 questions in the question editor.
 
+Every question also stores an organizer-managed versus-view visibility flag. New and migrated
+experience-role and committee-choice-explanation questions default to visible; later role or
+handling changes do not overwrite the saved organizer choice.
+
 General questions can opt into handling archetypes. The visa archetype raises a notice for
 meaningful answers unless they are blank, an exact placeholder, or begin with a complete recognized
 negative word or phrase. Negative openings may include trailing explanations, but partial word

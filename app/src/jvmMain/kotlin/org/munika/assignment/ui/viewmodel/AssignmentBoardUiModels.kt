@@ -1,5 +1,6 @@
 package org.munika.assignment.ui.viewmodel
 
+import java.time.LocalDate
 import org.munika.assignment.domain.model.AnswerIssueSeverity
 import org.munika.assignment.domain.model.AssignmentStatus
 import org.munika.assignment.domain.model.Committee
@@ -11,6 +12,7 @@ import org.munika.assignment.domain.model.PaymentTier
 import org.munika.assignment.domain.model.Position
 import org.munika.assignment.domain.model.Reservation
 import org.munika.assignment.domain.model.Slot
+import org.munika.assignment.domain.model.StandardQuestionRoles
 
 data class AssignmentBoardUiState(
     val conferenceId: String,
@@ -53,12 +55,34 @@ data class PositionBoardUiState(
     val slots: List<SlotBoardUiState>,
     val interestedDelegates: List<InterestedDelegateUiState>,
     val assignmentCandidates: List<AssignmentDelegateCandidateUiState>,
+    val versus: PositionVersusUiState?,
 ) {
     val occupiedSlotCount: Int = slots.count { it.status != SlotBoardStatus.Empty }
     val hasOccupiedSlots: Boolean = occupiedSlotCount > 0
     val shouldShowInterestedDelegates: Boolean = slots.any { it.status == SlotBoardStatus.Empty }
     val interestedDelegateCount: Int = interestedDelegates.size
 }
+
+data class PositionVersusUiState(
+    val positionId: String,
+    val positionName: String,
+    val flagAssetName: String?,
+    val requiredSelectionCount: Int,
+    val candidates: List<PositionVersusCandidateUiState>,
+    val rows: List<PositionVersusRowUiState>,
+)
+
+data class PositionVersusCandidateUiState(
+    val id: String,
+    val name: String,
+    val pending: Boolean,
+)
+
+data class PositionVersusRowUiState(
+    val id: String,
+    val label: String,
+    val valuesByDelegateId: Map<String, String>,
+)
 
 data class CommitteeMappingOptionUiState(
     val id: String,
@@ -136,7 +160,7 @@ data class BoardScrollRequest(
 
 private data class DelegateIssueCounts(val warningCount: Int, val noticeCount: Int)
 
-fun Conference.toAssignmentBoardUiState(): AssignmentBoardUiState {
+fun Conference.toAssignmentBoardUiState(today: LocalDate = LocalDate.now()): AssignmentBoardUiState {
     val slotByDelegateId: Map<DelegateId, Slot> = slots.mapNotNull { slot -> slot.delegate?.let { it.id to slot } }.toMap()
     val issueCountsByDelegateId: Map<DelegateId, DelegateIssueCounts> = delegates.associate { delegate ->
         delegate.id to DelegateIssueCounts(warningCount = delegate.warningCount(), noticeCount = delegate.noticeCount())
@@ -163,7 +187,7 @@ fun Conference.toAssignmentBoardUiState(): AssignmentBoardUiState {
                 highSchoolerAssignedCount = committee.slots.count { it.delegate?.isHighSchooler == true },
                 universityAssignedCount = committee.slots.count { it.delegate != null && it.delegate?.isHighSchooler != true },
                 reservationReminders = reservationReminders,
-                positions = committee.positions.map { it.toBoardUiState(slotByDelegateId, issueCountsByDelegateId) },
+                positions = committee.positions.map { it.toBoardUiState(slotByDelegateId, issueCountsByDelegateId, today) },
             )
         },
     )
@@ -191,6 +215,7 @@ private fun List<Reservation>.toReservationReminderUiState(isHighSchool: Boolean
 private fun Position.toBoardUiState(
     slotByDelegateId: Map<DelegateId, Slot>,
     issueCountsByDelegateId: Map<DelegateId, DelegateIssueCounts>,
+    today: LocalDate,
 ): PositionBoardUiState {
     val occupiedDelegateIds = slots.mapNotNull { it.delegate?.id }.toSet()
 
@@ -253,8 +278,116 @@ private fun Position.toBoardUiState(
                     .thenBy { it.preferenceRank ?: Int.MAX_VALUE }
                     .thenBy { it.name },
             ),
+        versus = toVersusUiState(slotByDelegateId, today),
     )
 }
+
+private fun Position.toVersusUiState(
+    slotByDelegateId: Map<DelegateId, Slot>,
+    today: LocalDate,
+): PositionVersusUiState? {
+    val pendingDelegates = slots
+        .filter { it.isPending }
+        .sortedBy { it.index }
+        .map { requireNotNull(it.delegate) }
+    val pendingIds = pendingDelegates.mapTo(mutableSetOf()) { it.id }
+    val unassignedInterested = interestedDelegates
+        .filter { it.isAssignmentEligible && slotByDelegateId[it.id] == null }
+        .sortedWith(
+            compareBy<Delegate> { delegate ->
+                delegate.preferences.first { it.position === this }.rank
+            }.thenBy { it.displayName },
+        )
+    val candidates = (pendingDelegates + unassignedInterested)
+        .distinctBy { it.id }
+    val requiredSelectionCount = slots.count { !it.isAssigned }
+    if (requiredSelectionCount == 0 || candidates.size <= requiredSelectionCount) return null
+
+    val candidateStates = candidates.map { delegate ->
+        PositionVersusCandidateUiState(
+            id = delegate.id.value,
+            name = delegate.displayName,
+            pending = delegate.id in pendingIds,
+        )
+    }
+    val rows = buildList {
+        add(
+            PositionVersusRowUiState(
+                id = "preference",
+                label = "Preference",
+                valuesByDelegateId = candidates.associate { delegate ->
+                    delegate.id.value to delegate.preferences
+                        .firstOrNull { it.position === this@toVersusUiState }
+                        ?.rank
+                        ?.toOrdinal()
+                        .orEmpty()
+                        .ifEmpty { "Not ranked" }
+                },
+            ),
+        )
+        add(
+            PositionVersusRowUiState(
+                id = "age",
+                label = "Age",
+                valuesByDelegateId = candidates.associate { delegate ->
+                    delegate.id.value to (delegate.age(today)?.toString() ?: MissingVersusValue)
+                },
+            ),
+        )
+        conference.questions
+            .filter { it.visibleInVersusView }
+            .sortedWith(compareBy({ it.displayOrder }, { it.displayLabel }))
+            .forEach { question ->
+                add(
+                    PositionVersusRowUiState(
+                        id = question.id.value,
+                        label = question.displayLabel,
+                        valuesByDelegateId = candidates.associate { delegate ->
+                            val answer = delegate.answers.firstOrNull { it.question === question }?.rawAnswer
+                            val value = if (question.role == StandardQuestionRoles.ExperienceLevel) {
+                                question.mapMunExperience(answer)?.versusLabel
+                            } else {
+                                answer?.takeIf { it.isNotBlank() }
+                            }
+                            delegate.id.value to (value ?: MissingVersusValue)
+                        },
+                    ),
+                )
+            }
+    }
+    return PositionVersusUiState(
+        positionId = id.value,
+        positionName = name,
+        flagAssetName = countryFlagAssetName,
+        requiredSelectionCount = requiredSelectionCount,
+        candidates = candidateStates,
+        rows = rows,
+    )
+}
+
+private fun Int.toOrdinal(): String {
+    val suffix = if (this % 100 in 11..13) {
+        "th"
+    } else {
+        when (this % 10) {
+            1 -> "st"
+            2 -> "nd"
+            3 -> "rd"
+            else -> "th"
+        }
+    }
+    return "$this$suffix"
+}
+
+private val org.munika.assignment.domain.model.MunExperienceLevel.versusLabel: String
+    get() = when (this) {
+        org.munika.assignment.domain.model.MunExperienceLevel.FirstTime -> "First time"
+        org.munika.assignment.domain.model.MunExperienceLevel.Beginner -> "Beginner"
+        org.munika.assignment.domain.model.MunExperienceLevel.Intermediate -> "Intermediate"
+        org.munika.assignment.domain.model.MunExperienceLevel.Advanced -> "Advanced"
+    }
+
+private const val MissingVersusValue = "\u2014"
 
 private fun Committee.toMappedCommitteeUiState(): PositionMappedCommitteeUiState =
     PositionMappedCommitteeUiState(

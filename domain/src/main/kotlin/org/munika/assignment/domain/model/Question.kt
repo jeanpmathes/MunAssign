@@ -16,6 +16,8 @@ class Question(
     val displayOrder: Int = 0,
     val rules: List<AnswerRule> = emptyList(),
     val mappings: TypedAnswerMappings = TypedAnswerMappings.defaults(),
+    /** Whether this answer is included in position candidate comparisons. */
+    val visibleInVersusView: Boolean = false,
 ) : DomainObject<QuestionId> {
     init {
         require(questionText.isNotBlank()) { "Question text must not be blank." }

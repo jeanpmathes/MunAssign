@@ -131,6 +131,19 @@ interface ConferenceRepository {
     ): Conference
 
     /**
+     * Replaces the complete pending selection for one position without changing confirmed slots.
+     *
+     * [selectedDelegateIds] must contain exactly one delegate for every non-confirmed slot. Existing
+     * selected pending occupants retain their slots; new occupants fill the remaining slots in the
+     * supplied order.
+     */
+    suspend fun setPositionPendingAssignments(
+        conferenceId: ConferenceId,
+        positionId: PositionId,
+        selectedDelegateIds: List<DelegateId>,
+    ): Conference
+
+    /**
      * Clears a pending MunAssign assignment from one slot.
      *
      * MyMUN-confirmed assignments are controlled only by later MyMUN updates and must be rejected.

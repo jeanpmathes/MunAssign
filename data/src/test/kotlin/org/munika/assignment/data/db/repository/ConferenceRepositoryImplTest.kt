@@ -31,6 +31,7 @@ import org.munika.assignment.data.db.tables.MunExperienceAnswerMappingTable
 import org.munika.assignment.data.db.tables.MymunUpdateIssueTable
 import org.munika.assignment.data.db.tables.MymunUpdateRunTable
 import org.munika.assignment.data.db.tables.PositionTable
+import org.munika.assignment.data.db.tables.PreferenceTable
 import org.munika.assignment.data.db.tables.QuestionHandlingTypeTable
 import org.munika.assignment.data.db.tables.QuestionRoleTable
 import org.munika.assignment.data.db.tables.SlotTable
@@ -66,6 +67,7 @@ import org.munika.assignment.domain.model.RequiredAnswer
 import org.munika.assignment.domain.model.StandardQuestionHandlingTypes
 import org.munika.assignment.domain.model.StandardQuestionRoles
 import org.munika.assignment.domain.model.TypedAnswerMappings
+import org.munika.assignment.domain.model.toConfiguration
 import org.munika.assignment.domain.repository.UpdateIssueSeverity
 import org.munika.assignment.domain.repository.PreferenceCompletionSelection
 import org.munika.assignment.domain.repository.PreferenceCorrectionSelection
@@ -1123,6 +1125,145 @@ class ConferenceRepositoryImplTest {
 
         assertEquals(secondDelegate.id, updated.pendingSlots.single().delegate?.id)
         assertNull(updated.delegates.single { it.id == firstDelegate.id }.currentSlot)
+    }
+
+    @Test
+    fun `position pending selection replaces occupants atomically while retaining selected slots`() = runBlocking {
+        val database = DatabaseFactory.connect(Files.createTempDirectory("munassign-position-selection").resolve("data.db"))
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val delegates = listOf(
+            delegate(rowNumber = 2, firstName = "Alex", lastName = "Kim", email = "alex@example.test"),
+            delegate(rowNumber = 3, firstName = "Blake", lastName = "Roy", email = "blake@example.test"),
+            delegate(rowNumber = 4, firstName = "Casey", lastName = "Ng", email = "casey@example.test"),
+        )
+        assertTrue(
+            repository.applyMymunUpdateSnapshot(
+                conference.id.value,
+                snapshotWithAssignments(delegates = delegates, confirmedAssignments = emptyList()),
+            ).success,
+        )
+        val loaded = requireNotNull(repository.getConference(conference.id))
+        val expanded = repository.setCommitteeSlotsPerPosition(conference.id, loaded.committees.single().id, 2)
+        val france = expanded.positions.single { it.name == "France" }
+        val byFirstName = expanded.delegates.associateBy { it.name.firstName }
+        transaction(database) {
+            byFirstName.values.forEachIndexed { index, participant ->
+                PreferenceTable.insert {
+                    it[id] = "versus-preference-$index"
+                    it[delegateId] = participant.id.value
+                    it[positionId] = france.id.value
+                    it[rank] = index + 1
+                    it[rawPreferenceText] = "GA (France)"
+                }
+            }
+        }
+        val alex = byFirstName.getValue("Alex")
+        val blake = byFirstName.getValue("Blake")
+        val casey = byFirstName.getValue("Casey")
+        val firstSlot = france.slots.single { it.index == 1 }
+        repository.assignDelegateToSlot(conference.id, firstSlot.id, alex.id, moveExistingPending = false)
+
+        val initialSelection = repository.setPositionPendingAssignments(
+            conference.id,
+            france.id,
+            listOf(alex.id, casey.id),
+        )
+        val initiallySelected = initialSelection.positions.single { it.id == france.id }.slots.associateBy { it.index }
+        assertEquals(alex.id, initiallySelected.getValue(1).delegate?.id)
+        assertEquals(casey.id, initiallySelected.getValue(2).delegate?.id)
+
+        val replaced = repository.setPositionPendingAssignments(
+            conference.id,
+            france.id,
+            listOf(blake.id, casey.id),
+        )
+        val replacedSlots = replaced.positions.single { it.id == france.id }.slots.associateBy { it.index }
+        assertEquals(blake.id, replacedSlots.getValue(1).delegate?.id)
+        assertEquals(casey.id, replacedSlots.getValue(2).delegate?.id)
+        assertNull(replaced.delegates.single { it.id == alex.id }.currentSlot)
+    }
+
+    @Test
+    fun `invalid position pending selection rolls back every occupant change`() = runBlocking {
+        val database = DatabaseFactory.connect(Files.createTempDirectory("munassign-position-selection-rollback").resolve("data.db"))
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val delegates = listOf(
+            delegate(rowNumber = 2, firstName = "Alex", lastName = "Kim", email = "alex@example.test"),
+            delegate(rowNumber = 3, firstName = "Blake", lastName = "Roy", email = "blake@example.test"),
+        )
+        assertTrue(
+            repository.applyMymunUpdateSnapshot(
+                conference.id.value,
+                snapshotWithAssignments(delegates = delegates, confirmedAssignments = emptyList()),
+            ).success,
+        )
+        val loaded = requireNotNull(repository.getConference(conference.id))
+        val france = loaded.positions.single { it.name == "France" }
+        val alex = loaded.delegates.single { it.name.firstName == "Alex" }
+        val blake = loaded.delegates.single { it.name.firstName == "Blake" }
+        transaction(database) {
+            PreferenceTable.insert {
+                it[id] = "alex-france-preference"
+                it[delegateId] = alex.id.value
+                it[positionId] = france.id.value
+                it[rank] = 1
+                it[rawPreferenceText] = "GA (France)"
+            }
+        }
+        repository.assignDelegateToSlot(conference.id, france.slots.single().id, alex.id, moveExistingPending = false)
+
+        assertFailsWith<IllegalArgumentException> {
+            repository.setPositionPendingAssignments(conference.id, france.id, listOf(blake.id))
+        }
+
+        val reloaded = requireNotNull(repository.getConference(conference.id))
+        assertEquals(alex.id, reloaded.positions.single { it.id == france.id }.slots.single().delegate?.id)
+    }
+
+    @Test
+    fun `position pending selection fills around confirmed occupants without changing them`() = runBlocking {
+        val database = DatabaseFactory.connect(Files.createTempDirectory("munassign-position-selection-confirmed").resolve("data.db"))
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val delegates = listOf(
+            delegate(rowNumber = 2, firstName = "Alex", lastName = "Kim", email = "alex@example.test"),
+            delegate(rowNumber = 3, firstName = "Blake", lastName = "Roy", email = "blake@example.test"),
+        )
+        assertTrue(
+            repository.applyMymunUpdateSnapshot(
+                conference.id.value,
+                snapshotWithAssignments(
+                    delegates = delegates,
+                    confirmedAssignments = listOf(
+                        assignment(rowNumber = 2, positionName = "France", slotIndex = 1, delegateName = "Alex Kim"),
+                    ),
+                ),
+            ).success,
+        )
+        val loaded = requireNotNull(repository.getConference(conference.id))
+        val expanded = repository.setCommitteeSlotsPerPosition(conference.id, loaded.committees.single().id, 2)
+        val france = expanded.positions.single { it.name == "France" }
+        val alex = expanded.delegates.single { it.name.firstName == "Alex" }
+        val blake = expanded.delegates.single { it.name.firstName == "Blake" }
+        transaction(database) {
+            PreferenceTable.insert {
+                it[id] = "blake-france-preference"
+                it[delegateId] = blake.id.value
+                it[positionId] = france.id.value
+                it[rank] = 1
+                it[rawPreferenceText] = "GA (France)"
+            }
+        }
+
+        val updated = repository.setPositionPendingAssignments(conference.id, france.id, listOf(blake.id))
+        val slots = updated.positions.single { it.id == france.id }.slots.associateBy { it.index }
+
+        assertEquals(alex.id, slots.getValue(1).delegate?.id)
+        assertEquals(AssignmentSource.Mymun, slots.getValue(1).source)
+        assertEquals(blake.id, slots.getValue(2).delegate?.id)
+        assertEquals(AssignmentSource.Application, slots.getValue(2).source)
     }
 
     @Test
@@ -2510,6 +2651,61 @@ class ConferenceRepositoryImplTest {
         val migratedQuestion = requireNotNull(migratedRepository.getConference(conference.id)).questions.single()
 
         assertEquals(StandardQuestionHandlingTypes.ExpectedTypedAnswer, migratedQuestion.handling)
+    }
+
+    @Test
+    fun `new versus question defaults are persisted and later organizer choices survive updates`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-versus-question-defaults").resolve("data.db")
+        val repository = ConferenceRepositoryImpl(DatabaseFactory.connect(dbPath))
+        val conference = repository.createConference("KAMUN")
+        val questions = listOf(
+            "Question: How much MUN experience do you have?",
+            "Question: Why did you choose this committee?",
+            "Question: Favorite snack?",
+        )
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithQuestions(questions)).success)
+        val loaded = requireNotNull(repository.getConference(conference.id))
+        assertTrue(loaded.questions.single { it.role == StandardQuestionRoles.ExperienceLevel }.visibleInVersusView)
+        assertTrue(
+            loaded.questions.single { it.handling == StandardQuestionHandlingTypes.CommitteeChoiceExplanation }
+                .visibleInVersusView,
+        )
+        assertFalse(loaded.questions.single { it.questionText.endsWith("snack?") }.visibleInVersusView)
+
+        val experience = loaded.questions.single { it.role == StandardQuestionRoles.ExperienceLevel }
+        repository.updateQuestionConfiguration(
+            conference.id,
+            experience.toConfiguration().copy(visibleInVersusView = false),
+        )
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithQuestions(questions)).success)
+
+        val reloaded = requireNotNull(repository.getConference(conference.id))
+        assertFalse(reloaded.questions.single { it.id == experience.id }.visibleInVersusView)
+    }
+
+    @Test
+    fun `versus visibility migration backfills existing semantic questions`() = runBlocking {
+        val dbPath = Files.createTempDirectory("munassign-versus-question-migration").resolve("data.db")
+        val database = DatabaseFactory.connect(dbPath)
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("KAMUN")
+        assertTrue(
+            repository.applyMymunUpdateSnapshot(
+                conference.id.value,
+                snapshotWithQuestions(listOf("Question: Why did you choose this committee?")),
+            ).success,
+        )
+        transaction(database) {
+            DelegateQuestionTable.update({ DelegateQuestionTable.conferenceId eq conference.id.value }) {
+                it[visibleInVersusView] = false
+            }
+            exec("DELETE FROM schema_migrations WHERE version = 16")
+        }
+
+        val migrated = ConferenceRepositoryImpl(DatabaseFactory.connect(dbPath))
+
+        assertTrue(requireNotNull(migrated.getConference(conference.id)).questions.single().visibleInVersusView)
     }
 
     @Test

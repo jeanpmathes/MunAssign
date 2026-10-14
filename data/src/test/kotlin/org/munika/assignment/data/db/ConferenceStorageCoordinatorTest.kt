@@ -120,7 +120,7 @@ class ConferenceStorageCoordinatorTest {
                     "CREATE UNIQUE INDEX ux_preference_completions_delegate_position " +
                         "ON preference_completions(delegate_id, position_id)",
                 )
-                statement.executeUpdate("DELETE FROM schema_migrations WHERE version = 15")
+                statement.executeUpdate("DELETE FROM schema_migrations WHERE version IN (15, 16)")
             }
         }
         val consumerRoot = root.resolve("consumer")

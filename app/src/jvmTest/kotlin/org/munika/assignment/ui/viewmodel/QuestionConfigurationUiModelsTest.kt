@@ -263,6 +263,19 @@ class QuestionConfigurationUiModelsTest {
         assertEquals(0, summary.noticeCount)
     }
 
+    @Test
+    fun `versus visibility round trips independently of role changes`() {
+        val conference = conference()
+        val editable = conference.toEditableQuestionConfigurationUiStates().single()
+            .copy(visibleInVersusView = true)
+            .withRole(null)
+
+        val configuration = editable.toConfiguration()
+
+        assertTrue(configuration.visibleInVersusView)
+        assertTrue(configuration.toEditableUiState().visibleInVersusView)
+    }
+
     private fun conference(): Conference {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         conference.questions += Question(

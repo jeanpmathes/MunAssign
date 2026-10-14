@@ -51,6 +51,7 @@ fun App(
                 onSetCommitteePaymentTier = viewModel::setCommitteePaymentTier,
                 onSetPositionMappedCommittee = viewModel::setPositionMappedCommittee,
                 onAssignDelegateToSlot = viewModel::assignDelegateToSlot,
+                onSetPositionPendingAssignments = viewModel::setPositionPendingAssignments,
                 onClearPendingSlot = viewModel::clearPendingSlot,
                 onOpenDelegateList = viewModel::openDelegateList,
                 onCloseDelegateList = viewModel::closeDelegateList,

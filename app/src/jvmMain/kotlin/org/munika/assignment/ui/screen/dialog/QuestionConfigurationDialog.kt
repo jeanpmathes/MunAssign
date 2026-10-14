@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Badge
+import androidx.compose.material.icons.filled.Balance
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.Visibility
@@ -263,6 +264,13 @@ private fun QuestionRow(
                 Spacer(modifier = Modifier.weight(1f))
                 TooltipIconButton("Edit label", Icons.AutoMirrored.Filled.Label, enabled = true, tint = actionIconTint, onClick = onOpenLabel)
                 VisibilityButton(state = state, tint = actionIconTint, onToggle = { onChange(state.copy(visibleInDelegateDetail = !state.visibleInDelegateDetail)) })
+                TooltipIconButton(
+                    tooltip = if (state.visibleInVersusView) "Shown in versus view" else "Hidden from versus view",
+                    icon = Icons.Filled.Balance,
+                    enabled = true,
+                    tint = if (state.visibleInVersusView) MaterialTheme.colorScheme.primary else actionIconTint,
+                    onClick = { onChange(state.copy(visibleInVersusView = !state.visibleInVersusView)) },
+                )
                 TooltipIconButton("Edit answer mappings", Icons.AutoMirrored.Filled.AltRoute, enabled = state.selectedRole != null, tint = actionIconTint, onClick = onOpenMappings)
                 ReorderButton("Move up", Icons.Filled.ArrowUpward, enabled = canMoveUp, tint = actionIconTint) { onMove(-1) }
                 ReorderButton("Move down", Icons.Filled.ArrowDownward, enabled = canMoveDown, tint = actionIconTint) { onMove(1) }

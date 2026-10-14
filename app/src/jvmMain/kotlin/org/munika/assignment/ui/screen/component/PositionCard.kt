@@ -31,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Balance
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Warning
@@ -54,6 +55,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.ui.screen.dialog.AddDelegateToSlotDialog
+import org.munika.assignment.ui.screen.dialog.PositionVersusDialog
 import org.munika.assignment.ui.viewmodel.InterestedDelegateUiState
 import org.munika.assignment.ui.viewmodel.PositionBoardUiState
 import org.munika.assignment.ui.viewmodel.SlotBoardUiState
@@ -65,6 +67,7 @@ fun PositionCard(
     assignmentEnabled: Boolean,
     onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
     onClearPendingSlot: (slotId: String) -> Unit,
+    onSetPositionPendingAssignments: (positionId: String, delegateIds: List<String>) -> Unit,
     onOpenDelegateDetail: (String) -> Unit,
     onSetPositionMappedCommittee: (positionId: String, mappedCommitteeId: String?) -> Unit,
     highlighted: Boolean,
@@ -75,6 +78,7 @@ fun PositionCard(
     var interestedDelegatesExpanded by remember(position.id) {
         mutableStateOf(position.shouldShowInterestedDelegates)
     }
+    var versusDialogOpen by remember(position.id) { mutableStateOf(false) }
     val highSchoolTone = position.highSchoolPositionTone()
 
     LaunchedEffect(position.shouldShowInterestedDelegates) {
@@ -86,7 +90,12 @@ fun PositionCard(
             menuSlot = null
             assignmentSlot = null
             pendingMoveRequest = null
+            versusDialogOpen = false
         }
+    }
+
+    LaunchedEffect(position.versus) {
+        if (position.versus == null) versusDialogOpen = false
     }
 
     Surface(
@@ -210,6 +219,9 @@ fun PositionCard(
                             onOpenDelegateDetail = { onOpenDelegateDetail(delegate.id) },
                         )
                     }
+                    position.versus?.let {
+                        PositionComparisonChip(onClick = { versusDialogOpen = true })
+                    }
                 }
             }
         }
@@ -251,6 +263,41 @@ fun PositionCard(
                 }
             },
         )
+    }
+
+    if (versusDialogOpen) {
+        position.versus?.let { versus ->
+            PositionVersusDialog(
+                versus = versus,
+                onDismiss = { versusDialogOpen = false },
+                onAssignSelected = { delegateIds ->
+                    onSetPositionPendingAssignments(position.id, delegateIds)
+                    versusDialogOpen = false
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun PositionComparisonChip(onClick: () -> Unit) {
+    BoardTooltip("Compare candidates for this position") {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f))
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(999.dp))
+                .clickable(onClick = onClick)
+                .padding(horizontal = 8.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Balance,
+                contentDescription = "Compare candidates",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+        }
     }
 }
 

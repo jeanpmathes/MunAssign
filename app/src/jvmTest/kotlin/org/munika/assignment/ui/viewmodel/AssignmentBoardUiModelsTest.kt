@@ -20,6 +20,8 @@ import org.munika.assignment.domain.model.DelegateId
 import org.munika.assignment.domain.model.DelegateProfile
 import org.munika.assignment.domain.model.HighSchoolerAnswerMapping
 import org.munika.assignment.domain.model.HighSchoolerStatus
+import org.munika.assignment.domain.model.MunExperienceAnswerMapping
+import org.munika.assignment.domain.model.MunExperienceLevel
 import org.munika.assignment.domain.model.PaymentStatus
 import org.munika.assignment.domain.model.PaymentTier
 import org.munika.assignment.domain.model.PersonName
@@ -44,6 +46,91 @@ import org.munika.assignment.domain.model.StandardQuestionRoles
 import org.munika.assignment.domain.model.TypedAnswerMappings
 
 class AssignmentBoardUiModelsTest {
+    @Test
+    fun `versus state compares only genuinely contested unassigned delegates`() {
+        val board = board()
+        val experience = Question(
+            id = QuestionId("experience"),
+            questionText = "MUN experience",
+            role = StandardQuestionRoles.ExperienceLevel,
+            handling = StandardQuestionHandlingTypes.ExpectedTypedAnswer,
+            mappings = TypedAnswerMappings(
+                munExperience = listOf(MunExperienceAnswerMapping("Several conferences", MunExperienceLevel.Advanced)),
+            ),
+            visibleInVersusView = true,
+        )
+        val explanation = Question(
+            id = QuestionId("explanation"),
+            questionText = "Why this committee?",
+            handling = StandardQuestionHandlingTypes.CommitteeChoiceExplanation,
+            displayOrder = 1,
+            visibleInVersusView = true,
+        )
+        board.conference.questions += listOf(experience, explanation)
+        board.available.answers += QuestionAnswer(
+            QuestionAnswerId("available-experience"),
+            board.available,
+            experience,
+            "Several conferences",
+        )
+        board.available.answers += QuestionAnswer(
+            QuestionAnswerId("available-explanation"),
+            board.available,
+            explanation,
+            "I care deeply about the topic.",
+        )
+
+        val versus = requireNotNull(
+            board.conference.toAssignmentBoardUiState(LocalDate.of(2026, 10, 9))
+                .committees.single().positions.single { it.id == "france" }.versus,
+        )
+
+        assertEquals("France", versus.positionName)
+        assertEquals("1f1eb-1f1f7", versus.flagAssetName)
+        assertEquals(1, versus.requiredSelectionCount)
+        assertEquals(listOf("available", "confirmed"), versus.candidates.map { it.id })
+        assertEquals("1st", versus.rows.single { it.id == "preference" }.valuesByDelegateId.getValue("available"))
+        assertEquals("19", versus.rows.single { it.id == "age" }.valuesByDelegateId.getValue("available"))
+        assertEquals("Advanced", versus.rows.single { it.id == "experience" }.valuesByDelegateId.getValue("available"))
+        assertEquals(
+            "I care deeply about the topic.",
+            versus.rows.single { it.id == "explanation" }.valuesByDelegateId.getValue("available"),
+        )
+        assertEquals("\u2014", versus.rows.single { it.id == "experience" }.valuesByDelegateId.getValue("confirmed"))
+    }
+
+    @Test
+    fun `versus state preselects pending occupants and excludes delegates assigned elsewhere`() {
+        val board = board()
+        board.france.slots.single().assign(board.available, AssignmentSource.Application, Instant.EPOCH)
+        board.germanySlot.assign(board.confirmedElsewhere, AssignmentSource.Application, Instant.EPOCH)
+        val challenger = delegate(
+            board.conference,
+            "challenger",
+            "New",
+            "Challenger",
+            PaymentStatus.Paid,
+            active = true,
+        )
+        board.conference.delegates += challenger
+        challenger.preferences += Preference(
+            id = PreferenceId("challenger-preference"),
+            delegate = challenger,
+            position = board.france,
+            rank = 2,
+            rawPreferenceText = "GA (France)",
+        )
+
+        val versus = requireNotNull(
+            board.conference.toAssignmentBoardUiState().committees.single()
+                .positions.single { it.id == "france" }.versus,
+        )
+
+        assertEquals(listOf("available", "challenger"), versus.candidates.map { it.id })
+        assertTrue(versus.candidates.first().pending)
+        assertFalse(versus.candidates.last().pending)
+    }
+
     @Test
     fun `interested delegates hide unpaid and inactive delegates and name confirmed assignments elsewhere`() {
         val board = board()

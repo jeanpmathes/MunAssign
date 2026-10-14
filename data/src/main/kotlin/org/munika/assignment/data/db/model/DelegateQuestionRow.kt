@@ -9,4 +9,5 @@ data class DelegateQuestionRow(
     val visibleInDelegateDetail: Boolean,
     val organizerLabel: String?,
     val displayOrder: Int,
+    val visibleInVersusView: Boolean = false,
 )

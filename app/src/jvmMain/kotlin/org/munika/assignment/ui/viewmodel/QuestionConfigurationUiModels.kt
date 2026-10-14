@@ -31,6 +31,7 @@ data class QuestionConfigurationSummaryUiState(
     val displayOrder: Int,
     val warningCount: Int,
     val noticeCount: Int,
+    val visibleInVersusView: Boolean = false,
 )
 
 data class EditableQuestionConfigurationUiState(
@@ -46,6 +47,7 @@ data class EditableQuestionConfigurationUiState(
     val highSchoolerMappings: List<EditableAnswerMappingUiState>,
     val languageLevelMappings: List<EditableAnswerMappingUiState>,
     val observedRawValues: List<String> = emptyList(),
+    val visibleInVersusView: Boolean = false,
 ) {
     val selectedRole: QuestionRole?
         get() = StandardQuestionRoles.fromId(roleId)
@@ -95,6 +97,7 @@ data class EditableQuestionConfigurationUiState(
                 highSchooler = highSchoolerMappings.toHighSchoolerMappings(),
                 languageLevel = languageLevelMappings.toLanguageLevelMappings(),
             ),
+            visibleInVersusView = visibleInVersusView,
         )
     }
 
@@ -145,6 +148,7 @@ fun Conference.toQuestionConfigurationListUiState(): QuestionConfigurationListUi
                 displayOrder = question.displayOrder,
                 warningCount = answers.sumOf { answer -> answer.openIssues.count { it.severity.name == "Warning" } },
                 noticeCount = answers.sumOf { answer -> answer.openIssues.count { it.severity.name == "Notice" } },
+                visibleInVersusView = question.visibleInVersusView,
             )
         },
     )
@@ -173,6 +177,7 @@ fun QuestionConfiguration.toEditableUiState(): EditableQuestionConfigurationUiSt
         munExperienceMappings = mappings.munExperience.map { EditableAnswerMappingUiState(it.rawValue, it.value.name) },
         highSchoolerMappings = mappings.highSchooler.map { EditableAnswerMappingUiState(it.rawValue, it.value.name) },
         languageLevelMappings = mappings.languageLevel.map { EditableAnswerMappingUiState(it.rawValue, it.value.name) },
+        visibleInVersusView = visibleInVersusView,
     )
 
 fun List<EditableQuestionConfigurationUiState>.normalizedForSave(): List<EditableQuestionConfigurationUiState> =

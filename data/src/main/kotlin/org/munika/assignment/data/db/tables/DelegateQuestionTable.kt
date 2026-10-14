@@ -13,6 +13,7 @@ object DelegateQuestionTable : Table("delegate_questions") {
     val visibleInDelegateDetail = bool("visible_in_delegate_detail")
     val organizerLabel = varchar("organizer_label", 255).nullable()
     val displayOrder = integer("display_order")
+    val visibleInVersusView = bool("visible_in_versus_view")
 
     override val primaryKey = PrimaryKey(id)
 

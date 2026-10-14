@@ -1141,6 +1141,23 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `set position pending assignments refreshes selected conference`() {
+        val original = Conference(ConferenceId("conference"), "Original", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val updated = Conference(ConferenceId("conference"), "Selected delegates", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val repository = FakeConferenceRepository(initialConference = original, positionSelectionConference = updated)
+        val viewModel = viewModelWith(repository)
+        waitUntil { viewModel.state.value.selectedConference === original }
+
+        viewModel.setPositionPendingAssignments("position", listOf("delegate-a", "delegate-b"))
+
+        waitUntil { viewModel.state.value.selectedConference === updated }
+        assertEquals("position", repository.positionSelectionPositionId)
+        assertEquals(listOf("delegate-a", "delegate-b"), repository.positionSelectionDelegateIds)
+        assertNull(viewModel.state.value.boardActionError)
+        viewModel.close()
+    }
+
+    @Test
     fun `successful workbook update opens missing preference completion and save closes it`() {
         val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val repository = FakeConferenceRepository(initialConference = conference)
@@ -1557,6 +1574,7 @@ private class FakeConferenceRepository(
     private val committeeModeResultDeferred: CompletableDeferred<Result<Conference>>? = null,
     private val committeeModeStarted: CompletableDeferred<Unit>? = null,
     private val positionMappedConference: Conference? = initialConference,
+    private val positionSelectionConference: Conference? = initialConference,
     private val delegationSchoolConference: Conference? = initialConference,
     private val reviewedDelegationsConference: Conference? = initialConference,
     private val reviewDelegationsThrows: Exception? = null,
@@ -1603,6 +1621,10 @@ private class FakeConferenceRepository(
     var positionMappedPositionId: String? = null
         private set
     var positionMappedCommitteeId: String? = null
+        private set
+    var positionSelectionPositionId: String? = null
+        private set
+    var positionSelectionDelegateIds: List<String> = emptyList()
         private set
     var delegationSchoolDelegationId: String? = null
         private set
@@ -1722,6 +1744,16 @@ private class FakeConferenceRepository(
         delegateId: DelegateId,
         moveExistingPending: Boolean,
     ): Conference = unsupported()
+
+    override suspend fun setPositionPendingAssignments(
+        conferenceId: ConferenceId,
+        positionId: PositionId,
+        selectedDelegateIds: List<DelegateId>,
+    ): Conference {
+        positionSelectionPositionId = positionId.value
+        positionSelectionDelegateIds = selectedDelegateIds.map { it.value }
+        return requireNotNull(positionSelectionConference)
+    }
 
     override suspend fun clearPendingSlot(conferenceId: ConferenceId, slotId: SlotId): Conference = unsupported()
 

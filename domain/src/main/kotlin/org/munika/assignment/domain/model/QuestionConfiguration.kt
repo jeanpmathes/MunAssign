@@ -16,6 +16,7 @@ data class QuestionConfiguration(
     val displayOrder: Int,
     val rules: List<AnswerRule>,
     val mappings: TypedAnswerMappings,
+    val visibleInVersusView: Boolean = false,
 ) {
     init {
         require(questionText.isNotBlank()) { "Question text must not be blank." }
@@ -79,4 +80,5 @@ fun Question.toConfiguration(): QuestionConfiguration =
         displayOrder = displayOrder,
         rules = rules,
         mappings = mappings,
+        visibleInVersusView = visibleInVersusView,
     )

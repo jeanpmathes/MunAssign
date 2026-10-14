@@ -255,6 +255,21 @@ object DatabaseFactory {
                 )
             }
         },
+        SchemaMigration(version = 16, name = "add_question_versus_visibility") {
+            addColumnIfMissing(
+                "delegate_questions",
+                "visible_in_versus_view",
+                "BOOLEAN NOT NULL DEFAULT FALSE",
+            )
+            TransactionManager.current().exec(
+                """
+                UPDATE delegate_questions
+                SET visible_in_versus_view = TRUE
+                WHERE role_id = '${StandardQuestionRoles.ExperienceLevel.id}'
+                   OR handling_type_id = '${StandardQuestionHandlingTypes.CommitteeChoiceExplanation.id}'
+                """.trimIndent(),
+            )
+        },
     )
 
     private fun preferenceCompletionSchemaNeedsUpgrade(): Boolean =

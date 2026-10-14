@@ -33,6 +33,7 @@ class MunAssignFileMetadataTest {
         DriverManager.getConnection("jdbc:sqlite:${path.toAbsolutePath()}").use { connection ->
             connection.createStatement().use { statement ->
                 statement.executeUpdate("DROP TABLE munassign_file_metadata")
+                statement.executeUpdate("DELETE FROM schema_migrations WHERE version = 16")
                 statement.executeUpdate("DELETE FROM schema_migrations WHERE version = 15")
                 statement.executeUpdate("DELETE FROM schema_migrations WHERE version = 14")
                 statement.executeUpdate("DELETE FROM schema_migrations WHERE version = 13")

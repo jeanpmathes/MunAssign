@@ -261,6 +261,7 @@ object ConferenceGraphMapper {
                         .map { LanguageLevelAnswerMapping(it.rawValue, LanguageLevel.valueOf(it.mappedValue)) }
                         .ifEmpty { TypedAnswerMappings.defaults().languageLevel },
                 ),
+                visibleInVersusView = row.visibleInVersusView,
             )
             conference.questions += question
             row.id to question

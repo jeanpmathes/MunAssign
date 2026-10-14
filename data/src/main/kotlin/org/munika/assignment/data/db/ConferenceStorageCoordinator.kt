@@ -317,6 +317,14 @@ class ConferenceStorageCoordinator(
         assignDelegateToSlot(conferenceId, slotId, delegateId, moveExistingPending)
     }
 
+    override suspend fun setPositionPendingAssignments(
+        conferenceId: ConferenceId,
+        positionId: PositionId,
+        selectedDelegateIds: List<DelegateId>,
+    ): Conference = routed(conferenceId) {
+        setPositionPendingAssignments(conferenceId, positionId, selectedDelegateIds)
+    }
+
     override suspend fun clearPendingSlot(conferenceId: ConferenceId, slotId: SlotId): Conference =
         routed(conferenceId) { clearPendingSlot(conferenceId, slotId) }
 
