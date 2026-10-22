@@ -3,6 +3,7 @@ package org.munika.assignment.ui.screen
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import org.munika.assignment.domain.model.AssignmentSource
 import org.munika.assignment.domain.model.Committee
 import org.munika.assignment.domain.model.CommitteeId
 import org.munika.assignment.domain.model.CommitteeMode
@@ -88,6 +89,100 @@ class ConferenceStatsTest {
 
         assertEquals(2, capacity.highSchoolCount)
         assertEquals(0, capacity.universityCount)
+    }
+
+    @Test
+    fun `acceptance capacity charges mismatched occupants to their positions for both assignment sources`() {
+        for (source in AssignmentSource.entries) {
+            for (isHighSchool in listOf(true, false)) {
+                val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+                val highSchool = committee(conference, "hs", isHighSchool = true, positionCount = 2)
+                val university = committee(conference, "uni", isHighSchool = false, positionCount = 3)
+                conference.committees += listOf(highSchool, university)
+                val occupant = delegate(conference, "occupant", isHighSchool, "Accepted", PaymentStatus.Paid)
+                conference.delegates += occupant
+                val destination = if (isHighSchool) university else highSchool
+                destination.slots.first().assign(occupant, source, Instant.EPOCH)
+
+                val capacity = conference.toAcceptanceCapacityUiState()
+
+                assertEquals(if (isHighSchool) 2 else 1, capacity.highSchoolCount, "$source, HS=$isHighSchool")
+                assertEquals(if (isHighSchool) 2 else 3, capacity.universityCount, "$source, HS=$isHighSchool")
+            }
+        }
+    }
+
+    @Test
+    fun `acceptance capacity charges mapped occupants to the target bucket`() {
+        for (source in AssignmentSource.entries) {
+            for (targetIsHighSchool in listOf(true, false)) {
+                val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+                val target = committee(conference, "target", targetIsHighSchool, positionCount = 2)
+                val ipc = committee(conference, "ipc", isHighSchool = false, positionCount = 1, mode = CommitteeMode.Mapped)
+                conference.committees += listOf(target, ipc)
+                ipc.positions.single().setMappedCommittee(target)
+                val occupant = delegate(conference, "occupant", !targetIsHighSchool, "Assigned", PaymentStatus.Paid)
+                conference.delegates += occupant
+                ipc.slots.single().assign(occupant, source, Instant.EPOCH)
+
+                val capacity = conference.toAcceptanceCapacityUiState()
+
+                assertEquals(if (targetIsHighSchool) 2 else 0, capacity.highSchoolCount)
+                assertEquals(if (targetIsHighSchool) 0 else 2, capacity.universityCount)
+            }
+        }
+    }
+
+    @Test
+    fun `acceptance capacity excludes occupants of incompletely mapped positions from both buckets`() {
+        for (source in AssignmentSource.entries) {
+            for (isHighSchool in listOf(true, false)) {
+                val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+                val highSchool = committee(conference, "hs", isHighSchool = true, positionCount = 1)
+                val university = committee(conference, "uni", isHighSchool = false, positionCount = 1)
+                val ipc = committee(conference, "ipc", isHighSchool = false, positionCount = 1, mode = CommitteeMode.Mapped)
+                conference.committees += listOf(highSchool, university, ipc)
+                val occupant = delegate(conference, "occupant", isHighSchool, "Accepted", PaymentStatus.Paid)
+                conference.delegates += occupant
+                ipc.slots.single().assign(occupant, source, Instant.EPOCH)
+
+                assertEquals(AcceptanceCapacityUiState(1, 1), conference.toAcceptanceCapacityUiState())
+            }
+        }
+    }
+
+    @Test
+    fun `unassigned acceptance commitments use personal school level regardless of payment`() {
+        for (paymentStatus in PaymentStatus.entries) {
+            for (isHighSchool in listOf(true, false)) {
+                val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+                conference.committees += listOf(
+                    committee(conference, "hs", isHighSchool = true, positionCount = 2),
+                    committee(conference, "uni", isHighSchool = false, positionCount = 3),
+                )
+                conference.delegates += delegate(conference, "unassigned", isHighSchool, "Accepted", paymentStatus)
+
+                val capacity = conference.toAcceptanceCapacityUiState()
+
+                assertEquals(if (isHighSchool) 1 else 2, capacity.highSchoolCount)
+                assertEquals(if (isHighSchool) 3 else 2, capacity.universityCount)
+            }
+        }
+    }
+
+    @Test
+    fun `acceptance capacity excludes inactive and non-actionable occupants`() {
+        val conference = Conference(ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val highSchool = committee(conference, "hs", isHighSchool = true, positionCount = 1)
+        val university = committee(conference, "uni", isHighSchool = false, positionCount = 1)
+        conference.committees += listOf(highSchool, university)
+        val inactive = delegate(conference, "inactive", true, "Accepted", PaymentStatus.Paid, active = false)
+        val submitted = delegate(conference, "submitted", false, "Submitted", PaymentStatus.Paid)
+        conference.delegates += listOf(inactive, submitted)
+        university.slots.single().assign(inactive, AssignmentSource.Mymun, Instant.EPOCH)
+        highSchool.slots.single().assign(submitted, AssignmentSource.Mymun, Instant.EPOCH)
+
+        assertEquals(AcceptanceCapacityUiState(1, 1), conference.toAcceptanceCapacityUiState())
     }
 
     private fun committee(

@@ -1866,6 +1866,8 @@ class ConferenceRepositoryImpl(
                 }
         }
 
+        clearUnpaidPendingAssignments(conferenceId)
+
         val pruned = pruneRemovedRows(
             conferenceId = conferenceId,
             retainedCommitteeIds = retainedCommitteeIds,
@@ -2316,6 +2318,23 @@ class ConferenceRepositoryImpl(
             it[DelegateTable.isHeadDelegate] = delegate.isHeadDelegate
             it[DelegateTable.createdAtFromMymunEpochMillis] = delegate.createdAt?.toEpochMilliUtc()
             it[DelegateTable.submittedAtEpochMillis] = delegate.submittedAt?.toEpochMilliUtc()
+        }
+    }
+
+    private fun clearUnpaidPendingAssignments(conferenceId: String) {
+        val unpaidDelegateIds = DelegateTable.selectAll().where {
+            (DelegateTable.conferenceId eq conferenceId) and
+                (DelegateTable.paymentStatus eq PaymentStatus.Unpaid.name)
+        }.map { it[DelegateTable.id] }
+        if (unpaidDelegateIds.isEmpty()) return
+
+        SlotTable.update({
+            (SlotTable.assignedDelegateId inList unpaidDelegateIds) and
+                (SlotTable.assignmentSource eq AssignmentSource.Application.name)
+        }) {
+            it[assignedDelegateId] = null
+            it[assignmentSource] = null
+            it[updatedAtEpochMillis] = Instant.now().toEpochMilli()
         }
     }
 

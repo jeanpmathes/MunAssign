@@ -918,8 +918,16 @@ internal fun Conference.toAcceptanceCapacityUiState(): AcceptanceCapacityUiState
     val acceptedActiveDelegates = delegates.filter {
         it.active && it.hasActionableApplicationStatus()
     }
-    val acceptedHighSchoolDelegates = acceptedActiveDelegates.count { it.isHighSchooler }
-    val acceptedUniversityDelegates = acceptedActiveDelegates.count { !it.isHighSchooler }
+    val acceptedDelegatesByMode = acceptedActiveDelegates.groupingBy { delegate ->
+        val slot = delegate.currentSlot
+        when {
+            slot != null -> slot.position.effectiveCommitteeMode
+            delegate.isHighSchooler -> CommitteeMode.HighSchool
+            else -> CommitteeMode.University
+        }
+    }.eachCount()
+    val acceptedHighSchoolDelegates = acceptedDelegatesByMode[CommitteeMode.HighSchool] ?: 0
+    val acceptedUniversityDelegates = acceptedDelegatesByMode[CommitteeMode.University] ?: 0
 
     return AcceptanceCapacityUiState(
         highSchoolCount = highSchoolSlots - acceptedHighSchoolDelegates - remainingHighSchoolReservationCount,

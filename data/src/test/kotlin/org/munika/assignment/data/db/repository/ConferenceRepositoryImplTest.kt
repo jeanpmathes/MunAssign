@@ -2,6 +2,7 @@ package org.munika.assignment.data.db.repository
 
 import java.nio.file.Files
 import java.sql.DriverManager
+import java.time.Instant
 import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -1802,6 +1803,115 @@ class ConferenceRepositoryImplTest {
         assertTrue(result.success, result.issues.joinToString("; ") { it.message })
         assertEquals(1, result.summary.warningCount)
         assertTrue(result.issues.any { it.code == "first_name_only_assignment" })
+    }
+
+    @Test
+    fun `MyMUN update clears unpaid pending assignments without restoring them when paid again`() = runBlocking {
+        val database = DatabaseFactory.connect(Files.createTempDirectory("munassign-unpaid-pending").resolve("data.db"))
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val paidSnapshot = snapshotWithAssignments(confirmedAssignments = emptyList())
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, paidSnapshot).success)
+        val loaded = requireNotNull(repository.getConference(conference.id))
+        val alex = loaded.delegates.single { it.name.firstName == "Alex" }
+        val slot = loaded.openSlots.first()
+        repository.assignDelegateToSlot(conference.id, slot.id, alex.id, moveExistingPending = false)
+        val unpaidSnapshot = paidSnapshot.copy(
+            delegates = paidSnapshot.delegates.map { it.copy(feePaid = false) },
+        )
+
+        val result = repository.applyMymunUpdateSnapshot(conference.id.value, unpaidSnapshot)
+        val updated = requireNotNull(repository.getConference(conference.id))
+        val clearedSlot = updated.slots.single { it.id == slot.id }
+
+        assertTrue(result.success, result.issues.joinToString("; ") { it.message })
+        assertNull(updated.delegates.single { it.id == alex.id }.currentSlot)
+        assertNull(clearedSlot.delegate)
+        assertNull(clearedSlot.source)
+        assertTrue(clearedSlot.updatedAt > slot.updatedAt)
+        assertEquals(0, result.summary.pendingAssignmentsPreserved)
+        assertEquals(1, result.summary.pendingAssignmentsCleared)
+        transaction(database) {
+            val row = SlotTable.selectAll().where { SlotTable.id eq slot.id.value }.single()
+            assertNull(row[SlotTable.assignedDelegateId])
+            assertNull(row[SlotTable.assignmentSource])
+        }
+
+        val repeated = repository.applyMymunUpdateSnapshot(conference.id.value, unpaidSnapshot)
+        assertTrue(repeated.success)
+        assertEquals(0, repeated.summary.pendingAssignmentsCleared)
+        assertNull(requireNotNull(repository.getConference(conference.id)).delegates.single { it.id == alex.id }.currentSlot)
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, paidSnapshot).success)
+        assertNull(requireNotNull(repository.getConference(conference.id)).delegates.single { it.id == alex.id }.currentSlot)
+    }
+
+    @Test
+    fun `MyMUN update repairs an already unpaid pending assignment`() = runBlocking {
+        val database = DatabaseFactory.connect(Files.createTempDirectory("munassign-existing-unpaid-pending").resolve("data.db"))
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val snapshot = snapshotWithAssignments(
+            delegates = listOf(delegate(feePaid = false)),
+            confirmedAssignments = emptyList(),
+        )
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshot).success)
+        val loaded = requireNotNull(repository.getConference(conference.id))
+        val slot = loaded.openSlots.first()
+        // Reproduce a pending assignment retained by an earlier version after payment changed.
+        transaction(database) {
+            SlotTable.update({ SlotTable.id eq slot.id.value }) {
+                it[assignedDelegateId] = loaded.delegates.single().id.value
+                it[assignmentSource] = AssignmentSource.Application.name
+                it[updatedAtEpochMillis] = 2L
+            }
+        }
+
+        val result = repository.applyMymunUpdateSnapshot(conference.id.value, snapshot)
+        val repaired = requireNotNull(repository.getConference(conference.id)).slots.single { it.id == slot.id }
+
+        assertTrue(result.success)
+        assertNull(repaired.delegate)
+        assertNull(repaired.source)
+        assertTrue(repaired.updatedAt > Instant.ofEpochMilli(2L))
+        assertEquals(1, result.summary.pendingAssignmentsCleared)
+        assertEquals(0, result.summary.pendingAssignmentsPreserved)
+    }
+
+    @Test
+    fun `MyMUN update retains unpaid confirmed assignments including newly confirmed pending slots`() = runBlocking {
+        for (initiallyConfirmed in listOf(false, true)) {
+            val database = DatabaseFactory.connect(Files.createTempDirectory("munassign-unpaid-confirmed").resolve("data.db"))
+            val repository = ConferenceRepositoryImpl(database)
+            val conference = repository.createConference("TestConf")
+            val confirmed = listOf(assignment(rowNumber = 2, positionName = "France", slotIndex = 1))
+            val paidSnapshot = snapshotWithAssignments(
+                confirmedAssignments = if (initiallyConfirmed) confirmed else emptyList(),
+            )
+            assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, paidSnapshot).success)
+            val loaded = requireNotNull(repository.getConference(conference.id))
+            val alex = loaded.delegates.single()
+            val slot = loaded.positions.single { it.name == "France" }.slots.single()
+            if (!initiallyConfirmed) {
+                repository.assignDelegateToSlot(conference.id, slot.id, alex.id, moveExistingPending = false)
+            }
+            val unpaidSnapshot = paidSnapshot.copy(
+                delegates = paidSnapshot.delegates.map { it.copy(feePaid = false) },
+                confirmedAssignmentCandidates = confirmed,
+            )
+
+            val result = repository.applyMymunUpdateSnapshot(conference.id.value, unpaidSnapshot)
+            val updated = requireNotNull(repository.getConference(conference.id))
+            val confirmedSlot = updated.slots.single { it.id == slot.id }
+
+            assertTrue(result.success, result.issues.joinToString("; ") { it.message })
+            assertEquals(PaymentStatus.Unpaid, updated.delegates.single().paymentStatus)
+            assertEquals(alex.id, confirmedSlot.delegate?.id)
+            assertEquals(AssignmentSource.Mymun, confirmedSlot.source)
+            assertEquals(0, result.summary.pendingAssignmentsPreserved)
+            assertEquals(if (initiallyConfirmed) 0 else 1, result.summary.pendingAssignmentsCleared)
+            assertTrue(result.issues.none { it.code == "pending_assignment_displaced" })
+        }
     }
 
     @Test

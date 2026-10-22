@@ -112,6 +112,65 @@ class ConferenceStatusReportTest {
         assertEquals(0, capacity.freeSlots)
     }
 
+    @Test
+    fun `report charges mismatched occupants to their positions for both assignment sources`() {
+        for (source in AssignmentSource.entries) {
+            for (isHighSchool in listOf(true, false)) {
+                val conference = conference()
+                val highSchool = committee(conference, "hs", "High School", CommitteeMode.HighSchool, 2)
+                val university = committee(conference, "uni", "University", CommitteeMode.University, 3)
+                conference.committees += listOf(highSchool, university)
+                val occupant = delegate(conference, "occupant", paid = true, status = "Accepted", highSchool = isHighSchool)
+                val destination = if (isHighSchool) university else highSchool
+                destination.slots.first().assign(occupant, source, Now)
+
+                val report = ConferenceStatusReport.from(conference, Later)
+                val hs = report.capacities.single { it.bucket == CapacityBucket.HighSchool }
+                val uni = report.capacities.single { it.bucket == CapacityBucket.University }
+
+                assertEquals(if (isHighSchool) 0 else 1, hs.assigned)
+                assertEquals(if (isHighSchool) 1 else 0, uni.assigned)
+                assertEquals(if (isHighSchool) 2 else 1, hs.freeSlots)
+                assertEquals(if (isHighSchool) 2 else 3, uni.freeSlots)
+                assertEquals(1, report.capacities.sumOf { it.committedSlots })
+            }
+        }
+    }
+
+    @Test
+    fun `report charges mapped occupants only when their target mode is known`() {
+        for (source in AssignmentSource.entries) {
+            for (targetMode in listOf(CommitteeMode.HighSchool, CommitteeMode.University, null)) {
+                for (isHighSchool in listOf(true, false)) {
+                    val conference = conference()
+                    val highSchool = committee(conference, "hs", "High School", CommitteeMode.HighSchool, 1)
+                    val university = committee(conference, "uni", "University", CommitteeMode.University, 1)
+                    val ipc = committee(conference, "ipc", "IPC", CommitteeMode.Mapped, 1)
+                    conference.committees += listOf(highSchool, university, ipc)
+                    ipc.positions.single().setMappedCommittee(
+                        when (targetMode) {
+                            CommitteeMode.HighSchool -> highSchool
+                            CommitteeMode.University -> university
+                            else -> null
+                        },
+                    )
+                    val occupant = delegate(conference, "occupant", paid = true, status = "Assigned", highSchool = isHighSchool)
+                    ipc.slots.single().assign(occupant, source, Now)
+
+                    val report = ConferenceStatusReport.from(conference, Later)
+                    val hs = report.capacities.single { it.bucket == CapacityBucket.HighSchool }
+                    val uni = report.capacities.single { it.bucket == CapacityBucket.University }
+
+                    assertEquals(if (targetMode == CommitteeMode.HighSchool) 1 else 0, hs.assigned)
+                    assertEquals(if (targetMode == CommitteeMode.University) 1 else 0, uni.assigned)
+                    assertEquals(1, hs.freeSlots)
+                    assertEquals(1, uni.freeSlots)
+                    assertEquals(if (targetMode == null) 1 else 0, report.incompleteMappedSlots)
+                }
+            }
+        }
+    }
+
     private fun conference(): Conference =
         Conference(
             id = ConferenceId("conference"),

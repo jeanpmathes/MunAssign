@@ -78,6 +78,8 @@ Committee mode determines the high-school/university bucket used by its position
 
 Mapped targets must be committees in the same conference whose mode is not `Mapped`. This prevents chained or circular IPC correspondences. Multiple positions in one mapped committee may share the same target committee. Unmapped positions in mapped committees are treated as incomplete for board state and do not contribute to high-school or university accept capacity until a target is selected. A mapped committee cannot switch back to high-school or university mode until all of its position correspondences are cleared.
 
+Accept capacity counts active delegates with accepted, assigned, or checked-in application status regardless of payment. Pending and confirmed occupants consume their position's effective committee bucket, even when their personal school level differs. Occupants of incompletely mapped positions consume neither bucket. Unassigned delegates use their high-schooler answer. Remaining reservations are deducted separately, and reservation consumption continues to use personal school level. Capacity may be negative.
+
 A delegate assigned to a position with the opposite effective school level derives a warning. A configured high-schooler answer mapped to `Yes` must be assigned to a high-school position; every other status must be assigned to a university position. The warning applies regardless of assignment source, payment, or active state. It uses one stable delegate-level issue key, so an acknowledgement follows the delegate across mismatch directions and positions. The issue is absent while the delegate is unassigned, correctly matched, or assigned to an incompletely mapped position; a retained acknowledgement applies again if a later assignment recreates a mismatch.
 
 During an update:
@@ -85,7 +87,7 @@ During an update:
 - Numbered `Preference N` columns define the expected ranks for that workbook. Empty cells are non-blocking and are returned for post-update completion across every delegate row, regardless of status.
 - A saved organizer correction may supply a missing position, acknowledge an intentional empty rank, or reorder imported values. It is tied to the delegate's detected rank set and complete MyMUN baseline arrangement. An identical update reapplies it; changed ranks or non-empty values retire it and use the new MyMUN sequence. Unresolved blanks and cancelled dialogs persist no acknowledgement.
 - Non-empty `Countries.Delegates` values become confirmed MyMUN assignments.
-- Existing pending assignments are preserved where possible when MyMUN does not contradict them.
+- Existing pending assignments are preserved where possible when MyMUN does not contradict them and the delegate remains paid. After confirmed-assignment reconciliation, any remaining pending assignments for unpaid delegates are cleared, including both the delegate reference and assignment source. Explicit MyMUN confirmations remain authoritative regardless of payment.
 - If `Countries.Delegates` implies more assigned delegates for a position than the committee slot count allows, the update must abort before writing and name the affected committee/counts.
 - If a confirmed delegate cannot be matched, the update must abort before writing.
 - A staged filename signature is persisted only when the update completes without blocking errors.
@@ -167,7 +169,7 @@ MyMUN updates preserve where the referenced objects still exist:
 
 - delegate comments;
 - delegate active/inactive state;
-- pending app assignments not contradicted by confirmed MyMUN assignments;
+- pending app assignments for paid delegates not contradicted by confirmed MyMUN assignments;
 - committee aliases;
 - committee mode and position correspondences;
 - committee payment tiers;
@@ -181,6 +183,7 @@ MyMUN updates preserve where the referenced objects still exist:
 
 MyMUN updates remove delegates, preferences, assignments, and answers that no longer exist in the workbook source.
 When an incoming delegate becomes unpaid, the repository clears the organizer-managed delegate tier. If that delegate later becomes paid again, the tier remains unassigned until an organizer classifies it.
+Cleared pending assignments are also not restored when a delegate becomes paid again. Existing unpaid pending assignments are cleared on the next successful update; startup and import/export do not perform this cleanup.
 Automatic reservation links are rebuilt after updates. If a reservation's linked delegation no longer exists, the reservation is preserved but its delegation link is cleared.
 
 ## Reservations
