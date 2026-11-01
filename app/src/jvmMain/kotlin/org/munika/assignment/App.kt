@@ -52,6 +52,7 @@ fun App(
                 onSetPositionMappedCommittee = viewModel::setPositionMappedCommittee,
                 onAssignDelegateToSlot = viewModel::assignDelegateToSlot,
                 onSetPositionPendingAssignments = viewModel::setPositionPendingAssignments,
+                onSwapPendingAssignments = viewModel::swapPendingAssignments,
                 onClearPendingSlot = viewModel::clearPendingSlot,
                 onOpenDelegateList = viewModel::openDelegateList,
                 onCloseDelegateList = viewModel::closeDelegateList,

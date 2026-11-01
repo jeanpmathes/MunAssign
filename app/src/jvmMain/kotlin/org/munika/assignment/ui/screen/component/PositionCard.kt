@@ -69,6 +69,7 @@ fun PositionCard(
     onClearPendingSlot: (slotId: String) -> Unit,
     onSetPositionPendingAssignments: (positionId: String, delegateIds: List<String>) -> Unit,
     onOpenDelegateDetail: (String) -> Unit,
+    onOpenSwap: (String) -> Unit,
     onSetPositionMappedCommittee: (positionId: String, mappedCommitteeId: String?) -> Unit,
     highlighted: Boolean,
 ) {
@@ -166,6 +167,7 @@ fun PositionCard(
                             onOpenAssignmentDialog = { assignmentSlot = slot },
                             onClearPendingAssignment = { onClearPendingSlot(slot.id) },
                             onOpenDelegateDetail = onOpenDelegateDetail,
+                    onOpenSwap = onOpenSwap,
                         )
                         SlotContextMenu(
                             expanded = menuSlot?.id == slot.id,

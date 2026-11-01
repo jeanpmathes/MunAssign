@@ -317,6 +317,22 @@ class ConferenceStorageCoordinator(
         assignDelegateToSlot(conferenceId, slotId, delegateId, moveExistingPending)
     }
 
+    override suspend fun swapPendingAssignments(
+        conferenceId: ConferenceId,
+        sourceSlotId: SlotId,
+        targetSlotId: SlotId,
+        expectedSourceDelegateId: DelegateId,
+        expectedTargetDelegateId: DelegateId,
+    ): Conference = routed(conferenceId) {
+        swapPendingAssignments(
+            conferenceId,
+            sourceSlotId,
+            targetSlotId,
+            expectedSourceDelegateId,
+            expectedTargetDelegateId,
+        )
+    }
+
     override suspend fun setPositionPendingAssignments(
         conferenceId: ConferenceId,
         positionId: PositionId,

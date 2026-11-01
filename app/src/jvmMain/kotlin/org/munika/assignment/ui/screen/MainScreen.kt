@@ -135,6 +135,9 @@ import org.munika.assignment.ui.viewmodel.toDelegateListUiState
 import org.munika.assignment.ui.viewmodel.toDelegateDetailUiState
 import org.munika.assignment.ui.viewmodel.toDelegationOverviewUiState
 import org.munika.assignment.ui.viewmodel.toAssignmentBoardUiState
+import org.munika.assignment.ui.viewmodel.PendingAssignmentSwapUiState
+import org.munika.assignment.domain.model.pendingAssignmentSwaps
+import org.munika.assignment.ui.screen.component.PendingAssignmentSwapDialog
 import org.munika.assignment.ui.viewmodel.toReservationManagerUiState
 
 enum class WorkbookDropFeedback {
@@ -164,6 +167,7 @@ fun MainScreen(
     onSetPositionMappedCommittee: (String, String?) -> Unit,
     onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
     onSetPositionPendingAssignments: (positionId: String, delegateIds: List<String>) -> Unit,
+    onSwapPendingAssignments: (PendingAssignmentSwapUiState) -> Unit,
     onClearPendingSlot: (slotId: String) -> Unit,
     onOpenDelegateList: () -> Unit,
     onCloseDelegateList: () -> Unit,
@@ -339,6 +343,7 @@ fun MainScreen(
                             onSetPositionMappedCommittee = onSetPositionMappedCommittee,
                             onAssignDelegateToSlot = onAssignDelegateToSlot,
                             onSetPositionPendingAssignments = onSetPositionPendingAssignments,
+                            onSwapPendingAssignments = onSwapPendingAssignments,
                             onClearPendingSlot = onClearPendingSlot,
                             onCloseDelegateList = onCloseDelegateList,
                             onCloseDelegationOverview = onCloseDelegationOverview,
@@ -1213,6 +1218,7 @@ private fun ConferenceWorkspace(
     onSetPositionMappedCommittee: (String, String?) -> Unit,
     onAssignDelegateToSlot: (slotId: String, delegateId: String, moveExistingPending: Boolean) -> Unit,
     onSetPositionPendingAssignments: (positionId: String, delegateIds: List<String>) -> Unit,
+    onSwapPendingAssignments: (PendingAssignmentSwapUiState) -> Unit,
     onClearPendingSlot: (slotId: String) -> Unit,
     onCloseDelegateList: () -> Unit,
     onCloseDelegationOverview: () -> Unit,
@@ -1241,10 +1247,26 @@ private fun ConferenceWorkspace(
     onUnresolveAnswerIssue: (resolutionId: String) -> Unit,
     onClearBoardActionError: () -> Unit,
 ) {
+    val swaps = remember(conference) { conference.pendingAssignmentSwaps() }
+    var swapDelegateId by remember(conference) { mutableStateOf<String?>(null) }
+    val swapDetail = remember(conference, swapDelegateId) {
+        conference.toDelegateDetailUiState(swapDelegateId, swaps = swaps)
+    }
+    if (swapDetail != null && swapDetail.swapOpportunities.isNotEmpty()) {
+        PendingAssignmentSwapDialog(
+            opportunities = swapDetail.swapOpportunities,
+            loading = loading,
+            onDismiss = { swapDelegateId = null },
+            onConfirm = { swap ->
+                swapDelegateId = null
+                onSwapPendingAssignments(swap)
+            },
+        )
+    }
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             AssignmentBoard(
-                board = remember(conference) { conference.toAssignmentBoardUiState() },
+                board = remember(conference) { conference.toAssignmentBoardUiState(swaps = swaps) },
                 loading = loading,
                 actionError = boardActionError,
                 scrollRequest = boardScrollRequest,
@@ -1256,6 +1278,7 @@ private fun ConferenceWorkspace(
                 onSetPositionPendingAssignments = onSetPositionPendingAssignments,
                 onClearPendingSlot = onClearPendingSlot,
                 onOpenDelegateDetail = onOpenDelegateDetail,
+                onOpenSwap = { swapDelegateId = it },
                 onOpenReservationManager = { onOpenReservationManager(null) },
                 onClearActionError = onClearBoardActionError,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
@@ -1295,10 +1318,11 @@ private fun ConferenceWorkspace(
                     onClearFilter = onOpenNoticeManager,
                 )
             }
-            conference.toDelegateDetailUiState(selectedDelegateId)?.let { detail ->
+            conference.toDelegateDetailUiState(selectedDelegateId, swaps = swaps)?.let { detail ->
                 DelegateSidePanel(
                     detail = detail,
                     loading = loading,
+                    onOpenSwap = { swapDelegateId = detail.id },
                     onClose = onCloseDelegateDetail,
                     onNavigateToPosition = onNavigateToBoardPosition,
                     onDeactivate = onDeactivateDelegate,
