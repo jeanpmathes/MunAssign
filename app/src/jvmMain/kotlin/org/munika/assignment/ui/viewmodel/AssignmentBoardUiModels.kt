@@ -445,6 +445,7 @@ private fun Delegate.warningCount(): Int =
     answers.sumOf { answer -> answer.openIssues.count { it.severity == AnswerIssueSeverity.Warning } } +
         openProfileIssues().count { it.severity == AnswerIssueSeverity.Warning } +
         openSchoolAssignmentIssues().count { it.severity == AnswerIssueSeverity.Warning } +
+        openUnpaidAssignmentIssues().size +
         openPaymentTierIssues().count { it.severity == AnswerIssueSeverity.Warning }
 
 private fun Delegate.noticeCount(): Int =

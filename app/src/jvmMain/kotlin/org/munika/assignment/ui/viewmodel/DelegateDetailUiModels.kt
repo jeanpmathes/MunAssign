@@ -36,6 +36,8 @@ data class DelegateDetailUiState(
     val experience: DelegateExperienceUiState?,
     val language: DelegateLanguageUiState?,
     val assignment: DelegateAssignmentUiState?,
+    val unpaidAssignmentIssues: List<DelegateAnswerIssueUiState>,
+    val resolvedUnpaidAssignmentIssues: List<DelegateResolvedIssueUiState>,
     val canDeactivate: Boolean,
     val preferences: List<DelegatePreferenceUiState>,
     val assignmentOptions: DelegateAssignmentOptionsUiState?,
@@ -271,6 +273,18 @@ fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiSta
         id = delegate.id.value,
         name = delegate.displayName,
         active = delegate.active,
+        unpaidAssignmentIssues = delegate.openUnpaidAssignmentIssues().map { issue ->
+            DelegateAnswerIssueUiState(
+                questionId = null,
+                issueKey = issue.key,
+                message = issue.message,
+                severity = issue.severity.name,
+                isWarning = true,
+            )
+        },
+        resolvedUnpaidAssignmentIssues = delegate.resolvedUnpaidAssignmentIssues().map { resolved ->
+            resolved.toDelegateResolvedIssueUiState(questionId = null)
+        },
         paymentStatus = delegate.paymentStatusChip(),
         paymentTier = delegate.paymentTier,
         paymentTierStatus = if (delegate.paymentStatus == PaymentStatus.Paid) {

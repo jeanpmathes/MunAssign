@@ -218,6 +218,7 @@ private fun Delegate.warningCount(today: java.time.LocalDate): Int =
     answers.sumOf { answer -> answer.openIssues.count { it.severity == AnswerIssueSeverity.Warning } } +
         openProfileIssues(today).count { it.severity == AnswerIssueSeverity.Warning } +
         openSchoolAssignmentIssues().count { it.severity == AnswerIssueSeverity.Warning } +
+        openUnpaidAssignmentIssues().size +
         openPaymentTierIssues().count { it.severity == AnswerIssueSeverity.Warning }
 
 private fun Delegate.noticeCount(today: java.time.LocalDate): Int =

@@ -122,7 +122,11 @@ handling changes do not overwrite the saved organizer choice.
 General questions can opt into handling archetypes. The visa archetype raises a notice for
 meaningful answers unless they are blank, an exact placeholder, or begin with a complete recognized
 negative word or phrase. Negative openings may include trailing explanations, but partial word
-prefixes do not count. The committee-choice explanation archetype warns when the answer has fewer
+prefixes do not count. For unpaid delegates, only the standard `Notice:Visa support requested.` issue
+is suppressed on questions configured as visa support; other rules on the same question still apply.
+Raw answers, saved acknowledgements, and justification history are retained. Both open and resolved
+visa-request entries are absent while unpaid; becoming paid restores the applicable acknowledgement.
+The committee-choice explanation archetype warns when the answer has fewer
 than three sentences. Role-backed special questions use their role handling and do not expose these
 general handling archetypes.
 
@@ -153,6 +157,12 @@ Answer issues are derived from current profile/question rules and are either:
 - `Notice`, meaning the answer needs operational attention but is not a rejection problem.
 
 Resolved issues are organizer-managed state. A resolution stores the delegate, optional question, stable issue key, original issue text/severity, resolution time, and optional justification. Open issue counters and warning markers ignore resolved issues. The issue manager shows open issues first and resolved issues last. MyMUN updates preserve resolutions where the delegate and optional question still exist; cascade deletion removes resolutions for deleted conferences, delegates, or questions.
+
+Any unpaid delegate occupying a slot derives the warning `Unpaid delegate has an assignment.`,
+regardless of active state or pending/confirmed assignment source. Its stable delegate-level key is
+`Warning:unpaid_delegate_assigned`. Acknowledgements follow the delegate across positions and sources.
+The issue is absent when paid or unassigned, without deleting its acknowledgement; if the condition
+returns, the retained acknowledgement applies again. This warning does not alter assignment rules.
 
 ## MyMUN-Managed vs Organizer-Managed Data
 

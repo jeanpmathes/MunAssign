@@ -1238,6 +1238,7 @@ class ConferenceRepositoryImpl(
             (
                 delegate.profileIssues() +
                     delegate.schoolAssignmentIssues() +
+                    delegate.unpaidAssignmentIssues() +
                     delegate.paymentTierIssues().filterNot { it.key == Delegate.PaymentTierMissingIssueKey }
             ).firstOrNull { it.key == issueKey }
         } else {

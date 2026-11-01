@@ -143,7 +143,13 @@ fun DelegateSidePanel(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 item {
-                    AssignmentCard(detail, onNavigateToPosition)
+                    AssignmentCard(
+                        detail = detail,
+                        onNavigateToPosition = onNavigateToPosition,
+                        onOpenIssues = { onOpenNotices(detail.id) },
+                        onResolveIssue = { resolveTarget = it },
+                        onUnresolveIssue = onUnresolveIssue,
+                    )
                 }
                 item {
                     ReservationCard(
@@ -433,6 +439,9 @@ private fun PaymentTierSelector(
 private fun AssignmentCard(
     detail: DelegateDetailUiState,
     onNavigateToPosition: (committeeId: String, positionId: String) -> Unit,
+    onOpenIssues: () -> Unit,
+    onResolveIssue: (DelegateAnswerIssueUiState) -> Unit,
+    onUnresolveIssue: (String) -> Unit,
 ) {
     Card(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
@@ -453,6 +462,14 @@ private fun AssignmentCard(
                     onClick = { onNavigateToPosition(assignment.committeeId, assignment.positionId) },
                 )
             }
+            ValidationIssueBlock(
+                title = "Checks",
+                issues = detail.unpaidAssignmentIssues,
+                resolvedIssues = detail.resolvedUnpaidAssignmentIssues,
+                onOpenIssues = onOpenIssues,
+                onResolveIssue = onResolveIssue,
+                onUnresolveIssue = onUnresolveIssue,
+            )
         }
     }
 }

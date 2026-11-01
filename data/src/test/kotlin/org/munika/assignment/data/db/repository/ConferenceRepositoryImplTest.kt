@@ -2283,6 +2283,74 @@ class ConferenceRepositoryImplTest {
     }
 
     @Test
+    fun `visa acknowledgement survives payment changes and suppressed notice cannot be acknowledged`() = runBlocking {
+        val repository = ConferenceRepositoryImpl(
+            DatabaseFactory.connect(Files.createTempDirectory("munassign-unpaid-visa").resolve("data.db")),
+        )
+        val conference = repository.createConference("TestConf")
+        val paid = snapshotWithQuestions(listOf("Question: Visa support?"))
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, paid).success)
+        val loaded = requireNotNull(repository.getConference(conference.id))
+        val delegate = loaded.delegates.single()
+        val answer = delegate.answers.single()
+        assertEquals("Notice:Visa support requested.", answer.issues.single().key)
+        repository.resolveAnswerIssue(conference.id, delegate.id, answer.question.id, answer.issues.single().key, "Invitation sent.")
+
+        val unpaid = paid.copy(delegates = listOf(delegate(feePaid = false)))
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, unpaid).success)
+        val afterUnpaid = requireNotNull(repository.getConference(conference.id)).delegates.single()
+        assertTrue(afterUnpaid.answers.single().issues.isEmpty())
+        assertTrue(afterUnpaid.answers.single().resolvedIssues.isEmpty())
+        assertEquals("Lots", afterUnpaid.answers.single().rawAnswer)
+        assertEquals("Invitation sent.", afterUnpaid.issueResolutions.single().justification)
+        assertFailsWith<IllegalArgumentException> {
+            repository.resolveAnswerIssue(conference.id, delegate.id, answer.question.id, "Notice:Visa support requested.", null)
+        }
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, paid).success)
+        val afterPaid = requireNotNull(repository.getConference(conference.id)).delegates.single().answers.single()
+        assertTrue(afterPaid.openIssues.isEmpty())
+        assertEquals("Invitation sent.", afterPaid.resolvedIssues.single().resolution.justification)
+    }
+
+    @Test
+    fun `unpaid assignment acknowledgement persists across payment and position changes`() = runBlocking {
+        val repository = ConferenceRepositoryImpl(
+            DatabaseFactory.connect(Files.createTempDirectory("munassign-unpaid-assignment").resolve("data.db")),
+        )
+        val conference = repository.createConference("TestConf")
+        val unpaid = snapshotWithAssignments(delegates = listOf(delegate(feePaid = false)))
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, unpaid).success)
+        val delegate = requireNotNull(repository.getConference(conference.id)).delegates.single()
+        assertEquals("Warning:unpaid_delegate_assigned", delegate.unpaidAssignmentIssues().single().key)
+        val resolved = repository.resolveAnswerIssue(
+            conference.id, delegate.id, null, "Warning:unpaid_delegate_assigned", "Payment arranged.",
+        )
+        val resolutionId = resolved.delegates.single().resolvedUnpaidAssignmentIssues().single().resolution.id
+        assertTrue(requireNotNull(repository.getConference(conference.id)).delegates.single().openUnpaidAssignmentIssues().isEmpty())
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, unpaid.copy(delegates = listOf(delegate()))).success)
+        val paid = requireNotNull(repository.getConference(conference.id)).delegates.single()
+        assertTrue(paid.unpaidAssignmentIssues().isEmpty())
+        assertTrue(paid.resolvedUnpaidAssignmentIssues().isEmpty())
+        assertEquals(resolutionId, paid.issueResolutions.single().id)
+        assertFailsWith<IllegalArgumentException> {
+            repository.resolveAnswerIssue(conference.id, delegate.id, null, "Warning:unpaid_delegate_assigned", null)
+        }
+
+        val moved = unpaid.copy(
+            confirmedAssignmentCandidates = listOf(assignment(rowNumber = 3, positionName = "Germany", slotIndex = 1)),
+        )
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, moved).success)
+        val again = requireNotNull(repository.getConference(conference.id)).delegates.single()
+        assertEquals("Germany", again.currentPosition?.name)
+        assertTrue(again.openUnpaidAssignmentIssues().isEmpty())
+        assertEquals(resolutionId, again.resolvedUnpaidAssignmentIssues().single().resolution.id)
+        val reopened = repository.unresolveAnswerIssue(conference.id, resolutionId)
+        assertEquals(1, reopened.delegates.single().openUnpaidAssignmentIssues().size)
+    }
+
+    @Test
     fun `answer issue resolution persists and survives repeated update for retained delegate and question`() = runBlocking {
         val dbPath = Files.createTempDirectory("munassign-issue-resolution").resolve("data.db")
         val database = DatabaseFactory.connect(dbPath)
