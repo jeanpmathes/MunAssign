@@ -144,6 +144,22 @@ interface ConferenceRepository {
     ): Conference
 
     /**
+     * Atomically exchanges two eligible pending occupants assigned outside their preferences.
+     *
+     * The source delegate must rank the target position; the target delegate may remain outside
+     * their preferences. Both expected occupants and current eligibility are revalidated before
+     * writing. Stale or invalid requests leave both assignments unchanged. Confirmed assignments
+     * and occupants already assigned to a ranked position cannot be moved.
+     */
+    suspend fun swapPendingAssignments(
+        conferenceId: ConferenceId,
+        sourceSlotId: SlotId,
+        targetSlotId: SlotId,
+        expectedSourceDelegateId: DelegateId,
+        expectedTargetDelegateId: DelegateId,
+    ): Conference
+
+    /**
      * Clears a pending MunAssign assignment from one slot.
      *
      * MyMUN-confirmed assignments are controlled only by later MyMUN updates and must be rejected.

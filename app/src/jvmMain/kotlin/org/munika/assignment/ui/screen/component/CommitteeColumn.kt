@@ -70,6 +70,7 @@ fun CommitteeColumn(
     onSetPositionPendingAssignments: (positionId: String, delegateIds: List<String>) -> Unit,
     onClearPendingSlot: (slotId: String) -> Unit,
     onOpenDelegateDetail: (String) -> Unit,
+    onOpenSwap: (String) -> Unit,
     onOpenReservationManager: () -> Unit,
     highlightedPositionId: String?,
 ) {
@@ -115,6 +116,7 @@ fun CommitteeColumn(
                         onSetPositionPendingAssignments = onSetPositionPendingAssignments,
                         onClearPendingSlot = onClearPendingSlot,
                         onOpenDelegateDetail = onOpenDelegateDetail,
+                    onOpenSwap = onOpenSwap,
                         onSetPositionMappedCommittee = onSetPositionMappedCommittee,
                         highlighted = position.id == highlightedPositionId,
                     )

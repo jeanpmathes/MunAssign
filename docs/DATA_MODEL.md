@@ -82,6 +82,8 @@ Accept capacity counts active delegates with accepted, assigned, or checked-in a
 
 A delegate assigned to a position with the opposite effective school level derives a warning. A configured high-schooler answer mapped to `Yes` must be assigned to a high-school position; every other status must be assigned to a university position. The warning applies regardless of assignment source, payment, or active state. It uses one stable delegate-level issue key, so an acknowledgement follows the delegate across mismatch directions and positions. The issue is absent while the delegate is unassigned, correctly matched, or assigned to an incompletely mapped position; a retained acknowledgement applies again if a later assignment recreates a mismatch.
 
+Two-person swaps are derived from current assignments and preferences without persisted opportunity state. Both occupants must be active, assignment-eligible, pending, and outside their preferences; the initiating delegate must rank the partner's position. The partner may receive an unranked position. Applying a swap validates both expected occupants and current rules in one transaction, clears both slots, and exchanges their occupants while retaining pending sources. Stale requests fail without partial writes. School-level and payment-tier mismatches remain non-blocking.
+
 During an update:
 
 - Numbered `Preference N` columns define the expected ranks for that workbook. Empty cells are non-blocking and are returned for post-update completion across every delegate row, regardless of status.
