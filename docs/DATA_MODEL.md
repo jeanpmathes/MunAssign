@@ -82,6 +82,8 @@ Accept capacity counts active delegates with accepted, assigned, or checked-in a
 
 A delegate assigned to a position with the opposite effective school level derives a warning. A configured high-schooler answer mapped to `Yes` must be assigned to a high-school position; every other status must be assigned to a university position. The warning applies regardless of assignment source, payment, or active state. It uses one stable delegate-level issue key, so an acknowledgement follows the delegate across mismatch directions and positions. The issue is absent while the delegate is unassigned, correctly matched, or assigned to an incompletely mapped position; a retained acknowledgement applies again if a later assignment recreates a mismatch.
 
+Two-person swaps are derived from current assignments and preferences without persisted opportunity state. Both occupants must be active, assignment-eligible, pending, and outside their preferences; the initiating delegate must rank the partner's position. The partner may receive an unranked position. Applying a swap validates both expected occupants and current rules in one transaction, clears both slots, and exchanges their occupants while retaining pending sources. Stale requests fail without partial writes. School-level and payment-tier mismatches remain non-blocking.
+
 During an update:
 
 - Numbered `Preference N` columns define the expected ranks for that workbook. Empty cells are non-blocking and are returned for post-update completion across every delegate row, regardless of status.
@@ -166,6 +168,12 @@ Answer issues are derived from current profile/question rules and are either:
 - `Notice`, meaning the answer needs operational attention but is not a rejection problem.
 
 Resolved issues are organizer-managed state. A resolution stores the delegate, optional question, stable issue key, original issue text/severity, resolution time, and optional justification. Open issue counters and warning markers ignore resolved issues. The issue manager shows open issues first and resolved issues last. MyMUN updates preserve resolutions where the delegate and optional question still exist; cascade deletion removes resolutions for deleted conferences, delegates, or questions.
+
+Any unpaid delegate occupying a slot derives the warning `Unpaid delegate has an assignment.`,
+regardless of active state or pending/confirmed assignment source. Its stable delegate-level key is
+`Warning:unpaid_delegate_assigned`. Acknowledgements follow the delegate across positions and sources.
+The issue is absent when paid or unassigned, without deleting its acknowledgement; if the condition
+returns, the retained acknowledgement applies again. This warning does not alter assignment rules.
 
 ## MyMUN-Managed vs Organizer-Managed Data
 

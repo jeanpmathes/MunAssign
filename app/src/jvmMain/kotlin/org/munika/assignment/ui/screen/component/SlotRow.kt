@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.HeartBroken
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.Icon
@@ -51,6 +52,7 @@ fun SlotRow(
     onOpenAssignmentDialog: () -> Unit,
     onClearPendingAssignment: () -> Unit,
     onOpenDelegateDetail: (String) -> Unit,
+    onOpenSwap: (String) -> Unit,
 ) {
     val style = slot.status.style()
     Row(
@@ -101,7 +103,18 @@ fun SlotRow(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        if (slot.delegateId != null && !slot.matchesDelegatePreference) {
+        if (slot.delegateId != null && slot.hasSwapOpportunity) {
+            BoardTooltip("Swap available: give this delegate a ranked preference.") {
+                IconButton(
+                    onClick = { onOpenSwap(slot.delegateId) },
+                    enabled = assignmentEnabled,
+                    modifier = Modifier.size(28.dp),
+                ) {
+                    Icon(Icons.Filled.SwapHoriz, contentDescription = "Review swaps", tint = NoPreferenceColor)
+                }
+            }
+            Spacer(Modifier.width(6.dp))
+        } else if (slot.delegateId != null && !slot.matchesDelegatePreference) {
             BoardTooltip("This delegate did not rank this position.") {
                 Icon(
                     Icons.Filled.HeartBroken,

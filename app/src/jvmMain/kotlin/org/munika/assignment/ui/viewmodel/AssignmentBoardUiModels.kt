@@ -9,10 +9,12 @@ import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.Delegate
 import org.munika.assignment.domain.model.DelegateId
 import org.munika.assignment.domain.model.PaymentTier
+import org.munika.assignment.domain.model.PendingAssignmentSwap
 import org.munika.assignment.domain.model.Position
 import org.munika.assignment.domain.model.Reservation
 import org.munika.assignment.domain.model.Slot
 import org.munika.assignment.domain.model.StandardQuestionRoles
+import org.munika.assignment.domain.model.pendingAssignmentSwaps
 
 data class AssignmentBoardUiState(
     val conferenceId: String,
@@ -106,6 +108,7 @@ data class SlotBoardUiState(
     val matchesDelegatePreference: Boolean,
     val positionName: String,
     val paymentTierMismatch: PaymentTierMismatchUiState?,
+    val hasSwapOpportunity: Boolean = false,
 )
 
 data class InterestedDelegateUiState(
@@ -160,7 +163,10 @@ data class BoardScrollRequest(
 
 private data class DelegateIssueCounts(val warningCount: Int, val noticeCount: Int)
 
-fun Conference.toAssignmentBoardUiState(today: LocalDate = LocalDate.now()): AssignmentBoardUiState {
+fun Conference.toAssignmentBoardUiState(
+    today: LocalDate = LocalDate.now(),
+    swaps: Map<DelegateId, List<PendingAssignmentSwap>> = pendingAssignmentSwaps(),
+): AssignmentBoardUiState {
     val slotByDelegateId: Map<DelegateId, Slot> = slots.mapNotNull { slot -> slot.delegate?.let { it.id to slot } }.toMap()
     val issueCountsByDelegateId: Map<DelegateId, DelegateIssueCounts> = delegates.associate { delegate ->
         delegate.id to DelegateIssueCounts(warningCount = delegate.warningCount(), noticeCount = delegate.noticeCount())
@@ -187,7 +193,7 @@ fun Conference.toAssignmentBoardUiState(today: LocalDate = LocalDate.now()): Ass
                 highSchoolerAssignedCount = committee.slots.count { it.delegate?.isHighSchooler == true },
                 universityAssignedCount = committee.slots.count { it.delegate != null && it.delegate?.isHighSchooler != true },
                 reservationReminders = reservationReminders,
-                positions = committee.positions.map { it.toBoardUiState(slotByDelegateId, issueCountsByDelegateId, today) },
+                positions = committee.positions.map { it.toBoardUiState(slotByDelegateId, issueCountsByDelegateId, today, swaps) },
             )
         },
     )
@@ -216,6 +222,7 @@ private fun Position.toBoardUiState(
     slotByDelegateId: Map<DelegateId, Slot>,
     issueCountsByDelegateId: Map<DelegateId, DelegateIssueCounts>,
     today: LocalDate,
+    swaps: Map<DelegateId, List<PendingAssignmentSwap>>,
 ): PositionBoardUiState {
     val occupiedDelegateIds = slots.mapNotNull { it.delegate?.id }.toSet()
 
@@ -232,7 +239,9 @@ private fun Position.toBoardUiState(
         } else {
             emptyList()
         },
-        slots = slots.sortedBy { it.index }.map { it.toBoardUiState() },
+        slots = slots.sortedBy { it.index }.map { slot ->
+            slot.toBoardUiState(hasSwapOpportunity = !swaps[slot.delegate?.id].isNullOrEmpty())
+        },
         interestedDelegates = interestedDelegates
             .filter { it.visibleOnAssignmentBoard() }
             .filter { it.id !in occupiedDelegateIds }
@@ -409,7 +418,7 @@ private fun List<Committee>.toMappingOptions(position: Position): List<Committee
             )
         }
 
-private fun Slot.toBoardUiState(): SlotBoardUiState =
+private fun Slot.toBoardUiState(hasSwapOpportunity: Boolean): SlotBoardUiState =
     SlotBoardUiState(
         id = id.value,
         index = index,
@@ -424,6 +433,7 @@ private fun Slot.toBoardUiState(): SlotBoardUiState =
         matchesDelegatePreference = matchesDelegatePreference,
         positionName = position.name,
         paymentTierMismatch = delegate?.paymentTierMismatchFor(position.committee),
+        hasSwapOpportunity = hasSwapOpportunity,
     )
 
 private fun Delegate.visibleOnAssignmentBoard(): Boolean =
@@ -445,6 +455,7 @@ private fun Delegate.warningCount(): Int =
     answers.sumOf { answer -> answer.openIssues.count { it.severity == AnswerIssueSeverity.Warning } } +
         openProfileIssues().count { it.severity == AnswerIssueSeverity.Warning } +
         openSchoolAssignmentIssues().count { it.severity == AnswerIssueSeverity.Warning } +
+        openUnpaidAssignmentIssues().size +
         openPaymentTierIssues().count { it.severity == AnswerIssueSeverity.Warning }
 
 private fun Delegate.noticeCount(): Int =

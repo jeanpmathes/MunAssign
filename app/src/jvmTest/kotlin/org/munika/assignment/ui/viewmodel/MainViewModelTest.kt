@@ -2119,6 +2119,14 @@ private class FakeConferenceRepository(
         moveExistingPending: Boolean,
     ): Conference = unsupported()
 
+    override suspend fun swapPendingAssignments(
+        conferenceId: ConferenceId,
+        sourceSlotId: SlotId,
+        targetSlotId: SlotId,
+        expectedSourceDelegateId: DelegateId,
+        expectedTargetDelegateId: DelegateId,
+    ): Conference = unsupported()
+
     override suspend fun setPositionPendingAssignments(
         conferenceId: ConferenceId,
         positionId: PositionId,

@@ -14,6 +14,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.insert
+import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
@@ -75,6 +76,111 @@ import org.munika.assignment.domain.repository.PreferenceCorrectionSelection
 import org.munika.assignment.domain.repository.PreferenceValueOrigin
 
 class ConferenceRepositoryImplTest {
+    @Test
+    fun `broken heart swap exchanges pending occupants and persists both assignments`() = runBlocking {
+        val fixture = pendingSwapFixture()
+        val updated = fixture.repository.swapPendingAssignments(
+            fixture.conferenceId, fixture.sourceSlotId, fixture.targetSlotId, fixture.aliceId, fixture.bobId,
+        )
+
+        assertEquals(fixture.targetSlotId, updated.delegates.single { it.id == fixture.aliceId }.currentSlot?.id)
+        assertEquals(fixture.sourceSlotId, updated.delegates.single { it.id == fixture.bobId }.currentSlot?.id)
+        val persisted = requireNotNull(fixture.repository.getConference(fixture.conferenceId))
+        assertEquals(fixture.aliceId, persisted.slots.single { it.id == fixture.targetSlotId }.delegate?.id)
+        assertEquals(fixture.bobId, persisted.slots.single { it.id == fixture.sourceSlotId }.delegate?.id)
+        assertTrue(persisted.slots.all { it.source == AssignmentSource.Application })
+    }
+
+    @Test
+    fun `stale broken heart swap rejects without changing either slot`() = runBlocking {
+        val fixture = pendingSwapFixture()
+        assertFailsWith<IllegalArgumentException> {
+            fixture.repository.swapPendingAssignments(
+                fixture.conferenceId, fixture.sourceSlotId, fixture.targetSlotId, fixture.bobId, fixture.aliceId,
+            )
+        }
+        fixture.assertOriginalAssignments()
+    }
+
+    @Test
+    fun `broken heart swap rechecks eligibility preference and confirmed status`() = runBlocking {
+        for (change in listOf("inactive", "unpaid", "submitted", "confirmed", "satisfied", "preference removed")) {
+            val fixture = pendingSwapFixture()
+            transaction(fixture.database) {
+                when (change) {
+                    "inactive" -> DelegateTable.update({ DelegateTable.id eq fixture.bobId.value }) { it[active] = false }
+                    "unpaid" -> DelegateTable.update({ DelegateTable.id eq fixture.bobId.value }) {
+                        it[paymentStatus] = PaymentStatus.Unpaid.name
+                    }
+                    "submitted" -> DelegateTable.update({ DelegateTable.id eq fixture.bobId.value }) {
+                        it[applicationStatus] = "Submitted"
+                    }
+                    "confirmed" -> SlotTable.update({ SlotTable.id eq fixture.targetSlotId.value }) {
+                        it[assignmentSource] = AssignmentSource.Mymun.name
+                    }
+                    "satisfied" -> PreferenceTable.insert {
+                        it[id] = "bob-pref"
+                        it[delegateId] = fixture.bobId.value
+                        it[positionId] = fixture.targetPositionId.value
+                        it[rank] = 1
+                        it[rawPreferenceText] = "GA (France)"
+                    }
+                    "preference removed" -> PreferenceTable.deleteWhere { delegateId eq fixture.aliceId.value }
+                }
+            }
+
+            assertFailsWith<IllegalArgumentException>(change) {
+                fixture.repository.swapPendingAssignments(
+                    fixture.conferenceId, fixture.sourceSlotId, fixture.targetSlotId, fixture.aliceId, fixture.bobId,
+                )
+            }
+            fixture.assertOriginalAssignments()
+        }
+    }
+
+    private suspend fun pendingSwapFixture(): PendingSwapFixture {
+        val database = DatabaseFactory.connect(Files.createTempDirectory("munassign-pending-swap").resolve("data.db"))
+        val repository = ConferenceRepositoryImpl(database)
+        val conference = repository.createConference("TestConf")
+        val snapshot = snapshotWithAssignments(
+            delegates = listOf(
+                delegate(rowNumber = 2, firstName = "Alice", lastName = "Person", email = "alice@example.test"),
+                delegate(rowNumber = 3, firstName = "Bob", lastName = "Person", email = "bob@example.test"),
+            ),
+            confirmedAssignments = emptyList(),
+        ).copy(
+            preferenceCandidates = listOf(
+                MymunPreferenceCandidate(2, 1, "GA (France)", "GA", "France", 2, CellLocation("Delegates", 2, 1, "Preference 1")),
+            ),
+        )
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshot).success)
+        val loaded = requireNotNull(repository.getConference(conference.id))
+        val alice = loaded.delegates.single { it.name.firstName == "Alice" }
+        val bob = loaded.delegates.single { it.name.firstName == "Bob" }
+        val source = loaded.slots.single { it.position.name == "Germany" }
+        val target = loaded.slots.single { it.position.name == "France" }
+        repository.assignDelegateToSlot(conference.id, source.id, alice.id, false)
+        repository.assignDelegateToSlot(conference.id, target.id, bob.id, false)
+        return PendingSwapFixture(database, repository, conference.id, source.id, target.id, target.position.id, alice.id, bob.id)
+    }
+
+    private data class PendingSwapFixture(
+        val database: org.jetbrains.exposed.v1.jdbc.Database,
+        val repository: ConferenceRepositoryImpl,
+        val conferenceId: ConferenceId,
+        val sourceSlotId: org.munika.assignment.domain.model.SlotId,
+        val targetSlotId: org.munika.assignment.domain.model.SlotId,
+        val targetPositionId: org.munika.assignment.domain.model.PositionId,
+        val aliceId: org.munika.assignment.domain.model.DelegateId,
+        val bobId: org.munika.assignment.domain.model.DelegateId,
+    ) {
+        suspend fun assertOriginalAssignments() {
+            val persisted = requireNotNull(repository.getConference(conferenceId))
+            assertEquals(aliceId, persisted.slots.single { it.id == sourceSlotId }.delegate?.id)
+            assertEquals(bobId, persisted.slots.single { it.id == targetSlotId }.delegate?.id)
+        }
+    }
+
     @Test
     fun `preference correction reorders imported values and acknowledges an intentional empty rank`() = runBlocking {
         val database = DatabaseFactory.connect(Files.createTempDirectory("munassign-preference-order").resolve("data.db"))
@@ -2280,6 +2386,74 @@ class ConferenceRepositoryImplTest {
             assertEquals(1, DelegateQuestionRuleTable.selectAll().where { DelegateQuestionRuleTable.questionId eq questionId }.count())
             assertEquals(1, MunExperienceAnswerMappingTable.selectAll().where { MunExperienceAnswerMappingTable.questionId eq questionId }.count())
         }
+    }
+
+    @Test
+    fun `visa acknowledgement survives payment changes and suppressed notice cannot be acknowledged`() = runBlocking {
+        val repository = ConferenceRepositoryImpl(
+            DatabaseFactory.connect(Files.createTempDirectory("munassign-unpaid-visa").resolve("data.db")),
+        )
+        val conference = repository.createConference("TestConf")
+        val paid = snapshotWithQuestions(listOf("Question: Visa support?"))
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, paid).success)
+        val loaded = requireNotNull(repository.getConference(conference.id))
+        val delegate = loaded.delegates.single()
+        val answer = delegate.answers.single()
+        assertEquals("Notice:Visa support requested.", answer.issues.single().key)
+        repository.resolveAnswerIssue(conference.id, delegate.id, answer.question.id, answer.issues.single().key, "Invitation sent.")
+
+        val unpaid = paid.copy(delegates = listOf(delegate(feePaid = false)))
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, unpaid).success)
+        val afterUnpaid = requireNotNull(repository.getConference(conference.id)).delegates.single()
+        assertTrue(afterUnpaid.answers.single().issues.isEmpty())
+        assertTrue(afterUnpaid.answers.single().resolvedIssues.isEmpty())
+        assertEquals("Lots", afterUnpaid.answers.single().rawAnswer)
+        assertEquals("Invitation sent.", afterUnpaid.issueResolutions.single().justification)
+        assertFailsWith<IllegalArgumentException> {
+            repository.resolveAnswerIssue(conference.id, delegate.id, answer.question.id, "Notice:Visa support requested.", null)
+        }
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, paid).success)
+        val afterPaid = requireNotNull(repository.getConference(conference.id)).delegates.single().answers.single()
+        assertTrue(afterPaid.openIssues.isEmpty())
+        assertEquals("Invitation sent.", afterPaid.resolvedIssues.single().resolution.justification)
+    }
+
+    @Test
+    fun `unpaid assignment acknowledgement persists across payment and position changes`() = runBlocking {
+        val repository = ConferenceRepositoryImpl(
+            DatabaseFactory.connect(Files.createTempDirectory("munassign-unpaid-assignment").resolve("data.db")),
+        )
+        val conference = repository.createConference("TestConf")
+        val unpaid = snapshotWithAssignments(delegates = listOf(delegate(feePaid = false)))
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, unpaid).success)
+        val delegate = requireNotNull(repository.getConference(conference.id)).delegates.single()
+        assertEquals("Warning:unpaid_delegate_assigned", delegate.unpaidAssignmentIssues().single().key)
+        val resolved = repository.resolveAnswerIssue(
+            conference.id, delegate.id, null, "Warning:unpaid_delegate_assigned", "Payment arranged.",
+        )
+        val resolutionId = resolved.delegates.single().resolvedUnpaidAssignmentIssues().single().resolution.id
+        assertTrue(requireNotNull(repository.getConference(conference.id)).delegates.single().openUnpaidAssignmentIssues().isEmpty())
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, unpaid.copy(delegates = listOf(delegate()))).success)
+        val paid = requireNotNull(repository.getConference(conference.id)).delegates.single()
+        assertTrue(paid.unpaidAssignmentIssues().isEmpty())
+        assertTrue(paid.resolvedUnpaidAssignmentIssues().isEmpty())
+        assertEquals(resolutionId, paid.issueResolutions.single().id)
+        assertFailsWith<IllegalArgumentException> {
+            repository.resolveAnswerIssue(conference.id, delegate.id, null, "Warning:unpaid_delegate_assigned", null)
+        }
+
+        val moved = unpaid.copy(
+            confirmedAssignmentCandidates = listOf(assignment(rowNumber = 3, positionName = "Germany", slotIndex = 1)),
+        )
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, moved).success)
+        val again = requireNotNull(repository.getConference(conference.id)).delegates.single()
+        assertEquals("Germany", again.currentPosition?.name)
+        assertTrue(again.openUnpaidAssignmentIssues().isEmpty())
+        assertEquals(resolutionId, again.resolvedUnpaidAssignmentIssues().single().resolution.id)
+        val reopened = repository.unresolveAnswerIssue(conference.id, resolutionId)
+        assertEquals(1, reopened.delegates.single().openUnpaidAssignmentIssues().size)
     }
 
     @Test

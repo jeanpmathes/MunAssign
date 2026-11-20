@@ -87,6 +87,7 @@ import org.munika.assignment.domain.model.DelegateId
 import org.munika.assignment.domain.model.DelegationId
 import org.munika.assignment.domain.model.HighSchoolerAnswerMapping
 import org.munika.assignment.domain.model.isUsableApplicationStatus
+import org.munika.assignment.domain.model.pendingAssignmentSwaps
 import org.munika.assignment.domain.model.LanguageLevelAnswerMapping
 import org.munika.assignment.domain.model.MinimumSentenceCount
 import org.munika.assignment.domain.model.MinimumTextLength
@@ -530,6 +531,49 @@ class ConferenceRepositoryImpl(
             replacedDelegateId,
         )
         loadConferenceGraph(conferenceId)
+    }
+
+    override suspend fun swapPendingAssignments(
+        conferenceId: ConferenceId,
+        sourceSlotId: SlotId,
+        targetSlotId: SlotId,
+        expectedSourceDelegateId: DelegateId,
+        expectedTargetDelegateId: DelegateId,
+    ): Conference = db {
+        require(sourceSlotId != targetSlotId) { "A swap requires two different slots." }
+        requireSlotInConference(conferenceId.value, sourceSlotId.value)
+        requireSlotInConference(conferenceId.value, targetSlotId.value)
+        val conference = loadConferenceGraph(conferenceId.value)
+        require(
+            conference.pendingAssignmentSwaps()[expectedSourceDelegateId].orEmpty().any { swap ->
+                swap.sourceSlot.id == sourceSlotId && swap.targetSlot.id == targetSlotId &&
+                    swap.targetDelegate.id == expectedTargetDelegateId
+            },
+        ) { "This swap is no longer available. Review the current assignments again." }
+
+        val now = Instant.now().toEpochMilli()
+        clearSlotAssignment(sourceSlotId.value, now)
+        clearSlotAssignment(targetSlotId.value, now)
+        SlotTable.update({ SlotTable.id eq sourceSlotId.value }) {
+            it[assignedDelegateId] = expectedTargetDelegateId.value
+            it[assignmentSource] = AssignmentSource.Application.name
+            it[updatedAtEpochMillis] = now
+        }
+        SlotTable.update({ SlotTable.id eq targetSlotId.value }) {
+            it[assignedDelegateId] = expectedSourceDelegateId.value
+            it[assignmentSource] = AssignmentSource.Application.name
+            it[updatedAtEpochMillis] = now
+        }
+        ConferenceTable.update({ ConferenceTable.id eq conferenceId.value }) {
+            it[updatedAtEpochMillis] = now
+        }
+        logger.info(
+            "Swapped pending assignments sourceSlot={} targetSlot={} conference={}",
+            sourceSlotId.value,
+            targetSlotId.value,
+            conferenceId.value,
+        )
+        loadConferenceGraph(conferenceId.value)
     }
 
     override suspend fun setPositionPendingAssignments(
@@ -1239,6 +1283,7 @@ class ConferenceRepositoryImpl(
             (
                 delegate.profileIssues() +
                     delegate.schoolAssignmentIssues() +
+                    delegate.unpaidAssignmentIssues() +
                     delegate.paymentTierIssues().filterNot { it.key == Delegate.PaymentTierMissingIssueKey }
             ).firstOrNull { it.key == issueKey }
         } else {

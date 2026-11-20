@@ -104,7 +104,7 @@ private fun Delegate.issueRows(): List<IssueUiState> =
                 answerText = null,
             )
         } +
-        openSchoolAssignmentIssues().map { issue ->
+        (openSchoolAssignmentIssues() + openUnpaidAssignmentIssues()).map { issue ->
             IssueUiState(
                 delegateId = id.value,
                 delegateName = displayName,
@@ -124,7 +124,7 @@ private fun Delegate.issueRows(): List<IssueUiState> =
                 canAssignPaymentTier = false,
             )
         } +
-        resolvedSchoolAssignmentIssues().map { resolved ->
+        (resolvedSchoolAssignmentIssues() + resolvedUnpaidAssignmentIssues()).map { resolved ->
             resolved.toIssueUiState(
                 delegate = this,
                 questionId = null,

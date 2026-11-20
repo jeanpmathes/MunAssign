@@ -46,6 +46,7 @@ fun AssignmentBoard(
     onSetPositionPendingAssignments: (positionId: String, delegateIds: List<String>) -> Unit,
     onClearPendingSlot: (slotId: String) -> Unit,
     onOpenDelegateDetail: (String) -> Unit,
+    onOpenSwap: (String) -> Unit,
     onOpenReservationManager: () -> Unit,
     onClearActionError: () -> Unit,
     modifier: Modifier = Modifier,
@@ -111,6 +112,7 @@ fun AssignmentBoard(
                     onSetPositionPendingAssignments = onSetPositionPendingAssignments,
                     onClearPendingSlot = onClearPendingSlot,
                     onOpenDelegateDetail = onOpenDelegateDetail,
+                    onOpenSwap = onOpenSwap,
                     onOpenReservationManager = onOpenReservationManager,
                     highlightedPositionId = highlightedPositionId,
                 )

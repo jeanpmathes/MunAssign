@@ -6,15 +6,18 @@ import org.munika.assignment.domain.model.AssignmentStatus
 import org.munika.assignment.domain.model.CommitteeMode
 import org.munika.assignment.domain.model.Conference
 import org.munika.assignment.domain.model.Delegate
+import org.munika.assignment.domain.model.DelegateId
 import org.munika.assignment.domain.model.LanguageLevel
 import org.munika.assignment.domain.model.MunExperienceLevel
 import org.munika.assignment.domain.model.PaymentStatus
 import org.munika.assignment.domain.model.PaymentTier
+import org.munika.assignment.domain.model.PendingAssignmentSwap
 import org.munika.assignment.domain.model.Position
 import org.munika.assignment.domain.model.Preference
 import org.munika.assignment.domain.model.PreferenceSource
 import org.munika.assignment.domain.model.ResolvedAnswerIssue
 import org.munika.assignment.domain.model.StandardQuestionRoles
+import org.munika.assignment.domain.model.pendingAssignmentSwaps
 
 data class DelegateDetailUiState(
     val id: String,
@@ -36,6 +39,8 @@ data class DelegateDetailUiState(
     val experience: DelegateExperienceUiState?,
     val language: DelegateLanguageUiState?,
     val assignment: DelegateAssignmentUiState?,
+    val unpaidAssignmentIssues: List<DelegateAnswerIssueUiState>,
+    val resolvedUnpaidAssignmentIssues: List<DelegateResolvedIssueUiState>,
     val canDeactivate: Boolean,
     val preferences: List<DelegatePreferenceUiState>,
     val assignmentOptions: DelegateAssignmentOptionsUiState?,
@@ -52,6 +57,7 @@ data class DelegateDetailUiState(
     val comments: List<DelegateCommentUiState>,
     val delegation: DelegateDelegationUiState?,
     val reservation: DelegateReservationUiState?,
+    val swapOpportunities: List<PendingAssignmentSwapUiState> = emptyList(),
 )
 
 data class DelegateStatusChipUiState(
@@ -108,8 +114,15 @@ data class DelegatePreferenceUiState(
     val replaceablePendingSlots: List<DelegatePendingSlotUiState>,
     val organizerCompleted: Boolean = false,
     val organizerReordered: Boolean = false,
+    val heartbrokenOccupants: List<HeartbrokenOccupantUiState> = emptyList(),
 ) {
     val canAssign: Boolean = openSlotId != null || replaceablePendingSlots.isNotEmpty()
+
+    val heartbreakTooltip: String?
+        get() = heartbrokenOccupants.takeIf { it.isNotEmpty() }?.joinToString("\n") { occupant ->
+            val status = if (occupant.status == SlotBoardStatus.Assigned) "Confirmed (fixed)" else "Pending"
+            "${occupant.delegateName}: $status; did not rank this position."
+        }
 }
 
 data class DelegatePendingSlotUiState(
@@ -201,7 +214,10 @@ data class DelegateReservationUiState(
     val sourceLabel: String,
 )
 
-fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiState? {
+fun Conference.toDelegateDetailUiState(
+    delegateId: String?,
+    swaps: Map<DelegateId, List<PendingAssignmentSwap>> = pendingAssignmentSwaps(),
+): DelegateDetailUiState? {
     val delegate = delegates.firstOrNull { it.id.value == delegateId } ?: return null
     val currentSlot = delegate.currentSlot
     val dateFormatter = DateTimeFormatter.ISO_LOCAL_DATE
@@ -271,6 +287,18 @@ fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiSta
         id = delegate.id.value,
         name = delegate.displayName,
         active = delegate.active,
+        unpaidAssignmentIssues = delegate.openUnpaidAssignmentIssues().map { issue ->
+            DelegateAnswerIssueUiState(
+                questionId = null,
+                issueKey = issue.key,
+                message = issue.message,
+                severity = issue.severity.name,
+                isWarning = true,
+            )
+        },
+        resolvedUnpaidAssignmentIssues = delegate.resolvedUnpaidAssignmentIssues().map { resolved ->
+            resolved.toDelegateResolvedIssueUiState(questionId = null)
+        },
         paymentStatus = delegate.paymentStatusChip(),
         paymentTier = delegate.paymentTier,
         paymentTierStatus = if (delegate.paymentStatus == PaymentStatus.Paid) {
@@ -347,6 +375,7 @@ fun Conference.toDelegateDetailUiState(delegateId: String?): DelegateDetailUiSta
             )
         },
         canDeactivate = currentSlot?.isAssigned != true,
+        swapOpportunities = swaps[delegate.id].orEmpty().map { it.toUiState() },
         preferences = delegate.preferences
             .sortedBy { it.rank }
             .map { preference -> preference.toUiState(currentSlot?.position) },
@@ -478,6 +507,15 @@ private fun Preference.toUiState(currentPosition: Position?): DelegatePreference
             },
         organizerCompleted = source == PreferenceSource.OrganizerCompletion,
         organizerReordered = source == PreferenceSource.OrganizerCorrection,
+        heartbrokenOccupants = position.slots
+            .filter { !it.isEmpty && !it.matchesDelegatePreference }
+            .sortedBy { it.index }
+            .map { slot ->
+                HeartbrokenOccupantUiState(
+                    delegateName = requireNotNull(slot.delegate).displayName,
+                    status = if (slot.isAssigned) SlotBoardStatus.Assigned else SlotBoardStatus.Pending,
+                )
+            },
     )
 
 private fun Position.preferenceStatus(): PreferenceSlotStatusUiState {
@@ -569,7 +607,7 @@ private fun Delegate.toAssignmentOptionsUiState(currentSlot: org.munika.assignme
     )
 }
 
-private fun Delegate.schoolFitFor(position: Position): DelegateSchoolFit =
+internal fun Delegate.schoolFitFor(position: Position): DelegateSchoolFit =
     when (position.effectiveCommitteeMode) {
         CommitteeMode.HighSchool -> if (isHighSchooler) DelegateSchoolFit.Match else DelegateSchoolFit.Mismatch
         CommitteeMode.University -> if (isHighSchooler) DelegateSchoolFit.Mismatch else DelegateSchoolFit.Match

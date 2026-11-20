@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.HeartBroken
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
@@ -109,6 +111,7 @@ fun DelegateSidePanel(
     onAssignDelegateToSlot: (slotId: String, delegateId: String) -> Unit,
     conferenceName: String,
     onResetPreferenceCorrections: () -> Unit,
+    onOpenSwap: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var deactivateDialogOpen by remember(detail.id) { mutableStateOf(false) }
@@ -143,7 +146,21 @@ fun DelegateSidePanel(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 item {
-                    AssignmentCard(detail, onNavigateToPosition)
+                    AssignmentCard(
+                        detail = detail,
+                        onNavigateToPosition = onNavigateToPosition,
+                        onOpenIssues = { onOpenNotices(detail.id) },
+                        onResolveIssue = { resolveTarget = it },
+                        onUnresolveIssue = onUnresolveIssue,
+                    )
+                    if (detail.swapOpportunities.isNotEmpty()) {
+                        BoardTooltip("Review swaps that give this delegate a ranked preference.") {
+                            TextButton(onClick = onOpenSwap, enabled = !loading) {
+                                Icon(Icons.Filled.SwapHoriz, contentDescription = null)
+                                Text("Review swaps (${detail.swapOpportunities.size})")
+                            }
+                        }
+                    }
                 }
                 item {
                     ReservationCard(
@@ -433,6 +450,9 @@ private fun PaymentTierSelector(
 private fun AssignmentCard(
     detail: DelegateDetailUiState,
     onNavigateToPosition: (committeeId: String, positionId: String) -> Unit,
+    onOpenIssues: () -> Unit,
+    onResolveIssue: (DelegateAnswerIssueUiState) -> Unit,
+    onUnresolveIssue: (String) -> Unit,
 ) {
     Card(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
@@ -453,6 +473,14 @@ private fun AssignmentCard(
                     onClick = { onNavigateToPosition(assignment.committeeId, assignment.positionId) },
                 )
             }
+            ValidationIssueBlock(
+                title = "Checks",
+                issues = detail.unpaidAssignmentIssues,
+                resolvedIssues = detail.resolvedUnpaidAssignmentIssues,
+                onOpenIssues = onOpenIssues,
+                onResolveIssue = onResolveIssue,
+                onUnresolveIssue = onUnresolveIssue,
+            )
         }
     }
 }
@@ -891,6 +919,16 @@ private fun PreferenceRow(
                 )
                 preference.status.detail?.let {
                     Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            preference.heartbreakTooltip?.let { tooltip ->
+                BoardTooltip(tooltip) {
+                    Icon(
+                        Icons.Filled.HeartBroken,
+                        contentDescription = tooltip,
+                        tint = Color(0xFFC2185B),
+                        modifier = Modifier.size(18.dp),
+                    )
                 }
             }
             BoardTooltip(preference.status.tooltip) {

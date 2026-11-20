@@ -161,6 +161,30 @@ class Delegate(
             resolutionFor(questionId = null, issue)?.let { resolution -> ResolvedAnswerIssue(issue, resolution) }
         }
 
+    /** Warns for any unpaid slot occupant, including inactive and MyMUN-confirmed delegates. */
+    fun unpaidAssignmentIssues(): List<AnswerIssue> =
+        if (paymentStatus == PaymentStatus.Unpaid && currentSlot != null) {
+            listOf(
+                AnswerIssue(
+                    message = "Unpaid delegate has an assignment.",
+                    severity = AnswerIssueSeverity.Warning,
+                    key = UnpaidAssignmentIssueKey,
+                ),
+            )
+        } else {
+            emptyList()
+        }
+
+    /** Returns the unpaid-assignment warning unless it has been acknowledged. */
+    fun openUnpaidAssignmentIssues(): List<AnswerIssue> =
+        unpaidAssignmentIssues().filter { issue -> resolutionFor(questionId = null, issue) == null }
+
+    /** Returns the acknowledgement only while the unpaid assignment is still present. */
+    fun resolvedUnpaidAssignmentIssues(): List<ResolvedAnswerIssue> =
+        unpaidAssignmentIssues().mapNotNull { issue ->
+            resolutionFor(questionId = null, issue)?.let { resolution -> ResolvedAnswerIssue(issue, resolution) }
+        }
+
     /** Returns current payment-tier classification and assignment compatibility issues. */
     fun paymentTierIssues(): List<AnswerIssue> {
         if (!isAssignmentEligible) return emptyList()
@@ -216,6 +240,9 @@ class Delegate(
             }
 
     companion object {
+        /** Stable delegate-level key retained across assignment and payment changes. */
+        const val UnpaidAssignmentIssueKey = "Warning:unpaid_delegate_assigned"
+
         /** Stable key for the missing-tier warning used by persistence and inline classification. */
         const val PaymentTierMissingIssueKey = "Warning:payment_tier_missing"
 

@@ -274,6 +274,75 @@ class DelegateTest {
         assertTrue(unassigned.schoolAssignmentIssues().isEmpty())
     }
 
+    @Test
+    fun `unpaid assignment warning covers either source regardless of active state`() {
+        for (source in AssignmentSource.entries) {
+            for (active in listOf(true, false)) {
+                for (paymentStatus in PaymentStatus.entries) {
+                    val delegate = assignmentDelegate(paymentStatus, source, active)
+                    val expected = if (paymentStatus == PaymentStatus.Unpaid) {
+                        listOf(
+                            AnswerIssue(
+                                "Unpaid delegate has an assignment.",
+                                AnswerIssueSeverity.Warning,
+                                "Warning:unpaid_delegate_assigned",
+                            ),
+                        )
+                    } else {
+                        emptyList()
+                    }
+
+                    assertEquals(expected, delegate.unpaidAssignmentIssues(), "$paymentStatus $source $active")
+                    assertEquals(expected, delegate.openUnpaidAssignmentIssues())
+                    requireNotNull(delegate.currentSlot).clearAssignment(Instant.EPOCH)
+                    assertTrue(delegate.unpaidAssignmentIssues().isEmpty())
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `unpaid assignment acknowledgement survives correction and reassignment`() {
+        val delegate = assignmentDelegate(PaymentStatus.Unpaid, AssignmentSource.Application, active = false)
+        val resolution = AnswerIssueResolution(
+            id = AnswerIssueResolutionId("unpaid-resolution"),
+            delegate = delegate,
+            questionId = null,
+            issueKey = "Warning:unpaid_delegate_assigned",
+            issueMessage = "Unpaid delegate has an assignment.",
+            severity = AnswerIssueSeverity.Warning,
+            justification = "Payment arranged.",
+            resolvedAt = Instant.EPOCH,
+        )
+        delegate.issueResolutions += resolution
+        val slot = requireNotNull(delegate.currentSlot)
+        slot.clearAssignment(Instant.EPOCH)
+
+        assertTrue(delegate.resolvedUnpaidAssignmentIssues().isEmpty())
+        assertEquals(listOf(resolution), delegate.issueResolutions)
+
+        val otherPosition = Position(PositionId("other-position"), slot.position.committee, "Germany")
+        slot.position.committee.positions += otherPosition
+        val otherSlot = Slot(SlotId("other-slot"), otherPosition, 1, Instant.EPOCH)
+        otherPosition.slots += otherSlot
+        otherSlot.assign(delegate, AssignmentSource.Mymun, Instant.EPOCH)
+
+        assertTrue(delegate.openUnpaidAssignmentIssues().isEmpty())
+        assertEquals(resolution, delegate.resolvedUnpaidAssignmentIssues().single().resolution)
+    }
+
+    private fun assignmentDelegate(paymentStatus: PaymentStatus, source: AssignmentSource, active: Boolean): Delegate {
+        val delegate = paymentTierDelegate("unpaid-assignment", paymentStatus, active, applicationStatus = "Assigned")
+        val committee = Committee(CommitteeId("committee"), delegate.conference, "GA", slotsPerPosition = 1)
+        delegate.conference.committees += committee
+        val position = Position(PositionId("position"), committee, "France")
+        committee.positions += position
+        val slot = Slot(SlotId("slot"), position, 1, Instant.EPOCH)
+        position.slots += slot
+        slot.assign(delegate, source, Instant.EPOCH)
+        return delegate
+    }
+
     private fun assignedPaymentTierDelegate(
         delegateTier: PaymentTier,
         committeeTier: PaymentTier,

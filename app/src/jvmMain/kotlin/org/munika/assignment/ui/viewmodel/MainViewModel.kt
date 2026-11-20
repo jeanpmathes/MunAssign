@@ -802,6 +802,42 @@ class MainViewModel internal constructor(
         }
     }
 
+    fun swapPendingAssignments(swap: PendingAssignmentSwapUiState) {
+        val selectedId = selectedIdOrNull() ?: return
+        if (state.value.loading) return
+        scope.launch {
+            updateConferenceState(selectedId) { it.copy(loading = true, boardActionError = null) }
+            try {
+                val conference = repository.swapPendingAssignments(
+                    conferenceId = ConferenceId(selectedId),
+                    sourceSlotId = SlotId(swap.sourceSlotId),
+                    targetSlotId = SlotId(swap.targetSlotId),
+                    expectedSourceDelegateId = DelegateId(swap.sourceDelegateId),
+                    expectedTargetDelegateId = DelegateId(swap.targetDelegateId),
+                )
+                updateConferenceState(selectedId) {
+                    it.copy(selectedConference = conference, loading = false, boardActionError = null)
+                }
+            } catch (exception: Exception) {
+                if (exception is kotlinx.coroutines.CancellationException) throw exception
+                val refreshed = try {
+                    repository.getConference(ConferenceId(selectedId))
+                } catch (refreshException: Exception) {
+                    if (refreshException is kotlinx.coroutines.CancellationException) throw refreshException
+                    null
+                }
+                updateConferenceState(selectedId) {
+                    it.copy(
+                        selectedConference = refreshed ?: it.selectedConference,
+                        loading = false,
+                        boardActionError = "Swap could not be applied. Review the current assignments again: " +
+                            (exception.message ?: exception::class.simpleName.orEmpty()),
+                    )
+                }
+            }
+        }
+    }
+
     fun setPositionPendingAssignments(positionId: String, delegateIds: List<String>) {
         val selectedId = selectedIdOrNull() ?: return
         scope.launch {
