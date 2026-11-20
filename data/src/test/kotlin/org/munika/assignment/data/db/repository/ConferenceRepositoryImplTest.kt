@@ -2289,7 +2289,8 @@ class ConferenceRepositoryImplTest {
         val repository = ConferenceRepositoryImpl(database)
         val conference = repository.createConference("TestConf")
 
-        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithQuestion()).success)
+        val snapshot = snapshotWithQuestion().copy(delegates = listOf(delegate(applicationStatus = "Submitted")))
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshot).success)
         val loaded = requireNotNull(repository.getConference(conference.id))
         val delegate = loaded.delegates.single()
         val question = loaded.questions.single()
@@ -2309,7 +2310,14 @@ class ConferenceRepositoryImplTest {
             resolved.delegates.single().answers.single().resolvedIssues.single().resolution.justification,
         )
 
-        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithQuestion()).success)
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshot).success)
+        val acceptedSnapshot = snapshot.copy(delegates = listOf(delegate(applicationStatus = "Accepted")))
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, acceptedSnapshot).success)
+        val accepted = requireNotNull(repository.getConference(conference.id)).delegates.single()
+        assertTrue(accepted.answers.single().issues.isEmpty())
+        assertEquals(1, accepted.issueResolutions.size)
+
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshot).success)
         val afterUpdate = requireNotNull(repository.getConference(conference.id))
         assertTrue(afterUpdate.delegates.single().answers.single().openIssues.isEmpty())
         assertEquals(
@@ -2396,7 +2404,8 @@ class ConferenceRepositoryImplTest {
         val repository = ConferenceRepositoryImpl(database)
         val conference = repository.createConference("TestConf")
 
-        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshotWithQuestion()).success)
+        val snapshot = snapshotWithQuestion().copy(delegates = listOf(delegate(applicationStatus = "Submitted")))
+        assertTrue(repository.applyMymunUpdateSnapshot(conference.id.value, snapshot).success)
         val loaded = requireNotNull(repository.getConference(conference.id))
         val delegate = loaded.delegates.single()
         val question = loaded.questions.single()

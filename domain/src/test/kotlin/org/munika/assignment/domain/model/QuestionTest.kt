@@ -49,7 +49,16 @@ class QuestionTest {
 
         val issues = question.issuesFor("Because I like it.")
 
-        assertEquals(listOf(AnswerIssue("Expected at least 3 sentences.", AnswerIssueSeverity.Warning)), issues)
+        assertEquals(
+            listOf(
+                AnswerIssue(
+                    "Expected at least 3 sentences or 30 words.",
+                    AnswerIssueSeverity.Warning,
+                    key = "Warning:Expected at least 3 sentences.",
+                ),
+            ),
+            issues,
+        )
     }
 
     @Test

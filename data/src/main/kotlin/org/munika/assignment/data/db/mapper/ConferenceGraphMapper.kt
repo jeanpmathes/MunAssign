@@ -28,6 +28,7 @@ import org.munika.assignment.domain.model.LanguageLevel
 import org.munika.assignment.domain.model.LanguageLevelAnswerMapping
 import org.munika.assignment.domain.model.MinimumSentenceCount
 import org.munika.assignment.domain.model.MinimumTextLength
+import org.munika.assignment.domain.model.MymunUpdateFilenameCandidate
 import org.munika.assignment.domain.model.MymunUpdateFilenamePart
 import org.munika.assignment.domain.model.MymunUpdateFilenameSignature
 import org.munika.assignment.domain.model.MymunUpdateFilenameSignatureId
@@ -74,6 +75,8 @@ object ConferenceGraphMapper {
             createdAt = rows.conference.createdAtEpochMillis.toInstant(),
             updatedAt = rows.conference.updatedAtEpochMillis.toInstant(),
             lastMymunUpdateAt = rows.conference.lastMymunUpdateAtEpochMillis?.toInstant(),
+            lastMymunExportDate = rows.lastSuccessfulMymunSourceFilename
+                ?.let { MymunUpdateFilenameCandidate.fromFilename(it).exportDate },
             mymunUpdateFilenameSignatures = rows.mymunUpdateFilenameSignatures
                 .sortedByDescending { it.trustedAtEpochMillis }
                 .mapTo(mutableListOf()) { signature ->

@@ -1,11 +1,15 @@
 package org.munika.assignment.domain.model
 
 import java.time.Instant
+import java.time.LocalDate
+import java.time.format.DateTimeParseException
 import java.util.Locale
 
 /** Normalized filename parts extracted before a MyMUN workbook update is allowed to proceed. */
 data class MymunUpdateFilenameCandidate(
     val parts: List<MymunUpdateFilenamePart>,
+    /** Export date from the standard MyMUN prefix, independent of the trusted conference identity. */
+    val exportDate: LocalDate? = null,
 ) {
     val normalizedParts: Set<String>
         get() = parts.mapTo(linkedSetOf()) { it.normalizedValue }
@@ -50,6 +54,7 @@ data class MymunUpdateFilenameCandidate(
         private val whitespace = Regex("\\s+")
         private val numericBlock = Regex("\\d+")
         private val ignoredBlocks = setOf("mymun", "applications", "export")
+        private val exportDatePrefix = Regex("^mymun-(\\d{4}-\\d{2}-\\d{2})(?:-|$)", RegexOption.IGNORE_CASE)
 
         /** Extracts meaningful parts without retaining the complete source filename. */
         fun fromFilename(filename: String): MymunUpdateFilenameCandidate {
@@ -69,7 +74,14 @@ data class MymunUpdateFilenameCandidate(
                     )
                 }
             }
-            return MymunUpdateFilenameCandidate(partsByNormalizedValue.values.toList())
+            val exportDate = exportDatePrefix.find(stem)?.groupValues?.get(1)?.let { value ->
+                try {
+                    LocalDate.parse(value)
+                } catch (_: DateTimeParseException) {
+                    null
+                }
+            }
+            return MymunUpdateFilenameCandidate(partsByNormalizedValue.values.toList(), exportDate)
         }
     }
 }

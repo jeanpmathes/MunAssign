@@ -1,6 +1,7 @@
 package org.munika.assignment.data.db.repository
 
 import java.nio.file.Files
+import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -20,6 +21,43 @@ import org.munika.assignment.data.excel.MymunWorkbookSnapshot
 import org.munika.assignment.domain.model.MymunUpdateFilenameCandidate
 
 class MymunUpdateFilenamePersistenceTest {
+    @Test
+    fun `export date comes from last successful update and survives reopening`() = runBlocking {
+        val path = Files.createTempDirectory("export-date").resolve("data.db")
+        val repository = ConferenceRepositoryImpl(DatabaseFactory.connect(path))
+        val conference = repository.createConference("KAMUN")
+        assertEquals(null, requireNotNull(repository.getConference(conference.id)).lastMymunExportDate)
+
+        assertTrue(repository.applyMymunUpdateSnapshot(
+            conferenceId = conference.id.value,
+            snapshot = snapshot(),
+            sourceFilename = "mymun-2026-11-18-0853-KAMUN-Applications-Export.xlsx",
+        ).success)
+        assertTrue(!repository.applyMymunUpdateSnapshot(
+            conferenceId = conference.id.value,
+            snapshot = snapshot(MymunValidationIssue(MymunValidationSeverity.Error, "broken", "Broken workbook", null)),
+            sourceFilename = "mymun-2026-11-19-0853-KAMUN-Applications-Export.xlsx",
+        ).success)
+
+        val reopened = ConferenceRepositoryImpl(DatabaseFactory.connect(path))
+        assertEquals(LocalDate.of(2026, 11, 18), requireNotNull(reopened.getConference(conference.id)).lastMymunExportDate)
+        assertEquals(LocalDate.of(2026, 11, 18), reopened.listConferences().single().lastMymunExportDate)
+
+        assertTrue(reopened.applyMymunUpdateSnapshot(
+            conferenceId = conference.id.value,
+            snapshot = snapshot(),
+            sourceFilename = "mymun-2026-11-17-0853-KAMUN-Applications-Export.xlsx",
+        ).success)
+        assertEquals(LocalDate.of(2026, 11, 17), requireNotNull(reopened.getConference(conference.id)).lastMymunExportDate)
+
+        assertTrue(reopened.applyMymunUpdateSnapshot(
+            conferenceId = conference.id.value,
+            snapshot = snapshot(),
+            sourceFilename = "undated.xlsx",
+        ).success)
+        assertEquals(null, requireNotNull(reopened.getConference(conference.id)).lastMymunExportDate)
+    }
+
     @Test
     fun `migration backfills latest successful filename and ignores newer failed run`() = runBlocking {
         val path = Files.createTempDirectory("trust-backfill").resolve("data.db")

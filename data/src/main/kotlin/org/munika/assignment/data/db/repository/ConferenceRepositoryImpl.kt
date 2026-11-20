@@ -162,6 +162,7 @@ class ConferenceRepositoryImpl(
                         answers = emptyList(),
                         issueResolutions = emptyList(),
                         mymunUpdateFilenameSignatures = loadMymunUpdateFilenameSignatureRows(row[ConferenceTable.id]),
+                        lastSuccessfulMymunSourceFilename = loadLastSuccessfulMymunSourceFilename(row[ConferenceTable.id]),
                     ),
                 )
             }
@@ -2806,9 +2807,26 @@ class ConferenceRepositoryImpl(
                 )
             },
             mymunUpdateFilenameSignatures = loadMymunUpdateFilenameSignatureRows(conferenceId),
+            lastSuccessfulMymunSourceFilename = loadLastSuccessfulMymunSourceFilename(conferenceId),
         )
         return ConferenceGraphMapper.toDomain(rows)
     }
+
+    private fun loadLastSuccessfulMymunSourceFilename(conferenceId: String): String? =
+        MymunUpdateRunTable.selectAll()
+            .where { MymunUpdateRunTable.conferenceId eq conferenceId }
+            .orderBy(
+                MymunUpdateRunTable.completedAtEpochMillis to SortOrder.DESC,
+                MymunUpdateRunTable.startedAtEpochMillis to SortOrder.DESC,
+            )
+            .firstOrNull { run ->
+                run[MymunUpdateRunTable.completedAtEpochMillis] != null &&
+                    MymunUpdateIssueTable.selectAll().where {
+                        (MymunUpdateIssueTable.updateRunId eq run[MymunUpdateRunTable.id]) and
+                            (MymunUpdateIssueTable.severity eq UpdateIssueSeverity.Error.name)
+                    }.none()
+            }
+            ?.get(MymunUpdateRunTable.sourceFilename)
 
     private fun loadMymunUpdateFilenameSignatureRows(conferenceId: String): List<MymunUpdateFilenameSignatureRow> =
         MymunUpdateFilenameSignatureTable.selectAll()

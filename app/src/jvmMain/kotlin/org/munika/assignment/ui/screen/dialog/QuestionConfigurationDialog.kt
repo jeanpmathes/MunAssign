@@ -418,13 +418,13 @@ private fun HandlingDialog(selectedHandlingId: String, onSelect: (String) -> Uni
                 HandlingOption(
                     selected = selectedHandlingId == StandardQuestionHandlingTypes.VisaSupport.id,
                     title = "Visa support",
-                    body = "Notify when delegates require visa assistance.",
+                    body = "Notify when paid, accepted delegates require visa assistance.",
                     onClick = { onSelect(StandardQuestionHandlingTypes.VisaSupport.id) },
                 )
                 HandlingOption(
                     selected = selectedHandlingId == StandardQuestionHandlingTypes.CommitteeChoiceExplanation.id,
                     title = "Committee choice explanation",
-                    body = "Warn when the explanation is too short.",
+                    body = "Before acceptance, warn when the explanation has fewer than three sentences and 30 words.",
                     onClick = { onSelect(StandardQuestionHandlingTypes.CommitteeChoiceExplanation.id) },
                 )
             }
