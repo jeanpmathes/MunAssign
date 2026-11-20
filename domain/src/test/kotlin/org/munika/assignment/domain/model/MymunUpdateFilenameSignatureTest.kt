@@ -1,12 +1,26 @@
 package org.munika.assignment.domain.model
 
 import java.time.Instant
+import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MymunUpdateFilenameSignatureTest {
+    @Test
+    fun `export date is parsed strictly from MyMUN prefix without changing identity`() {
+        val candidate = MymunUpdateFilenameCandidate.fromFilename("MYMUN-2024-02-29-0853-KAMUN.xlsx")
+
+        assertEquals(LocalDate.of(2024, 2, 29), candidate.exportDate)
+        assertEquals(setOf("kamun"), candidate.normalizedParts)
+        assertNull(MymunUpdateFilenameCandidate.fromFilename("mymun-2026-02-29-0853-KAMUN.xlsx").exportDate)
+        assertNull(MymunUpdateFilenameCandidate.fromFilename("mymun-2026-13-01-0853-KAMUN.xlsx").exportDate)
+        assertNull(MymunUpdateFilenameCandidate.fromFilename("KAMUN-2026-11-18.xlsx").exportDate)
+        assertNull(MymunUpdateFilenameCandidate.fromFilename("KAMUN.xlsx").exportDate)
+    }
+
     @Test
     fun `example filename produces one conference signature part`() {
         val candidate = MymunUpdateFilenameCandidate.fromFilename(

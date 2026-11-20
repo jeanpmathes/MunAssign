@@ -81,7 +81,7 @@ class QuestionAnswerTest {
             conference = conference,
             name = PersonName("Alex", "Kim"),
             email = null,
-            profile = DelegateProfile(null, null, null, null, null, null, null, null, null, null),
+            profile = DelegateProfile(null, null, null, null, null, null, null, null, null, "Accepted"),
             paymentStatus = paymentStatus,
             isHeadDelegate = false,
         )

@@ -7,6 +7,7 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It g
 - A conference is the top-level boundary. Deleting a conference deletes its committees, positions, slots, delegates, preferences, questions, answers, comments, delegations, reservations, and update metadata.
 - MyMUN Excel updates replace MyMUN-managed data for the selected conference and preserve organizer-managed state where the referenced delegate or position still exists.
 - Empty numbered MyMUN preference cells are offered for organizer correction after a successful update. Organizers may fill a blank, explicitly keep it empty, or reorder the complete preference sequence. Corrections remain effective while later updates retain the same source arrangement; changed MyMUN values or ranks retire the affected correction.
+- Visa support notices apply only to paid delegates with accepted, assigned, or checked-in applications. Committee-choice explanation warnings apply only before acceptance, and either three sentences or 30 words satisfies the length check. Other configured answer checks remain applicable.
 - Successful MyMUN updates establish conference-specific trusted filename signatures. Later filenames that do not match any trusted signature require explicit confirmation before the workbook is read.
 - `.munassign` import/export transfers one complete conference as a self-contained SQLite snapshot.
 - A synchronized conference remains authoritative in one user-selected `*.sync.munassign` file. MunAssign only manages the filesystem path; OneDrive, Google Drive, network storage, or another provider may synchronize that folder independently.
@@ -61,7 +62,8 @@ MunAssign is a desktop assignment tool for Model United Nations organizers. It g
 
 ## UI Requirements
 
-- The top bar shows conference name, active paid delegate count, unpaid-among-accepted delegate count, open slots, pending slots, assigned slots, high-school and university accept capacity after remaining reservations, and actions for delegate list, delegation overview, reservation manager, MyMUN update, and question configuration. `.munassign` import/export actions live in the conference manager.
+- The conference selector, conference manager, and empty-state Add conference buttons open the same dialog with Create local, Import local, Create synchronized, and Connect synchronized tabs. The selector closes immediately. Add conference and its underlying manager close only after the addition and conference-state refresh succeed. Cancelling a file chooser or synchronized-import confirmation preserves the selected tab and entered names; failures remain visible for retry. Saving disables editing, repeated submission, and dismissal.
+- The top bar shows conference name, active paid delegate count, unpaid-among-accepted delegate count, open slots, pending slots, assigned slots, high-school and university accept capacity after remaining reservations, and actions for delegate list, delegation overview, reservation manager, MyMUN update, and question configuration. `.munassign` import is available through the shared Add conference dialog; export and replacement actions live in the conference manager.
 - The main view is a horizontally scrollable board of committee columns.
 - High-school committee columns show the total and remaining high-school reservation capacity reminder. University committee columns show the equivalent university reminder. The reminder opens the reservation manager and does not bind reservations to that committee.
 - Mapped committee columns use a distinct header tone and do not show a reservation reminder because capacity is derived position-by-position from their correspondences.
@@ -103,6 +105,9 @@ hyphens delimit parts, underscores are removed, whitespace is normalized, and nu
 unordered set. The first non-empty signature and explicitly accepted mismatches become trusted only
 after a successful update. Filenames with no meaningful parts require confirmation every time and
 are never trusted. Organizers can delete individual trusted signatures from the conference manager.
+The export date in a standard MyMUN filename is checked separately: an older export than the last
+successful update requires armed confirmation before parsing, even when its conference signature
+is trusted. Equal dates proceed normally. Unknown dates retain the existing identity checks.
 
 `.munassign` export writes one complete conference to a SQLite snapshot. Import remaps conference-owned IDs, can create a new conference with a duplicate visible name, or replace a selected conference while preserving the local conference name and display order. Older transfer files are migrated from a temporary copy before import; transfer files from newer schema versions are rejected.
 

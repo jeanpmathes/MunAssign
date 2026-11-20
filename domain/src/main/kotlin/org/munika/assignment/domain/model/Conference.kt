@@ -1,6 +1,7 @@
 package org.munika.assignment.domain.model
 
 import java.time.Instant
+import java.time.LocalDate
 
 /**
  * Top-level aggregate for one organizer's assignment work.
@@ -22,6 +23,8 @@ class Conference(
     val createdAt: Instant,
     var updatedAt: Instant,
     val lastMymunUpdateAt: Instant? = null,
+    /** Date embedded in the last successfully applied export's filename, when recognizable. */
+    val lastMymunExportDate: LocalDate? = null,
 ) : DomainObject<ConferenceId> {
     init {
         require(name.isNotBlank()) { "Conference name must not be blank." }

@@ -3,6 +3,7 @@ package org.munika.assignment.ui.viewmodel
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
+import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -48,6 +49,96 @@ import org.munika.assignment.export.MarkdownSafetyExportTrigger
 
 class MainViewModelTest {
     @Test
+    fun `older trusted export waits for confirmation and does not stage signature again`() {
+        val filename = "mymun-2026-11-17-0853-KAMUN-Applications-Export.xlsx"
+        val trusted = MymunUpdateFilenameCandidate.fromFilename(filename).withIdentity(
+            MymunUpdateFilenameSignatureId("trusted"), Instant.EPOCH,
+        )
+        val conference = Conference(
+            ConferenceId("conference"), "KAMUN",
+            mymunUpdateFilenameSignatures = mutableListOf(trusted),
+            createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH,
+            lastMymunExportDate = LocalDate.of(2026, 11, 18),
+        )
+        var updateStarted = false
+        var staged: MymunUpdateFilenameCandidate? = null
+        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conference)) { _, _, candidate ->
+            updateStarted = true
+            staged = candidate
+            UpdateResult(true, emptyList())
+        }
+        waitUntil { viewModel.state.value.selectedConference === conference }
+
+        viewModel.updateFromWorkbook(Path.of(filename))
+
+        assertFalse(updateStarted)
+        assertEquals(LocalDate.of(2026, 11, 18), requireNotNull(viewModel.state.value.pendingWorkbookUpdate).previousExportDate)
+        viewModel.cancelPendingWorkbookUpdate()
+        assertNull(viewModel.state.value.pendingWorkbookUpdate)
+        assertFalse(updateStarted)
+
+        viewModel.updateFromWorkbook(Path.of(filename))
+        viewModel.confirmPendingWorkbookUpdate()
+        waitUntil { updateStarted }
+        assertNull(staged)
+        viewModel.close()
+    }
+
+    @Test
+    fun `equal newer and undated exports proceed without date confirmation`() {
+        for (date in listOf("2026-11-18-0853-", "2026-11-19-0853-", "")) {
+            val conference = Conference(
+                ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH,
+                lastMymunExportDate = LocalDate.of(2026, 11, 18),
+            )
+            var updateStarted = false
+            val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conference)) { _, _, _ ->
+                updateStarted = true
+                UpdateResult(true, emptyList())
+            }
+            waitUntil { viewModel.state.value.selectedConference === conference }
+
+            viewModel.updateFromWorkbook(Path.of("mymun-${date}KAMUN-Applications-Export.xlsx"))
+
+            waitUntil { updateStarted }
+            assertNull(viewModel.state.value.pendingWorkbookUpdate)
+            viewModel.close()
+        }
+    }
+
+    @Test
+    fun `older mismatching export combines warnings before trusting its new signature`() {
+        val trusted = MymunUpdateFilenameCandidate.fromFilename("KAMUN-Spring.xlsx").withIdentity(
+            MymunUpdateFilenameSignatureId("trusted"), Instant.EPOCH,
+        )
+        val conference = Conference(
+            ConferenceId("conference"), "KAMUN", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH,
+            mymunUpdateFilenameSignatures = mutableListOf(trusted),
+            lastMymunExportDate = LocalDate.of(2026, 11, 18),
+        )
+        var updateStarted = false
+        var staged: MymunUpdateFilenameCandidate? = null
+        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conference)) { _, _, candidate ->
+            updateStarted = true
+            staged = candidate
+            UpdateResult(true, emptyList())
+        }
+        waitUntil { viewModel.state.value.selectedConference === conference }
+
+        viewModel.updateFromWorkbook(Path.of("mymun-2026-11-17-0853-KAMUN-Autumn.xlsx"))
+
+        assertFalse(updateStarted)
+        val pending = requireNotNull(viewModel.state.value.pendingWorkbookUpdate)
+        assertEquals(LocalDate.of(2026, 11, 18), pending.previousExportDate)
+        assertEquals(listOf("Spring"), pending.missingParts)
+        assertEquals(listOf("Autumn"), pending.unexpectedParts)
+        viewModel.confirmPendingWorkbookUpdate()
+        waitUntil { updateStarted }
+        assertEquals(setOf("kamun", "autumn"), staged?.normalizedParts)
+        viewModel.close()
+    }
+
+    @Test
     fun `delayed conference creation refreshes list without replacing a newer selection`() {
         val conferenceA = Conference(ConferenceId("conference-a"), "Conference A", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val conferenceB = Conference(ConferenceId("conference-b"), "Conference B", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
@@ -66,10 +157,15 @@ class MainViewModelTest {
 
         assertTrue(viewModel.createConference("Created"))
         runBlocking { createStarted.await() }
+        assertTrue(viewModel.state.value.conferenceAdditionInProgress)
+        assertEquals(0L, viewModel.state.value.conferenceAdditionCompletedId)
+        assertFalse(viewModel.createConference("Duplicate submission"))
         viewModel.selectConference("conference-b")
         waitUntil { viewModel.state.value.selectedConference === conferenceB }
         createResult.complete(created)
+        waitUntil { viewModel.state.value.conferenceAdditionCompletedId == 1L }
 
+        assertFalse(viewModel.state.value.conferenceAdditionInProgress)
         assertEquals(listOf("conference-a", "conference-b", "conference-created"), viewModel.state.value.conferences.map { it.id.value })
         assertEquals("conference-b", viewModel.state.value.selectedConferenceId)
         assertSame(conferenceB, viewModel.state.value.selectedConference)
@@ -127,6 +223,82 @@ class MainViewModelTest {
 
         waitUntil { viewModel.state.value.conferenceActionError != null }
         assertTrue("Database is locked." in requireNotNull(viewModel.state.value.conferenceActionError))
+        assertFalse(viewModel.state.value.conferenceAdditionInProgress)
+        assertEquals(0L, viewModel.state.value.conferenceAdditionCompletedId)
+        viewModel.close()
+    }
+
+    @Test
+    fun `invalid conference name does not start or complete an addition`() {
+        val viewModel = viewModelWith(FakeConferenceRepository())
+
+        assertFalse(viewModel.createConference("  "))
+        assertFalse(viewModel.createSynchronizedConference("  ", Path.of("new.sync.munassign")))
+
+        assertTrue(requireNotNull(viewModel.state.value.conferenceActionError).isNotBlank())
+        assertFalse(viewModel.state.value.conferenceAdditionInProgress)
+        assertEquals(0L, viewModel.state.value.conferenceAdditionCompletedId)
+        viewModel.close()
+    }
+
+    @Test
+    fun `local creation completion advances once for each successful addition`() {
+        val created = Conference(ConferenceId("created"), "Created", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val repository = FakeConferenceRepository(createdConferenceDeferred = CompletableDeferred(created))
+        val viewModel = viewModelWith(repository)
+
+        assertTrue(viewModel.createConference("First"))
+        assertEquals(1L, viewModel.state.value.conferenceAdditionCompletedId)
+        assertTrue(viewModel.createConference("Second"))
+        assertEquals(2L, viewModel.state.value.conferenceAdditionCompletedId)
+        assertFalse(viewModel.state.value.conferenceAdditionInProgress)
+        viewModel.close()
+    }
+
+    @Test
+    fun `local creation waits for conference index refresh before completing`() {
+        val existing = Conference(ConferenceId("existing"), "Existing", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val created = Conference(ConferenceId("created"), "Created", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val refreshed = CompletableDeferred<List<Conference>>()
+        val repository = FakeConferenceRepository(
+            initialConference = existing,
+            createdConferenceDeferred = CompletableDeferred(created),
+            conferencesAfterCreateDeferred = refreshed,
+        )
+        val viewModel = viewModelWith(repository)
+        waitUntil { viewModel.state.value.selectedConference === existing }
+
+        assertTrue(viewModel.createConference("Created"))
+
+        assertTrue(viewModel.state.value.conferenceAdditionInProgress)
+        assertEquals(0L, viewModel.state.value.conferenceAdditionCompletedId)
+        assertSame(existing, viewModel.state.value.selectedConference)
+        refreshed.complete(listOf(existing, created))
+
+        assertEquals(1L, viewModel.state.value.conferenceAdditionCompletedId)
+        assertFalse(viewModel.state.value.conferenceAdditionInProgress)
+        assertEquals(listOf(existing, created), viewModel.state.value.conferences)
+        assertSame(created, viewModel.state.value.selectedConference)
+        viewModel.close()
+    }
+
+    @Test
+    fun `failed conference index refresh does not report successful addition`() {
+        val created = Conference(ConferenceId("created"), "Created", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val refreshed = CompletableDeferred<List<Conference>>()
+        val viewModel = viewModelWith(
+            FakeConferenceRepository(
+                createdConferenceDeferred = CompletableDeferred(created),
+                conferencesAfterCreateDeferred = refreshed,
+            ),
+        )
+
+        assertTrue(viewModel.createConference("Created"))
+        refreshed.completeExceptionally(IllegalStateException("Catalog refresh failed."))
+
+        assertEquals(0L, viewModel.state.value.conferenceAdditionCompletedId)
+        assertFalse(viewModel.state.value.conferenceAdditionInProgress)
+        assertTrue("Catalog refresh failed." in requireNotNull(viewModel.state.value.conferenceActionError))
         viewModel.close()
     }
 
@@ -857,6 +1029,47 @@ class MainViewModelTest {
         assertEquals("imported", store.load())
         assertEquals("Conference imported.", viewModel.state.value.transferNotice?.message)
         assertFalse(viewModel.state.value.loading)
+        assertFalse(viewModel.state.value.conferenceAdditionInProgress)
+        assertEquals(1L, viewModel.state.value.conferenceAdditionCompletedId)
+        viewModel.close()
+    }
+
+    @Test
+    fun `import addition stays in progress until imported conference is available`() {
+        val existing = Conference(ConferenceId("existing"), "Existing", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val imported = Conference(ConferenceId("imported"), "Imported", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val importedId = CompletableDeferred<String>()
+        val viewModel = viewModelWith(
+            FakeConferenceRepository(initialConference = existing, conferences = listOf(existing, imported)),
+            conferenceTransfer = FakeConferenceTransferRunner(importedIdDeferred = importedId),
+        )
+        waitUntil { viewModel.state.value.selectedConference === existing }
+
+        viewModel.importConferenceAsNew(Path.of("import.munassign"))
+
+        assertTrue(viewModel.state.value.conferenceAdditionInProgress)
+        assertEquals(0L, viewModel.state.value.conferenceAdditionCompletedId)
+        assertSame(existing, viewModel.state.value.selectedConference)
+        importedId.complete(imported.id.value)
+
+        assertEquals(1L, viewModel.state.value.conferenceAdditionCompletedId)
+        assertFalse(viewModel.state.value.conferenceAdditionInProgress)
+        assertSame(imported, viewModel.state.value.selectedConference)
+        viewModel.close()
+    }
+
+    @Test
+    fun `failed import exposes inline error without completing addition`() {
+        val viewModel = viewModelWith(
+            FakeConferenceRepository(),
+            conferenceTransfer = FakeConferenceTransferRunner(importError = IllegalStateException("Invalid transfer.")),
+        )
+
+        viewModel.importConferenceAsNew(Path.of("invalid.munassign"))
+
+        assertTrue("Invalid transfer." in requireNotNull(viewModel.state.value.conferenceActionError))
+        assertFalse(viewModel.state.value.conferenceAdditionInProgress)
+        assertEquals(0L, viewModel.state.value.conferenceAdditionCompletedId)
         viewModel.close()
     }
 
@@ -1254,6 +1467,95 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `synchronized additions complete only after successful persistence`() {
+        for (operation in SynchronizedAddition.entries) {
+            val shared = Conference(ConferenceId("shared"), "Shared", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+            val result = CompletableDeferred<Result<Conference>>()
+            val workspace = FakeConferenceWorkspaceRunner(
+                entries = listOf(shared.synchronizedListItem()),
+                fileInspection = ConferenceFileInspection(ConferenceFileKind.SynchronizedConference),
+                additionResult = result,
+            )
+            val viewModel = viewModelWith(FakeConferenceRepository(initialConference = shared), workspace = workspace)
+            waitUntil { viewModel.state.value.selectedConference === shared }
+
+            operation.start(viewModel)
+
+            assertTrue(viewModel.state.value.conferenceAdditionInProgress, operation.name)
+            assertEquals(0L, viewModel.state.value.conferenceAdditionCompletedId, operation.name)
+            result.complete(Result.success(shared))
+
+            assertFalse(viewModel.state.value.conferenceAdditionInProgress, operation.name)
+            assertEquals(1L, viewModel.state.value.conferenceAdditionCompletedId, operation.name)
+            assertNull(viewModel.state.value.conferenceActionError, operation.name)
+            assertSame(shared, viewModel.state.value.selectedConference)
+            viewModel.close()
+        }
+    }
+
+    @Test
+    fun `failed synchronized additions remain available for retry without completing`() {
+        for (operation in SynchronizedAddition.entries) {
+            val shared = Conference(ConferenceId("shared"), "Shared", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+            val result = CompletableDeferred<Result<Conference>>()
+            val workspace = FakeConferenceWorkspaceRunner(
+                entries = listOf(shared.synchronizedListItem()),
+                fileInspection = ConferenceFileInspection(ConferenceFileKind.SynchronizedConference),
+                additionResult = result,
+            )
+            val viewModel = viewModelWith(FakeConferenceRepository(initialConference = shared), workspace = workspace)
+            waitUntil { viewModel.state.value.selectedConference === shared }
+
+            operation.start(viewModel)
+            result.complete(Result.failure(IllegalStateException("Shared file is inaccessible.")))
+
+            assertFalse(viewModel.state.value.conferenceAdditionInProgress, operation.name)
+            assertEquals(0L, viewModel.state.value.conferenceAdditionCompletedId, operation.name)
+            assertTrue("Shared file is inaccessible." in requireNotNull(viewModel.state.value.conferenceActionError), operation.name)
+            assertSame(shared, viewModel.state.value.selectedConference)
+            viewModel.close()
+        }
+    }
+
+    @Test
+    fun `synchronized import confirmation cancellation does not complete addition`() {
+        val workspace = FakeConferenceWorkspaceRunner(
+            entries = emptyList(),
+            fileInspection = ConferenceFileInspection(ConferenceFileKind.SynchronizedConference),
+        )
+        val viewModel = viewModelWith(FakeConferenceRepository(), workspace = workspace)
+        val source = Path.of("shared.sync.munassign")
+
+        viewModel.importConferenceAsNew(source)
+
+        assertEquals(source, viewModel.state.value.pendingSynchronizedImportPath)
+        assertFalse(viewModel.state.value.conferenceAdditionInProgress)
+        assertEquals(0L, viewModel.state.value.conferenceAdditionCompletedId)
+        viewModel.cancelSynchronizedImport()
+
+        assertNull(viewModel.state.value.pendingSynchronizedImportPath)
+        assertFalse(viewModel.state.value.conferenceAdditionInProgress)
+        assertEquals(0L, viewModel.state.value.conferenceAdditionCompletedId)
+        viewModel.close()
+    }
+
+    @Test
+    fun `import inspection failure exposes inline error without completing addition`() {
+        val viewModel = viewModelWith(
+            FakeConferenceRepository(),
+            workspace = FakeConferenceWorkspaceRunner(entries = emptyList(), inspectionError = IllegalStateException("Unreadable file.")),
+        )
+
+        viewModel.importConferenceAsNew(Path.of("unreadable.munassign"))
+
+        assertTrue("Unreadable file." in requireNotNull(viewModel.state.value.conferenceActionError))
+        assertNull(viewModel.state.value.pendingSynchronizedImportPath)
+        assertFalse(viewModel.state.value.conferenceAdditionInProgress)
+        assertEquals(0L, viewModel.state.value.conferenceAdditionCompletedId)
+        viewModel.close()
+    }
+
+    @Test
     fun `synchronized import is inspected before offering connect or detached import`() {
         val shared = Conference(ConferenceId("shared"), "Shared", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
         val repository = FakeConferenceRepository(initialConference = shared)
@@ -1270,10 +1572,13 @@ class MainViewModelTest {
         viewModel.importConferenceAsNew(sourcePath)
 
         assertEquals(sourcePath, viewModel.state.value.pendingSynchronizedImportPath)
+        assertFalse(viewModel.state.value.conferenceAdditionInProgress)
+        assertEquals(0L, viewModel.state.value.conferenceAdditionCompletedId)
         assertNull(transfer.importSourcePath)
         viewModel.connectPendingSynchronizedImport()
         waitUntil { workspace.connectedPath == sourcePath }
         assertNull(viewModel.state.value.pendingSynchronizedImportPath)
+        assertEquals(1L, viewModel.state.value.conferenceAdditionCompletedId)
         viewModel.close()
     }
 
@@ -1303,6 +1608,42 @@ class MainViewModelTest {
         waitUntil { viewModel.state.value.selectedConference === shared }
         assertEquals(shared.id.value, workspace.reloadedConferenceId)
         assertEquals(shared.id.value, viewModel.state.value.selectedConferenceId)
+        assertFalse(viewModel.state.value.conferenceAdditionInProgress)
+        assertEquals(0L, viewModel.state.value.conferenceAdditionCompletedId)
+        viewModel.close()
+    }
+
+    @Test
+    fun `moving conference to synchronized storage does not complete an addition`() {
+        val conference = Conference(ConferenceId("conference"), "Conference", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val moved = CompletableDeferred<Result<Conference>>()
+        val workspace = FakeConferenceWorkspaceRunner(entries = listOf(conference.synchronizedListItem()), additionResult = moved)
+        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = conference), workspace = workspace)
+        waitUntil { viewModel.state.value.selectedConference === conference }
+
+        viewModel.moveConferenceToSynchronized(conference.id.value, Path.of("conference.sync.munassign"))
+
+        assertFalse(viewModel.state.value.conferenceAdditionInProgress)
+        moved.complete(Result.success(conference))
+
+        assertEquals(0L, viewModel.state.value.conferenceAdditionCompletedId)
+        assertFalse(viewModel.state.value.conferenceAdditionInProgress)
+        assertNull(viewModel.state.value.conferenceActionError)
+        viewModel.close()
+    }
+
+    @Test
+    fun `renaming conference does not complete an addition`() {
+        val original = Conference(ConferenceId("conference"), "Original", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val renamed = Conference(original.id, "Renamed", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        val viewModel = viewModelWith(FakeConferenceRepository(initialConference = original, renamedConference = renamed))
+        waitUntil { viewModel.state.value.selectedConference === original }
+
+        assertTrue(viewModel.renameConference(original.id.value, renamed.name))
+
+        assertSame(renamed, viewModel.state.value.selectedConference)
+        assertEquals(0L, viewModel.state.value.conferenceAdditionCompletedId)
+        assertFalse(viewModel.state.value.conferenceAdditionInProgress)
         viewModel.close()
     }
 
@@ -1425,6 +1766,29 @@ class MainViewModelTest {
     }
 }
 
+private enum class SynchronizedAddition {
+    Create,
+    Connect,
+    DetachedImport,
+    ConnectFromImport;
+
+    fun start(viewModel: MainViewModel) {
+        val path = Path.of("shared.sync.munassign")
+        when (this) {
+            Create -> assertTrue(viewModel.createSynchronizedConference("New shared", path))
+            Connect -> viewModel.connectSynchronizedConference(path)
+            DetachedImport -> {
+                viewModel.importConferenceAsNew(path)
+                viewModel.confirmSynchronizedImportAsNew()
+            }
+            ConnectFromImport -> {
+                viewModel.importConferenceAsNew(path)
+                viewModel.connectPendingSynchronizedImport()
+            }
+        }
+    }
+}
+
 private fun Conference.synchronizedListItem(displayOrder: Int = 0): ConferenceListItem = ConferenceListItem(
     id = id.value,
     name = name,
@@ -1438,6 +1802,8 @@ private class FakeConferenceWorkspaceRunner(
     private val entries: List<ConferenceListItem>,
     private val fileInspection: ConferenceFileInspection = ConferenceFileInspection(ConferenceFileKind.ConferenceTransfer),
     private val connectedConference: Conference? = null,
+    private val additionResult: CompletableDeferred<Result<Conference>>? = null,
+    private val inspectionError: Exception? = null,
     private val reloadedConference: Conference? = null,
     private val reloadStarted: CompletableDeferred<Unit>? = null,
     private val reloadResult: CompletableDeferred<Conference?>? = null,
@@ -1452,14 +1818,14 @@ private class FakeConferenceWorkspaceRunner(
     override suspend fun listEntries(): List<ConferenceListItem> = entries
 
     override suspend fun createSynchronizedConference(name: String, destinationPath: Path): Conference =
-        error("Not used by this test.")
+        requireNotNull(additionResult).await().getOrThrow()
 
     override suspend fun moveConferenceToSynchronized(conferenceId: String, destinationPath: Path): Conference =
-        error("Not used by this test.")
+        requireNotNull(additionResult).await().getOrThrow()
 
     override suspend fun connectSynchronizedConference(path: Path): Conference {
         connectedPath = path
-        return requireNotNull(connectedConference)
+        return additionResult?.await()?.getOrThrow() ?: requireNotNull(connectedConference)
     }
 
     override suspend fun locateSynchronizedConference(conferenceId: String, path: Path): Conference =
@@ -1477,9 +1843,13 @@ private class FakeConferenceWorkspaceRunner(
         return result
     }
 
-    override fun inspectFile(path: Path): ConferenceFileInspection = fileInspection
+    override fun inspectFile(path: Path): ConferenceFileInspection {
+        inspectionError?.let { throw it }
+        return fileInspection
+    }
 
-    override suspend fun importSynchronizedAsNew(path: Path): Conference = error("Not used by this test.")
+    override suspend fun importSynchronizedAsNew(path: Path): Conference =
+        requireNotNull(additionResult).await().getOrThrow()
 
     override suspend fun replaceFromSynchronized(conferenceId: String, path: Path): Conference =
         error("Not used by this test.")
@@ -1487,6 +1857,7 @@ private class FakeConferenceWorkspaceRunner(
 
 private class FakeConferenceTransferRunner(
     private val importedId: String = "imported",
+    private val importedIdDeferred: CompletableDeferred<String>? = null,
     private val replacedId: String = "replaced",
     private val exportError: Exception? = null,
     private val importError: Exception? = null,
@@ -1511,7 +1882,7 @@ private class FakeConferenceTransferRunner(
     override suspend fun importConferenceAsNew(sourcePath: Path): String {
         importError?.let { throw it }
         importSourcePath = sourcePath
-        return importedId
+        return importedIdDeferred?.await() ?: importedId
     }
 
     override suspend fun replaceConference(targetConferenceId: String, sourcePath: Path): String {
@@ -1558,8 +1929,10 @@ private class FakeConferenceRepository(
     private val initialConference: Conference? = null,
     private val conferences: List<Conference> = listOfNotNull(initialConference),
     private val createdConferenceDeferred: CompletableDeferred<Conference>? = null,
+    private val renamedConference: Conference? = null,
     private val createConferenceStarted: CompletableDeferred<Unit>? = null,
     private val conferencesAfterCreate: List<Conference>? = null,
+    private val conferencesAfterCreateDeferred: CompletableDeferred<List<Conference>>? = null,
     private val resolvedConference: Conference? = initialConference,
     private val resolveError: String? = null,
     private val resolveThrows: Exception? = null,
@@ -1638,7 +2011,7 @@ private class FakeConferenceRepository(
     override suspend fun listConferences(): List<Conference> =
         when {
             conferenceDeleted -> conferencesAfterDelete ?: conferences
-            conferenceCreated -> conferencesAfterCreate ?: conferences
+            conferenceCreated -> conferencesAfterCreateDeferred?.await() ?: conferencesAfterCreate ?: conferences
             else -> conferences
         }
 
@@ -1650,7 +2023,8 @@ private class FakeConferenceRepository(
         return created
     }
 
-    override suspend fun renameConference(conferenceId: ConferenceId, newName: String): Conference = unsupported()
+    override suspend fun renameConference(conferenceId: ConferenceId, newName: String): Conference =
+        renamedConference ?: unsupported()
 
     override suspend fun deleteConference(conferenceId: ConferenceId) {
         conferenceDeleted = true

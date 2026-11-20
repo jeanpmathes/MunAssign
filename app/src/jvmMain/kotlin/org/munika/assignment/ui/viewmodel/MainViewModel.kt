@@ -1,6 +1,7 @@
 package org.munika.assignment.ui.viewmodel
 
 import java.nio.file.Path
+import java.time.LocalDate
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -158,14 +159,16 @@ class MainViewModel internal constructor(
         loadConference(conferenceId)
     }
 
+    /** Returns whether creation was accepted; addition completion is published only after saving and refresh. */
     fun createConference(name: String): Boolean {
+        if (_state.value.conferenceAdditionInProgress) return false
         val validationError = validateConferenceName(name)
         if (validationError != null) {
             _state.update { it.copy(conferenceActionError = validationError) }
             return false
         }
         val expectedSelectedConferenceId = selectedIdOrNull()
-        launchWithConferenceActionError {
+        launchWithConferenceActionError(isAddition = true) {
             val created = repository.createConference(name.trim())
             val index = loadConferenceIndex()
             _state.update { current ->
@@ -265,13 +268,15 @@ class MainViewModel internal constructor(
         return true
     }
 
+    /** Returns whether creation was accepted; the synchronized file is saved asynchronously. */
     fun createSynchronizedConference(name: String, destinationPath: Path): Boolean {
+        if (_state.value.conferenceAdditionInProgress) return false
         val validationError = validateConferenceName(name)
         if (validationError != null) {
             _state.update { it.copy(conferenceActionError = validationError) }
             return false
         }
-        launchWorkspaceAction(selectResult = true) {
+        launchWorkspaceAction(selectResult = true, isAddition = true) {
             requireNotNull(workspace) { "Synchronized conferences are unavailable." }
                 .createSynchronizedConference(name.trim(), destinationPath)
         }
@@ -285,8 +290,9 @@ class MainViewModel internal constructor(
         }
     }
 
+    /** Connects a synchronized file and publishes addition completion after its conference state is refreshed. */
     fun connectSynchronizedConference(path: Path) {
-        launchWorkspaceAction(selectResult = true) {
+        launchWorkspaceAction(selectResult = true, isAddition = true) {
             requireNotNull(workspace) { "Synchronized conferences are unavailable." }
                 .connectSynchronizedConference(path)
         }
@@ -1244,39 +1250,34 @@ class MainViewModel internal constructor(
         _state.update { it.copy(boardScrollRequest = BoardScrollRequest(committeeId = committeeId, positionId = positionId)) }
     }
 
+    /** Checks conference identity and export chronology before reading or applying a workbook. */
     fun updateFromWorkbook(path: Path) {
         val selectedId = selectedIdOrNull() ?: return
         val conference = _state.value.selectedConference ?: return
         val candidate = MymunUpdateFilenameCandidate.fromFilename(path.fileName.toString())
-        when (val assessment = candidate.assess(conference.mymunUpdateFilenameSignatures)) {
-            is MymunUpdateFilenameAssessment.FirstUse -> applyWorkbookUpdate(selectedId, path, candidate)
-            is MymunUpdateFilenameAssessment.Match -> applyWorkbookUpdate(selectedId, path, signatureToTrust = null)
-            is MymunUpdateFilenameAssessment.Empty -> {
+        val assessment = candidate.assess(conference.mymunUpdateFilenameSignatures)
+        val previousExportDate = conference.lastMymunExportDate?.takeIf { previous ->
+            candidate.exportDate?.isBefore(previous) == true
+        }
+        when {
+            assessment is MymunUpdateFilenameAssessment.FirstUse && previousExportDate == null ->
+                applyWorkbookUpdate(selectedId, path, candidate)
+            assessment is MymunUpdateFilenameAssessment.Match && previousExportDate == null ->
+                applyWorkbookUpdate(selectedId, path, signatureToTrust = null)
+            else -> {
+                val mismatch = assessment as? MymunUpdateFilenameAssessment.Mismatch
                 _state.update {
                     it.copy(
                         pendingWorkbookUpdate = PendingWorkbookUpdate(
                             conferenceId = selectedId,
                             path = path,
                             candidate = candidate,
-                            expectedParts = emptyList(),
-                            missingParts = emptyList(),
-                            unexpectedParts = emptyList(),
-                            emptyCandidate = true,
-                        ),
-                    )
-                }
-            }
-            is MymunUpdateFilenameAssessment.Mismatch -> {
-                _state.update {
-                    it.copy(
-                        pendingWorkbookUpdate = PendingWorkbookUpdate(
-                            conferenceId = selectedId,
-                            path = path,
-                            candidate = candidate,
-                            expectedParts = assessment.closestSignature.parts.map { part -> part.displayValue },
-                            missingParts = assessment.missingParts,
-                            unexpectedParts = assessment.unexpectedParts,
-                            emptyCandidate = false,
+                            expectedParts = mismatch?.closestSignature?.parts?.map { part -> part.displayValue }.orEmpty(),
+                            missingParts = mismatch?.missingParts.orEmpty(),
+                            unexpectedParts = mismatch?.unexpectedParts.orEmpty(),
+                            emptyCandidate = assessment is MymunUpdateFilenameAssessment.Empty,
+                            matchesTrustedSignature = assessment is MymunUpdateFilenameAssessment.Match,
+                            previousExportDate = previousExportDate,
                         ),
                     )
                 }
@@ -1294,7 +1295,7 @@ class MainViewModel internal constructor(
         applyWorkbookUpdate(
             conferenceId = pending.conferenceId,
             path = pending.path,
-            signatureToTrust = pending.candidate.takeUnless { pending.emptyCandidate },
+            signatureToTrust = pending.candidate.takeUnless { pending.emptyCandidate || pending.matchesTrustedSignature },
         )
     }
 
@@ -1407,10 +1408,19 @@ class MainViewModel internal constructor(
         }
     }
 
+    /** Imports a detached conference, requesting an explicit decision first for synchronized source files. */
     fun importConferenceAsNew(sourcePath: Path) {
-        val inspection = workspace?.inspectFile(sourcePath)
+        if (_state.value.conferenceAdditionInProgress) return
+        val inspection = try {
+            workspace?.inspectFile(sourcePath)
+        } catch (exception: Exception) {
+            _state.update { it.copy(conferenceActionError = exception.readableMessage()) }
+            return
+        }
         if (inspection?.kind == ConferenceFileKind.SynchronizedConference) {
-            _state.update { it.copy(pendingSynchronizedImportPath = sourcePath, transferNotice = null) }
+            _state.update {
+                it.copy(pendingSynchronizedImportPath = sourcePath, transferNotice = null, conferenceActionError = null)
+            }
             return
         }
         importConferenceAsNewNow(sourcePath, synchronizedSource = false)
@@ -1433,6 +1443,7 @@ class MainViewModel internal constructor(
     }
 
     private fun importConferenceAsNewNow(sourcePath: Path, synchronizedSource: Boolean) {
+        if (!beginConferenceAddition()) return
         scope.launch {
             _state.update { it.copy(loading = true, transferNotice = null, conferenceActionError = null) }
             try {
@@ -1455,10 +1466,13 @@ class MainViewModel internal constructor(
                         transferNotice = TransferNotice(nextTransferNoticeId(), "Conference imported."),
                     )
                 }
+                completeConferenceAddition()
             } catch (exception: Exception) {
                 _state.update {
                     it.copy(
                         loading = false,
+                        conferenceAdditionInProgress = false,
+                        conferenceActionError = exception.readableMessage(),
                         transferNotice = TransferNotice(
                             nextTransferNoticeId(),
                             "Import failed: ${exception.readableMessage()}",
@@ -1574,17 +1588,44 @@ class MainViewModel internal constructor(
         }
     }
 
-    private fun launchWithConferenceActionError(action: suspend () -> Unit) {
+    private fun beginConferenceAddition(): Boolean {
+        if (_state.value.conferenceAdditionInProgress) return false
+        _state.update { it.copy(conferenceAdditionInProgress = true, conferenceActionError = null) }
+        return true
+    }
+
+    private fun completeConferenceAddition() {
+        _state.update {
+            it.copy(
+                conferenceAdditionInProgress = false,
+                conferenceAdditionCompletedId = it.conferenceAdditionCompletedId + 1,
+            )
+        }
+    }
+
+    private fun launchWithConferenceActionError(isAddition: Boolean = false, action: suspend () -> Unit) {
+        if (isAddition && !beginConferenceAddition()) return
         scope.launch {
             try {
                 action()
+                if (isAddition) completeConferenceAddition()
             } catch (exception: Exception) {
-                _state.update { it.copy(conferenceActionError = exception.readableMessage()) }
+                _state.update {
+                    it.copy(
+                        conferenceActionError = exception.readableMessage(),
+                        conferenceAdditionInProgress = if (isAddition) false else it.conferenceAdditionInProgress,
+                    )
+                }
             }
         }
     }
 
-    private fun launchWorkspaceAction(selectResult: Boolean, action: suspend () -> Conference) {
+    private fun launchWorkspaceAction(
+        selectResult: Boolean,
+        isAddition: Boolean = false,
+        action: suspend () -> Conference,
+    ) {
+        if (isAddition && !beginConferenceAddition()) return
         val expectedSelectedConferenceId = selectedIdOrNull()
         scope.launch {
             _state.update { it.copy(loading = true, conferenceActionError = null, transferNotice = null) }
@@ -1604,6 +1645,7 @@ class MainViewModel internal constructor(
                     )
                 }
                 if (selectedResult) lastSelectedConferenceStore.save(conference.id.value)
+                if (isAddition) completeConferenceAddition()
             } catch (exception: Exception) {
                 val index = runCatching { loadConferenceIndex() }.getOrNull()
                 _state.update {
@@ -1612,6 +1654,7 @@ class MainViewModel internal constructor(
                         conferenceEntries = index?.entries ?: it.conferenceEntries,
                         loading = false,
                         conferenceActionError = exception.readableMessage(),
+                        conferenceAdditionInProgress = if (isAddition) false else it.conferenceAdditionInProgress,
                     )
                 }
             }
@@ -1808,6 +1851,10 @@ data class MainUiState(
     val workbookUpdateNotice: WorkbookUpdateNotice? = null,
     val transferNotice: TransferNotice? = null,
     val conferenceActionError: String? = null,
+    /** True while an addition is being saved and its conference state is being refreshed. */
+    val conferenceAdditionInProgress: Boolean = false,
+    /** Advances once per successful addition; unrelated conference operations leave it unchanged. */
+    val conferenceAdditionCompletedId: Long = 0,
     val boardActionError: String? = null,
     val boardScrollRequest: BoardScrollRequest? = null,
     val selectedDelegateId: String? = null,
@@ -1895,6 +1942,8 @@ data class PendingWorkbookUpdate(
     val missingParts: List<String>,
     val unexpectedParts: List<String>,
     val emptyCandidate: Boolean,
+    val matchesTrustedSignature: Boolean = false,
+    val previousExportDate: LocalDate? = null,
 )
 
 data class WorkbookUpdateNotice(

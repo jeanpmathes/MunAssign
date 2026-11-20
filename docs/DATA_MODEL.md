@@ -100,6 +100,16 @@ and management UI. Multiple signatures may be trusted. Empty signatures and norm
 are not stored. Existing databases seed one signature from the latest completed update run without
 blocking errors. `.munassign` transfer carries signatures with the owning conference.
 
+The standard MyMUN filename prefix supplies an export calendar date independently of conference
+identity. Before reading a workbook, an export older than the last successfully applied export
+requires the same armed confirmation as an identity mismatch, even if its signature is trusted.
+Equal dates are allowed. Both warnings share one confirmation when necessary. The previous date is
+rehydrated from the latest completed update run without blocking errors; failed or incomplete runs
+do not replace it. Dates are not compared with the computer clock or file modification times.
+Unrecognized, missing, or impossible dates are treated as unknown and do not add a chronology
+warning; existing identity checks still apply. An explicitly accepted older export becomes the new
+baseline on success. No schema change is needed; import/export already transfers update history.
+
 `Countries.Delegates` is comma-separated and may contain inconsistent whitespace, trailing commas, or single names.
 
 ## Question Handling
@@ -121,16 +131,15 @@ Every question also stores an organizer-managed versus-view visibility flag. New
 experience-role and committee-choice-explanation questions default to visible; later role or
 handling changes do not overwrite the saved organizer choice.
 
-General questions can opt into handling archetypes. The visa archetype raises a notice for
-meaningful answers unless they are blank, an exact placeholder, or begin with a complete recognized
-negative word or phrase. Negative openings may include trailing explanations, but partial word
-prefixes do not count. For unpaid delegates, only the standard `Notice:Visa support requested.` issue
-is suppressed on questions configured as visa support; other rules on the same question still apply.
-Raw answers, saved acknowledgements, and justification history are retained. Both open and resolved
-visa-request entries are absent while unpaid; becoming paid restores the applicable acknowledgement.
-The committee-choice explanation archetype warns when the answer has fewer
-than three sentences. Role-backed special questions use their role handling and do not expose these
-general handling archetypes.
+General questions can opt into handling archetypes. The visa archetype raises its support notice
+only for paid delegates whose application is accepted, assigned, or checked in. Meaningful answers
+raise it unless blank, an exact placeholder, or beginning with a complete recognized negative word
+or phrase. Negative openings may include trailing explanations, but partial word prefixes do not
+count. The committee-choice explanation archetype warns only before acceptance, when the answer has
+both fewer than three sentence-like fragments and fewer than 30 words. Either threshold suffices.
+Unrelated custom answer rules still apply. Suppression preserves raw answers and saved resolutions;
+existing acknowledgement keys remain stable when the explanation warning wording changes.
+Role-backed special questions use their role handling and do not expose these general archetypes.
 
 Role-specific mapping tables are intentionally separate so language-level values cannot be mapped into experience-level values, or similar.
 

@@ -249,12 +249,21 @@ fun MainScreen(
     onClearBoardActionError: () -> Unit,
     onClearReservationActionError: () -> Unit = {},
 ) {
-    var createDialogOpen by remember { mutableStateOf(false) }
+    var addDialogOpen by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<ConferenceListItem?>(null) }
     var managementOpen by remember { mutableStateOf(false) }
     val selectedConference = state.selectedConference
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarScope = rememberCoroutineScope()
+
+    var lastAdditionCompletedId by remember { mutableStateOf(state.conferenceAdditionCompletedId) }
+    LaunchedEffect(state.conferenceAdditionCompletedId) {
+        if (state.conferenceAdditionCompletedId != lastAdditionCompletedId) {
+            lastAdditionCompletedId = state.conferenceAdditionCompletedId
+            addDialogOpen = false
+            managementOpen = false
+        }
+    }
 
     LaunchedEffect(state.workbookUpdateNotice?.id) {
         val notice = state.workbookUpdateNotice ?: return@LaunchedEffect
@@ -274,7 +283,7 @@ fun MainScreen(
                     onSelectConference = onSelectConference,
                     onOpenCreate = {
                         onClearConferenceActionError()
-                        createDialogOpen = true
+                        addDialogOpen = true
                     },
                     onOpenRename = { conference ->
                         onClearConferenceActionError()
@@ -311,7 +320,7 @@ fun MainScreen(
                         state.conferenceEntries.isEmpty() -> NoConferenceState(
                             onCreate = {
                                 onClearConferenceActionError()
-                                createDialogOpen = true
+                                addDialogOpen = true
                             },
                         )
                         selectedConference == null -> UnavailableConferenceState(
@@ -388,24 +397,6 @@ fun MainScreen(
         }
     }
 
-    if (createDialogOpen) {
-        ConferenceNameDialog(
-            title = "Create conference",
-            confirmLabel = "Create",
-            initialName = "",
-            error = state.conferenceActionError,
-            onDismiss = {
-                createDialogOpen = false
-                onClearConferenceActionError()
-            },
-            onConfirm = { name ->
-                if (onCreateConference(name)) {
-                    createDialogOpen = false
-                }
-            },
-        )
-    }
-
     renameTarget?.let { conference ->
         ConferenceNameDialog(
             title = "Rename conference",
@@ -427,14 +418,15 @@ fun MainScreen(
     if (managementOpen) {
         ConferenceManagementDialog(
             state = state,
+            onOpenAddConference = {
+                onClearConferenceActionError()
+                addDialogOpen = true
+            },
             onDismiss = {
                 managementOpen = false
                 onClearConferenceActionError()
             },
-            onCreateConference = onCreateConference,
-            onCreateSynchronizedConference = onCreateSynchronizedConference,
             onMoveConferenceToSynchronized = onMoveConferenceToSynchronized,
-            onConnectSynchronizedConference = onConnectSynchronizedConference,
             onLocateSynchronizedConference = onLocateSynchronizedConference,
             onReloadSynchronizedConference = onReloadSynchronizedConference,
             onUnlinkSynchronizedConference = onUnlinkSynchronizedConference,
@@ -443,11 +435,26 @@ fun MainScreen(
             onDeleteConference = onDeleteConference,
             onReorderConferences = onReorderConferences,
             onExportConference = onExportConference,
-            onImportConferenceAsNew = onImportConferenceAsNew,
             onReplaceConference = onReplaceConference,
             onDeleteMymunUpdateFilenameSignature = onDeleteMymunUpdateFilenameSignature,
             onResetPreferenceCorrections = onResetPreferenceCorrections,
             onClearConferenceActionError = onClearConferenceActionError,
+        )
+    }
+
+    if (addDialogOpen) {
+        AddConferenceDialog(
+            error = state.conferenceActionError,
+            busy = state.conferenceAdditionInProgress,
+            onDismiss = {
+                addDialogOpen = false
+                onClearConferenceActionError()
+            },
+            onCreateLocal = { name -> onCreateConference(name) },
+            onImportLocal = onImportConferenceAsNew,
+            onCreateSynchronized = onCreateSynchronizedConference,
+            onConnectSynchronized = onConnectSynchronizedConference,
+            onClearError = onClearConferenceActionError,
         )
     }
 
@@ -1175,9 +1182,9 @@ private fun NoConferenceState(onCreate: () -> Unit) {
     ) {
         Text("No conferences yet", style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(12.dp))
-        WithTooltip("Create the first conference.") {
+        WithTooltip("Create, import, or connect the first conference.") {
             Button(onClick = onCreate) {
-                Text("Create conference")
+                Text("Add conference")
             }
         }
     }
@@ -1361,16 +1368,20 @@ private fun WorkbookFilenameMismatchDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Unexpected update filename") },
+        title = { Text(if (pending.previousExportDate != null) "Older update export" else "Unexpected update filename") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Selected file: ${pending.path.fileName}")
+                pending.previousExportDate?.let { previous ->
+                    Text("This export is dated ${pending.candidate.exportDate}; the last successful export was dated $previous.")
+                    Text("Updating may restore older delegate and assignment data.")
+                }
                 if (pending.emptyCandidate) {
                     Text(
                         "MunAssign could not identify conference-specific parts in this filename. " +
                             "This filename will require confirmation every time.",
                     )
-                } else {
+                } else if (pending.expectedParts.isNotEmpty() && !pending.matchesTrustedSignature) {
                     Text("This filename does not match a trusted filename for the selected conference.")
                     Text("Expected: ${pending.expectedParts.joinToString(" + ")}")
                     Text(
@@ -1493,10 +1504,8 @@ internal fun ConferenceListItem.overflowManagementActions(): List<ConferenceMana
 private fun ConferenceManagementDialog(
     state: MainUiState,
     onDismiss: () -> Unit,
-    onCreateConference: (String) -> Boolean,
-    onCreateSynchronizedConference: (String) -> Unit,
+    onOpenAddConference: () -> Unit,
     onMoveConferenceToSynchronized: (String, String) -> Unit,
-    onConnectSynchronizedConference: () -> Unit,
     onLocateSynchronizedConference: (String) -> Unit,
     onReloadSynchronizedConference: (String) -> Unit,
     onUnlinkSynchronizedConference: (String) -> Unit,
@@ -1505,14 +1514,12 @@ private fun ConferenceManagementDialog(
     onDeleteConference: (String) -> Unit,
     onReorderConferences: (List<String>) -> Boolean,
     onExportConference: (String, String) -> Unit,
-    onImportConferenceAsNew: () -> Unit,
     onReplaceConference: (String, String) -> Unit,
     onDeleteMymunUpdateFilenameSignature: (conferenceId: String, signatureId: String) -> Unit,
     onResetPreferenceCorrections: (conferenceId: String) -> Unit,
     onClearConferenceActionError: () -> Unit,
 ) {
     val orderedConferences = remember { state.conferenceEntries.toMutableStateList() }
-    var addDialogOpen by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<ConferenceListItem?>(null) }
     var deleteTarget by remember { mutableStateOf<ConferenceListItem?>(null) }
     var filenameSignatureTargetId by remember { mutableStateOf<String?>(null) }
@@ -1572,10 +1579,7 @@ private fun ConferenceManagementDialog(
                 }
                 WithTooltip("Create, import, or connect a conference.") {
                     OutlinedButton(
-                        onClick = {
-                            onClearConferenceActionError()
-                            addDialogOpen = true
-                        },
+                        onClick = onOpenAddConference,
                         enabled = !state.loading,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
@@ -1592,32 +1596,6 @@ private fun ConferenceManagementDialog(
             }
         },
     )
-
-    if (addDialogOpen) {
-        AddConferenceDialog(
-            error = state.conferenceActionError,
-            onDismiss = {
-                addDialogOpen = false
-                onClearConferenceActionError()
-            },
-            onCreateLocal = { name ->
-                if (onCreateConference(name)) addDialogOpen = false
-            },
-            onImportLocal = {
-                addDialogOpen = false
-                onImportConferenceAsNew()
-            },
-            onCreateSynchronized = { name ->
-                addDialogOpen = false
-                onCreateSynchronizedConference(name)
-            },
-            onConnectSynchronized = {
-                addDialogOpen = false
-                onConnectSynchronizedConference()
-            },
-            onClearError = onClearConferenceActionError,
-        )
-    }
 
     renameTarget?.let { conference ->
         ConferenceNameDialog(
@@ -1708,6 +1686,7 @@ private fun ConferenceManagementDialog(
 @Composable
 private fun AddConferenceDialog(
     error: String?,
+    busy: Boolean,
     onDismiss: () -> Unit,
     onCreateLocal: (String) -> Unit,
     onImportLocal: () -> Unit,
@@ -1729,7 +1708,7 @@ private fun AddConferenceDialog(
     }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!busy) onDismiss() },
         title = { Text("Add conference") },
         text = {
             Column(modifier = Modifier.width(560.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -1737,6 +1716,7 @@ private fun AddConferenceDialog(
                     ConferenceAddTab.entries.forEach { tab ->
                         Tab(
                             selected = selectedTab == tab,
+                            enabled = !busy,
                             onClick = {
                                 if (selectedTab != tab) onClearError()
                                 selectedTab = tab
@@ -1759,6 +1739,7 @@ private fun AddConferenceDialog(
                             onValueChange = { localName = it },
                             label = { Text("Conference name") },
                             singleLine = true,
+                            enabled = !busy,
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
@@ -1772,6 +1753,7 @@ private fun AddConferenceDialog(
                             onValueChange = { synchronizedName = it },
                             label = { Text("Conference name") },
                             singleLine = true,
+                            enabled = !busy,
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
@@ -1784,7 +1766,7 @@ private fun AddConferenceDialog(
         },
         confirmButton = {
             Button(
-                enabled = actionEnabled,
+                enabled = actionEnabled && !busy,
                 onClick = {
                     when (selectedTab) {
                         ConferenceAddTab.CreateLocal -> onCreateLocal(localName)
@@ -1805,7 +1787,7 @@ private fun AddConferenceDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") }
         },
     )
 }

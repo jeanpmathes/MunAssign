@@ -3,8 +3,8 @@ package org.munika.assignment.domain.model
 /**
  * One delegate's raw answer to one imported MyMUN question.
  *
- * Typed interpretation and warnings are delegated to the question configuration. For visa-support
- * handling, the standard request notice applies only while paid; other rules still apply.
+ * Question rules interpret the raw answer. Delegate payment and application status determine
+ * whether operational visa notices and pre-acceptance explanation warnings are relevant.
  */
 class QuestionAnswer(
     override val id: QuestionAnswerId,
@@ -14,14 +14,21 @@ class QuestionAnswer(
 ) : DomainObject<QuestionAnswerId> {
     val issues: List<AnswerIssue>
         get() {
-            val issues = question.issuesFor(rawAnswer)
-            return if (delegate.paymentStatus == PaymentStatus.Unpaid &&
-                question.handling == StandardQuestionHandlingTypes.VisaSupport
-            ) {
-                issues.filterNot { it.key == "Notice:Visa support requested." }
-            } else {
-                issues
+            val irrelevantIssueKeys = buildSet {
+                if (
+                    question.handling == StandardQuestionHandlingTypes.VisaSupport &&
+                    (delegate.paymentStatus != PaymentStatus.Paid || !delegate.profile.isUsableForAssignment)
+                ) {
+                    add(VisaSupportNoticeIssueKey)
+                }
+                if (
+                    question.handling == StandardQuestionHandlingTypes.CommitteeChoiceExplanation &&
+                    delegate.profile.isUsableForAssignment
+                ) {
+                    question.rules.filterIsInstance<MinimumSentenceCount>().forEach { add(it.issueKey) }
+                }
             }
+            return question.issuesFor(rawAnswer).filterNot { it.key in irrelevantIssueKeys }
         }
 
     val openIssues: List<AnswerIssue>
@@ -31,4 +38,9 @@ class QuestionAnswer(
         get() = issues.mapNotNull { issue ->
             delegate.resolutionFor(question.id, issue)?.let { resolution -> ResolvedAnswerIssue(issue, resolution) }
         }
+
+    private companion object {
+        /** Existing persisted key for the standard visa notice; custom validation remains applicable. */
+        const val VisaSupportNoticeIssueKey = "Notice:Visa support requested."
+    }
 }
